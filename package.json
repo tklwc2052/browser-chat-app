@@ -1,11 +1,10 @@
 {
-  "name": "browser-chat-app",
+  "name": "simple-chat-app",
   "version": "1.0.0",
-  "description": "A browser-only setup for a real-time chat app.",
+  "description": "A simple Node.js chat application using Socket.IO.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
