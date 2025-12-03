@@ -137,7 +137,7 @@
                 // Check for the System format: **[User]** [Message Text] [Time] (No colon)
                 const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
                 
-                // CRITICAL FIX: Reset trackers on system message
+                // CRITICAL: Reset trackers on system message
                 lastUserMessageTime = 0; 
                 lastOtherMessageSender = ''; 
 
@@ -185,10 +185,21 @@
                 messageEl.classList.add('user-message');
                 showUsername = false; 
 
-                // User Message Grouping (Time only on the LAST message, hiding on previous consecutive ones)
+                // User Message Grouping (Time only on the LAST message, Retroactive Fix)
                 if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
                     showTime = false;
                     messageEl.classList.add('grouped-message'); 
+                    
+                    // === CRITICAL FIX: RETROACTIVE TIMESTAMP REMOVAL for self messages ===
+                    const previousMessageEl = messagesDiv.lastChild;
+                    if (previousMessageEl) {
+                        // Find the time element in the previous message's content wrapper and remove it
+                        const prevTimeSpan = previousMessageEl.querySelector('.message-time');
+                        if (prevTimeSpan) {
+                            prevTimeSpan.remove();
+                        }
+                    }
+                    // ===================================================
                 }
                 lastUserMessageTime = currentTimeInMinutes;
                 lastOtherMessageSender = ''; // Reset other sender tracker
@@ -201,6 +212,10 @@
                     showUsername = false; // Hide username
                     showTime = false; // Hide time (as we only want it on the very last)
                     messageEl.classList.add('grouped-message');
+                    
+                    // This logic assumes the retroactive fix for self-messages (above) isn't needed here,
+                    // as the grouping logic naturally keeps the time on the latest non-grouped message.
+                    
                 } else {
                     // Reset time tracking when a new sender or gap is detected
                     lastUserMessageTime = 0; 
@@ -249,7 +264,7 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // --- 5. Receiving Messages (History and Live) (CRITICAL FIX: Reset trackers on history load) ---
+        // --- 5. Receiving Messages (History and Live) ---
         
         socket.on('history', (history) => {
             // Reset trackers before starting the loop
@@ -263,7 +278,6 @@
             });
             
             // CRITICAL FIX: Reset trackers again after history is loaded and processed
-            // This prevents the *first* message sent after history load from being grouped with the *last* history message.
             lastUserMessageTime = 0; 
             lastOtherMessageSender = ''; 
 
