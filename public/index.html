@@ -34,8 +34,6 @@
     </div>
 
     <script>
-        // Connect to the Socket.IO server. 
-        // Note: Using io() defaults to connecting back to the host serving the page.
         const socket = io();
 
         // --- DOM Elements ---
@@ -50,26 +48,28 @@
 
         // --- 1. Utility Function to Handle Formatting ---
         function parseFormatting(text) {
-            // Apply a simplified HTML sanitization first
+            // 1. Sanitize for security (prevent script injection)
             let formattedText = text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
 
-            // 1. Crossout: Replace ~~text~~ with <del>text</del>
+            // 2. Apply formatting (RegEx replacements)
+            // Order matters: use specific symbols before generic ones (e.g., ** before *)
+            
+            // Crossout: ~~text~~ with <del>text</del>
             formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
             
-            // 2. Bold: Replace **text** with <strong>text</strong>
+            // Bold: **text** with <strong>text</strong>
             formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
-            // 3. Underline: Replace __text__ with <u>text</u>
+            // Underline: __text__ with <u>text</u>
             formattedText = formattedText.replace(/__(.*?)__/g, '<u>$1</u>');
             
-            // 4. Slanted (Italics): Replace *text* with <em>text</em>
+            // Slanted (Italics): *text* with <em>text</em>
             formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
             
-            // Undo the initial HTML sanitization ONLY for the special formatting tags
-            // This allows the tags to be rendered as HTML elements instead of literal text
+            // 3. UNSANITIZE only the newly added HTML tags for rendering
             formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
             formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
             formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
@@ -140,12 +140,11 @@
 
         // --- 5. Receiving Messages (History and Live) ---
         
-        // NEW: Listen for 'history' event (sent only on connection)
+        // Listen for 'history' event (sent only on connection)
         socket.on('history', (history) => {
             history.forEach(msg => {
                 displayMessage(msg);
             });
-            // Scroll to bottom after loading all history
             messagesDiv.scrollTop = messagesDiv.scrollHeight; 
         });
 
