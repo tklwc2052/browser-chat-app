@@ -87,8 +87,8 @@ body {
 #messages {
     flex-grow: 1;
     padding: 15px;
-    max-height: 400px; /* Limit the size of the chat history */
-    overflow-y: auto; /* Enable scrolling */
+    max-height: 400px; 
+    overflow-y: auto; 
     background: #fff;
     border-bottom: 1px solid #eee;
 }
@@ -104,7 +104,7 @@ body {
 }
 
 .message strong {
-    color: #333; /* For the username */
+    color: #333; 
 }
 
 /* --- Input Area --- */
@@ -120,7 +120,7 @@ body {
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
-    resize: none; /* Disable manual resizing */
+    resize: none; 
     max-height: 80px;
     box-sizing: border-box;
 }
@@ -131,7 +131,7 @@ body {
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
-    align-self: flex-end; /* Align to the bottom of the input area */
+    align-self: flex-end; 
 }
 
 #send-button {
