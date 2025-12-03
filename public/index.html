@@ -26,7 +26,7 @@
 
         <div id="message-input-area">
             <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented in this version)">
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
                 📁
             </button>
             <button id="send-button">Send</button>
@@ -34,9 +34,8 @@
     </div>
 
     <script>
-        // CLIENT-SIDE JAVASCRIPT LOGIC
-        
-        // Connect to the Socket.IO server.
+        // Connect to the Socket.IO server. 
+        // Note: If you face connection issues, replace io() with io('YOUR_RENDER_URL_HERE')
         const socket = io();
 
         // --- DOM Elements ---
@@ -49,9 +48,40 @@
 
         let currentUsername = '';
 
-        // --- 1. Username Handling ---
+        // --- 1. Utility Function to Handle Formatting ---
+        function parseFormatting(text) {
+            // Apply HTML sanitization first to prevent XSS (though minimal here)
+            let formattedText = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // The following replacements need to be done on the already sanitized text
+            // 1. Crossout: ~~text~~ with <del>text</del>
+            formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+            
+            // 2. Bold: **text** with <strong>text</strong>
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // 3. Underline: __text__ with <u>text</u>
+            formattedText = formattedText.replace(/__(.*?)__/g, '<u>$1</u>');
+            
+            // 4. Slanted (Italics): *text* with <em>text</em>
+            formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Undo the initial HTML sanitization ONLY for the special formatting tags
+            // This is a simplified approach; professional apps use dedicated Markdown libraries
+            formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
+            formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
+            formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+            formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
+
+            return formattedText;
+        }
+
+
+        // --- 2. Username Handling ---
         
-        // Load username from browser storage on load
         document.addEventListener('DOMContentLoaded', () => {
             const storedUsername = localStorage.getItem('chatUsername');
             if (storedUsername) {
@@ -70,61 +100,52 @@
             }
         });
         
-        // Function to set the username and inform the server
         function setUsername(username) {
             currentUsername = username;
-            // Tell the server this client's username
             socket.emit('set-username', currentUsername); 
-            // Lock the input area
             usernameInput.disabled = true;
             setUsernameBtn.disabled = true;
             usernameInput.placeholder = 'Username set!';
             messageInput.focus();
         }
 
-        // --- 2. Message Sending ---
+        // --- 3. Message Sending ---
 
         function sendMessage() {
             const msg = messageInput.value.trim();
             if (msg && currentUsername) {
-                // Send the message text to the server
                 socket.emit('chat-message', msg);
-                messageInput.value = ''; // Clear the input
+                messageInput.value = '';
             }
         }
 
-        // Send on "Send" button click
         sendButton.addEventListener('click', sendMessage);
 
-        // Send on Enter key press in the textarea
         messageInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // Prevent new line
+                e.preventDefault();
                 sendMessage();
             }
         });
         
-        // --- 3. Receiving Messages ---
+        // --- 4. Receiving Messages ---
         
-        // Listen for 'chat-message' events from the server
         socket.on('chat-message', (formattedMessage) => {
-            // Create a new div for the message
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
             
-            // Basic HTML injection for simplicity 
-            messageEl.innerHTML = formattedMessage; 
+            // The message from the server is like: **[user]**: [text] [time]
+            // We use the parseFormatting function here to render HTML tags like <strong>
+            messageEl.innerHTML = parseFormatting(formattedMessage); 
             
             messagesDiv.appendChild(messageEl);
-            // Scroll to the latest message
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         });
 
-        // --- 4. Online User List Update ---
+        // --- 5. Online User List Update ---
         
-        // Listen for 'user-list-update' events from the server
         socket.on('user-list-update', (users) => {
-            onlineUsersList.innerHTML = ''; // Clear the list
+            onlineUsersList.innerHTML = '';
             users.forEach(user => {
                 const li = document.createElement('li');
                 li.textContent = user;
