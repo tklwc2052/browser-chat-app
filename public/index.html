@@ -48,15 +48,11 @@
 
         // --- 1. Utility Function to Handle Formatting ---
         function parseFormatting(text) {
-            // 1. Sanitize for security (prevent script injection)
             let formattedText = text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
 
-            // 2. Apply formatting (RegEx replacements)
-            // Order matters: use specific symbols before generic ones (e.g., ** before *)
-            
             // Crossout: ~~text~~ with <del>text</del>
             formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
             
@@ -69,7 +65,7 @@
             // Slanted (Italics): *text* with <em>text</em>
             formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
             
-            // 3. UNSANITIZE only the newly added HTML tags for rendering
+            // UNSANITIZE only the newly added HTML tags for rendering
             formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
             formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
             formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
@@ -107,14 +103,15 @@
             messageInput.focus();
         }
 
-        // --- 3. Message Sending ---
+        // --- 3. Message Sending (UPDATED for /server command) ---
 
         function sendMessage() {
-            const msg = messageInput.value.trim();
-            if (msg && currentUsername) {
-                socket.emit('chat-message', msg);
-                messageInput.value = '';
-            }
+            let msg = messageInput.value.trim();
+            if (!msg || !currentUsername) return; 
+
+            // Send the entire message (command or not) to the server for processing
+            socket.emit('chat-message', msg);
+            messageInput.value = '';
         }
 
         sendButton.addEventListener('click', sendMessage);
