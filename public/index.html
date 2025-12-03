@@ -15,25 +15,24 @@
             <button id="set-username-btn">Save</button>
         </div>
 
-        <div id="online-users-area">
-            <h4>Online Users:</h4>
-            <ul id="online-users-list">
-                </ul>
-        </div>
-        
-        <div id="messages">
-            </div>
-
-        <div id="message-input-area">
+        <div id="main-content-wrapper">
+            
+            <div id="chat-and-input-wrapper">
+                
+                <div id="messages">
+                    </div>
+            </div> <div id="online-users-area">
+                <h4>Online Users:</h4>
+                <ul id="online-users-list">
+                    </ul>
+            </div> </div> <div id="message-input-area">
             <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
             <button id="file-upload-btn" title="File Upload (Not implemented)">
                 📁
             </button>
             <button id="send-button">Send</button>
         </div>
-    </div>
-
-    <script>
+    </div> <script>
         const socket = io();
 
         // --- DOM Elements ---
