@@ -59,8 +59,28 @@ io.on('connection', (socket) => {
     // Check for moderator user
     const isModerator = (user === 'kl_');
 
-    // --- Handle /server announcement command ---
-    if (isModerator && messageText.toLowerCase().startsWith('/server ')) {
+    // --- Command Detection and Private Feedback ---
+    
+    // Identify if the message is any command we care about
+    const isServerCommand = messageText.toLowerCase().startsWith('/server ');
+    const isClearCommand = messageText.toLowerCase() === '/clear';
+    const isCommand = isServerCommand || isClearCommand;
+
+    // If it is a command, but the user is NOT a moderator, send private feedback and exit.
+    if (isCommand && !isModerator) {
+        const commandName = messageText.split(' ')[0];
+        const feedbackMessage = formatMessage('System', `You do not have permission to execute the "${commandName}" command.`);
+        
+        // Use socket.emit() to send the message ONLY to the sender's socket
+        socket.emit('chat-message', feedbackMessage); 
+        
+        // Exit the function to prevent the command from being processed/broadcast.
+        return;
+    }
+    // --- END Command Detection ---
+
+    // --- Handle /server announcement command (ONLY if isModerator is true) ---
+    if (isServerCommand && isModerator) {
       messageText = messageText.substring(8).trim(); 
       
       if (messageText) {
@@ -72,11 +92,10 @@ io.on('connection', (socket) => {
       }
     }
     
-    // --- Handle /clear command (FINALIZED SEQUENTIAL) ---
-    if (isModerator && messageText.toLowerCase() === '/clear') {
+    // --- Handle /clear command (ONLY if isModerator is true) ---
+    if (isClearCommand && isModerator) {
       
-      // 1. Clear history on the server immediately
-      messageHistory.length = 0; 
+      messageHistory.length = 0; // 1. Clear history on the server immediately
       
       // 2. Send the signal to all clients to clear their screens first.
       io.emit('clear-chat'); 
@@ -85,6 +104,7 @@ io.on('connection', (socket) => {
       const clearAnnouncement = formatMessage('System', 'Chat history has been cleared by the moderator.');
       
       // 4. Use a short delay before sending the confirmation message.
+      // This ensures the client finishes clearing the screen before receiving the next message.
       setTimeout(() => {
         io.emit('chat-message', clearAnnouncement); 
       }, 50);
@@ -93,7 +113,7 @@ io.on('connection', (socket) => {
     }
     // --- END command handling ---
 
-    // If not a command, continue standard message handling
+    // If not a command or if the command was executed by a moderator, continue standard message handling
     const fullMessage = formatMessage(user, messageText);
     
     // Store history and broadcast as usual
