@@ -109,7 +109,6 @@
             let msg = messageInput.value.trim();
             if (!msg || !currentUsername) return; 
 
-            // Send the entire message (command or not) to the server for processing
             socket.emit('chat-message', msg);
             messageInput.value = '';
         }
@@ -123,30 +122,30 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (UPDATED) ---
+        // --- 4. Message Display Helper Function (FINAL) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
 
-            // --- NEW ALIGNMENT LOGIC ---
-            // The formatted message starts with "**[User]**:"
-            // Use regex to safely extract the sender's name
+            // 1. Create inner bubble content wrapper
+            const bubbleContent = document.createElement('span');
+            bubbleContent.classList.add('bubble-content');
+            
+            // 2. Apply formatting and place the full message inside the bubble wrapper
+            bubbleContent.innerHTML = parseFormatting(formattedMessage);
+            messageEl.appendChild(bubbleContent);
+
+            // 3. Determine alignment class
             const usernameMatch = formattedMessage.match(/\*\*(.*?)\*\*/);
             const sender = usernameMatch ? usernameMatch[1] : '';
 
-            // Check if the sender is the current user
             if (sender && sender === currentUsername) {
                 messageEl.classList.add('user-message');
             } else if (sender === 'Announcement' || sender === 'System') {
-                 // System messages should always be centered/left-aligned for clarity
                 messageEl.classList.add('system-message');
             } else {
-                 // All other users (non-self)
                 messageEl.classList.add('other-message');
             }
-            
-            // Apply formatting logic to the message text
-            messageEl.innerHTML = parseFormatting(formattedMessage);
             
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -154,9 +153,7 @@
 
         // --- 5. Receiving Messages (History and Live) ---
         
-        // Listen for 'history' event (sent only on connection)
         socket.on('history', (history) => {
-            // Must clear the messages before loading history to prevent duplicates on reconnect
             messagesDiv.innerHTML = ''; 
             history.forEach(msg => {
                 displayMessage(msg);
@@ -164,14 +161,12 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight; 
         });
 
-        // Receiving Live Messages
         socket.on('chat-message', (formattedMessage) => {
             displayMessage(formattedMessage);
         });
 
-        // Listen for 'clear-chat' event from the server
         socket.on('clear-chat', () => {
-            messagesDiv.innerHTML = ''; // Clears the entire message display area
+            messagesDiv.innerHTML = '';
         });
 
         // --- 6. Online User List Update ---
