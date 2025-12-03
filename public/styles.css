@@ -126,49 +126,88 @@ body {
 
 /* Wrapper for every message (used for flex alignment) */
 .message {
-    padding: 5px 0;
+    padding: 0; /* Removed padding here, managed by margin/gap */
     word-wrap: break-word;
     color: var(--color-text);
-    display: flex; /* Enable flex to align the bubble horizontally */
-    margin: 8px 0;
+    display: flex; 
+    /* Default spacing between messages */
+    margin: 8px 0; 
+    /* Align items to the bottom so the time is at the bottom of the container */
+    align-items: flex-end; 
+    /* The bubble and time should be side-by-side */
+    gap: 5px;
+}
+
+/* Grouping: Pulls consecutive messages closer */
+.grouped-message {
+    margin-top: 2px;
+    margin-bottom: 2px;
 }
 
 /* Inner content (the actual bubble) */
 .bubble-content {
-    max-width: 70%; /* Limit bubble width */
+    max-width: 70%; 
     padding: 10px 15px;
     border-radius: 18px;
     line-height: 1.4;
     font-size: 0.95em;
     word-break: break-word; 
-    white-space: pre-wrap; /* Preserve line breaks from text area */
+    white-space: pre-wrap;
+    /* Ensure the content itself is aligned */
+    text-align: left; 
 }
+
+/* --- TIME STYLING (New) --- */
+.message-time {
+    font-size: 0.75em;
+    color: var(--color-muted);
+    /* Aligned automatically by parent's flex-end, but kept for clarity */
+    align-self: flex-end; 
+    padding: 0; /* No padding */
+    white-space: nowrap;
+}
+
 
 /* 1. Messages from OTHER users (Left-Aligned Bubble) */
 .other-message {
-    justify-content: flex-start; /* Push the bubble left */
+    justify-content: flex-start; /* Bubble and Time pushed left */
 }
 .other-message .bubble-content {
     background: var(--color-bubble-other);
     color: var(--color-text);
-    border-bottom-left-radius: 4px; /* Square corner near the bottom left */
+    /* Flat corner on the bottom-left */
+    border-bottom-left-radius: 4px; 
 }
+/* Ensure username is always visible for other-messages */
+.other-message .bubble-content strong {
+    display: block; 
+    margin-bottom: 2px;
+}
+
 
 /* 2. Messages from the CURRENT user (Right-Aligned Bubble) */
 .user-message {
-    justify-content: flex-end; /* Push the bubble right */
+    justify-content: flex-end; /* Bubble and Time pushed right */
+    /* Reverses the order of children (Bubble, Time) so the Bubble comes first */
+    flex-direction: row-reverse;
 }
 .user-message .bubble-content {
     background: var(--color-bubble-self);
     color: white; 
-    border-bottom-right-radius: 4px; /* Square corner near the bottom right */
+    /* Flat corner on the bottom-right */
+    border-bottom-right-radius: 4px; 
+}
+/* CRUCIAL: Hide the username and colon for self-messages */
+.user-message .self-username-hidden {
+    display: none;
 }
 
 /* 3. System/Announcement Messages (Full Width, Centered/Standard) */
 .system-message {
     justify-content: center;
-    padding: 5px 0;
+    margin: 5px 0;
     text-align: center;
+    gap: 0; /* No gap for system messages */
 }
 .system-message .bubble-content {
     /* Revert bubble styling for system messages */
@@ -180,13 +219,6 @@ body {
     font-weight: 500;
 }
 
-/* Style the username strongly within bubbles */
-.message strong {
-    color: inherit; 
-    font-weight: bold;
-    display: block; /* Username on its own line */
-    margin-bottom: 2px;
-}
 
 /* --- Input Area --- */
 #message-input-area {
