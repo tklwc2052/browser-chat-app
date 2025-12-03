@@ -8,13 +8,12 @@ const app = express();
 const server = http.createServer(app);
 
 // Use the environment variable for the allowed origin (CORS)
-// This is critical for Render deployment stability and security.
 const allowedOrigin = process.env.RENDER_EXTERNAL_URL || "*";
 
 // Initialize Socket.IO and attach it to the server
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigin, // Now uses the environment variable or defaults to all
+    origin: allowedOrigin, 
     methods: ["GET", "POST"]
   }
 });
@@ -31,10 +30,15 @@ const PORT = process.env.PORT || 3000;
 
 // A simple object to track all online users: { socketId: username }
 let onlineUsers = {};
+// Array to store the message history (in-memory)
+const messageHistory = []; 
 
 // Listen for new client connections
 io.on('connection', (socket) => {
   console.log(`A user connected: ${socket.id}`);
+
+  // NEW: Send the entire message history to the newly connected client only
+  socket.emit('history', messageHistory); 
 
   // 1. Listen for 'set-username' event
   socket.on('set-username', (username) => {
@@ -50,9 +54,17 @@ io.on('connection', (socket) => {
   // 2. Listen for 'chat-message' event
   socket.on('chat-message', (msg) => {
     const user = onlineUsers[socket.id] || 'Guest';
+    const fullMessage = formatMessage(user, msg); // Store the full formatted message
     
-    // Send the formatted message (user + time stamp) to ALL connected clients
-    io.emit('chat-message', formatMessage(user, msg));
+    messageHistory.push(fullMessage); // Store the message
+    
+    // Optional: Limit history size to prevent running out of memory on Render
+    if (messageHistory.length > 100) { 
+      messageHistory.shift(); // Remove the oldest message
+    }
+
+    // Send the formatted message to ALL connected clients
+    io.emit('chat-message', fullMessage);
   });
 
   // 3. Listen for 'disconnect' event
@@ -78,7 +90,8 @@ function formatMessage(user, text) {
   const now = new Date();
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   
-  // Return the full message string: [user]:[message] [time]
+  // Return the full message string: **[user]**: [message] [time]
+  // Note: The formatting symbols (** etc.) are left in the string for the client to parse.
   return `**${user}**: ${text} [${time}]`;
 }
 
