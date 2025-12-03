@@ -124,7 +124,7 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FINAL: Timestamp Grouping & Name Hiding) ---
+        // --- 4. Message Display Helper Function (FINAL UI REVISION) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
@@ -132,13 +132,11 @@
             // Regex to extract the parts: **[User]**: [Message Text] [Time]
             const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
-            // --- Handle System Messages (no change) ---
+            // --- Handle System Messages/Announcements ---
             if (!fullMatch) {
                 messageEl.classList.add('system-message');
-                const bubbleContent = document.createElement('span');
-                bubbleContent.classList.add('bubble-content');
-                bubbleContent.innerHTML = parseFormatting(formattedMessage);
-                messageEl.appendChild(bubbleContent);
+                // System messages are centered, no bubble
+                messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 return;
@@ -146,17 +144,19 @@
             
             // Extracted parts:
             const sender = fullMatch[1];
-            let messageText = fullMatch[2]; // Raw message content
+            const messageText = fullMatch[2]; // Raw message content (no username, no time)
             const timeString = fullMatch[3]; // e.g., "04:30 PM"
 
             // 1. Determine alignment class and grouping logic
             const isUserMessage = (sender === currentUsername);
             let showTime = true;
+            let showUsername = true;
             
             if (isUserMessage) {
                 messageEl.classList.add('user-message');
+                showUsername = false; // Hide username for self-messages
                 
-                // --- TIME GROUPING LOGIC ---
+                // --- TIME GROUPING LOGIC (1-minute window) ---
                 const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
                 if (timeParts) {
                     let hours = parseInt(timeParts[1]);
@@ -166,48 +166,52 @@
                     if (isPM && hours !== 12) hours += 12;
                     if (!isPM && hours === 12) hours = 0;
 
-                    // Convert to total minutes since midnight
                     const currentTimeInMinutes = hours * 60 + minutes;
 
-                    // Check if the current message is sent within 60 seconds (1 minute) 
-                    // of the last message sent by the user.
                     if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
                         showTime = false;
-                        messageEl.classList.add('grouped-message'); // CSS hook for spacing
+                        messageEl.classList.add('grouped-message'); 
                     }
-                    // Update the tracker only for the current user's messages
                     lastUserMessageTime = currentTimeInMinutes;
                 }
 
             } else {
-                // If it's a message from another user, we reset the lastUserMessageTime tracker
-                // Always show time and username for other users
+                // Other User Message: Always show name/time, left align
                 lastUserMessageTime = 0; 
                 messageEl.classList.add('other-message');
+                showUsername = true;
             }
 
-            // 2. Create the bubble content element
+            // 2. Build the Bubble Content
             const bubbleContent = document.createElement('span');
             bubbleContent.classList.add('bubble-content');
             
-            // ** CRUCIAL CHANGE **: Strip the username bold tags only for self-messages using a CSS hook.
-            let contentHtml = parseFormatting(formattedMessage); 
+            let contentHtml = '';
             
-            if (isUserMessage) {
-                // Find the bolded username (**Username**) and wrap it in a hidden span
-                contentHtml = contentHtml.replace(/<strong>(.*?)<\/strong>:/, '<span class="self-username-hidden"><strong>$1</strong>:</span>');
+            // Add the username *inside* the bubble only if it's NOT the current user
+            if (showUsername) {
+                 // Recreate the bold username tag and separator for other users
+                contentHtml += `<strong>${sender}</strong><span class="username-separator">:</span>`;
             }
+
+            // Add the message text (applying formatting)
+            contentHtml += parseFormatting(messageText); 
 
             bubbleContent.innerHTML = contentHtml;
-            messageEl.appendChild(bubbleContent);
-
-            // 3. Add time element if needed (Time displayed AFTER/UNDERNEATH the bubble)
+            
+            // 3. Build the Time Content
+            let timeSpan = null;
             if (showTime) {
-                const timeSpan = document.createElement('span');
+                timeSpan = document.createElement('span');
                 timeSpan.classList.add('message-time');
                 timeSpan.textContent = `[${timeString}]`;
-                messageEl.appendChild(timeSpan);
             }
+
+            // 4. Assemble the final message element
+            // Structure: [Bubble] [Time] for both L/R alignment
+
+            messageEl.appendChild(bubbleContent);
+            if (timeSpan) messageEl.appendChild(timeSpan);
             
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -216,7 +220,6 @@
         // --- 5. Receiving Messages (History and Live) ---
         
         socket.on('history', (history) => {
-            // Clear lastUserMessageTime when loading history to avoid bad grouping
             lastUserMessageTime = 0; 
             messagesDiv.innerHTML = ''; 
             history.forEach(msg => {
