@@ -1,8 +1,31 @@
+/* --- Dark Mode Variables --- */
+:root {
+    /* Main Backgrounds */
+    --bg-primary: #1e1e1e;   /* Deep Dark Gray */
+    --bg-secondary: #252526; /* Slightly lighter for containers */
+    --bg-input: #3c3c3c;     /* Darker input background */
+
+    /* Text and Elements */
+    --color-text: #f0f0f0;   /* Light gray/white text */
+    --color-muted: #aaaaaa;  /* Muted text/borders */
+    --color-system: #ff8c00; /* Orange for System messages */
+
+    /* Accent Colors (Buttons) */
+    --color-accent-blue: #007acc;
+    --color-accent-green: #4caf50;
+    --color-accent-yellow: #ffc107;
+
+    /* Online User List */
+    --color-online-bg: #2a3847; /* Dark blue background for list items */
+    --color-online-text: #90caf9; /* Light blue text for users */
+}
+
+
 body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f4f4f9;
+    background-color: var(--bg-primary); /* Dark Background */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -12,19 +35,20 @@ body {
 #chat-container {
     width: 90%;
     max-width: 800px;
-    background: #fff;
+    background: var(--bg-secondary); /* Slightly lighter container */
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); /* Darker shadow */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    color: var(--color-text); /* Default text color */
 }
 
 /* --- Username Area --- */
 #username-area {
     padding: 10px;
-    border-bottom: 1px solid #eee;
-    background: #eef;
+    border-bottom: 1px solid var(--bg-input);
+    background: var(--bg-secondary);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -38,13 +62,15 @@ body {
 #username-input {
     flex-grow: 1;
     padding: 8px;
-    border: 1px solid #ccc;
+    border: 1px solid #555;
     border-radius: 4px;
+    background: var(--bg-input); /* Dark input background */
+    color: var(--color-text);
 }
 
 #set-username-btn {
     padding: 8px 15px;
-    background: #007bff;
+    background: var(--color-accent-blue);
     color: white;
     border: none;
     border-radius: 4px;
@@ -54,15 +80,15 @@ body {
 /* --- Online Users Area --- */
 #online-users-area {
     padding: 10px;
-    border-bottom: 1px solid #eee;
-    background: #fafafa;
+    border-bottom: 1px solid var(--bg-input);
+    background: var(--bg-secondary);
 }
 
 #online-users-area h4 {
     margin-top: 0;
     margin-bottom: 5px;
     font-size: 0.9em;
-    color: #555;
+    color: var(--color-muted);
 }
 
 #online-users-list {
@@ -77,9 +103,9 @@ body {
 
 #online-users-list li {
     padding: 2px 6px;
-    background-color: #e0f7fa;
+    background-color: var(--color-online-bg);
     border-radius: 3px;
-    color: #00796b;
+    color: var(--color-online-text);
     font-weight: bold;
 }
 
@@ -87,24 +113,34 @@ body {
 #messages {
     flex-grow: 1;
     padding: 15px;
-    max-height: 400px; 
-    overflow-y: auto; 
-    background: #fff;
-    border-bottom: 1px solid #eee;
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--bg-input);
 }
 
 .message {
     padding: 5px 0;
-    border-bottom: 1px dotted #f0f0f0;
+    border-bottom: 1px dotted #383838; /* Lighter dotted line for dark mode */
     word-wrap: break-word;
+    /* Style for System messages */
+    color: var(--color-text);
 }
 
 .message:last-child {
     border-bottom: none;
 }
 
+/* Style the username strongly */
 .message strong {
-    color: #333; 
+    color: var(--color-text); 
+}
+
+/* Highlighting the System messages using the orange color code */
+.message:has(strong:contains("System")) {
+    color: var(--color-system);
+    font-style: italic;
+    font-weight: 500;
 }
 
 /* --- Input Area --- */
@@ -112,17 +148,19 @@ body {
     display: flex;
     padding: 10px;
     gap: 10px;
-    background: #f0f0f0;
+    background: var(--bg-input);
 }
 
 #message-input {
     flex-grow: 1;
     padding: 10px;
-    border: 1px solid #ccc;
+    border: 1px solid #555;
     border-radius: 4px;
-    resize: none; 
+    resize: none;
     max-height: 80px;
     box-sizing: border-box;
+    background: var(--bg-secondary); /* Dark input field */
+    color: var(--color-text);
 }
 
 #send-button, #file-upload-btn {
@@ -131,17 +169,17 @@ body {
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
-    align-self: flex-end; 
+    align-self: flex-end;
+    color: white; /* Ensure button text remains white */
 }
 
 #send-button {
-    background: #28a745;
-    color: white;
+    background: var(--color-accent-green);
 }
 
 #file-upload-btn {
-    background: #ffc107;
-    color: #333;
+    background: var(--color-accent-yellow);
+    color: var(--bg-primary); /* Dark text on yellow button */
     font-size: 1.2em;
 }
 
@@ -149,4 +187,14 @@ body {
 #file-upload-btn[title*="Not implemented"] {
     opacity: 0.7;
     cursor: not-allowed;
+}
+
+/* --- Formatting Styles (Ensure visibility in dark mode) --- */
+/* The HTML tags (del, u, em, strong) are already used in index.html to render formatting */
+u { 
+    text-decoration-color: var(--color-accent-blue);
+    text-decoration-thickness: 1.5px;
+}
+del { 
+    color: var(--color-muted);
 }
