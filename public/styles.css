@@ -4,6 +4,9 @@
     --bg-primary: #1e1e1e;   
     --bg-secondary: #252526; 
     --bg-input: #3c3c3c;     
+    /* Chat Bubbles */
+    --color-bubble-self: #007acc; /* Blue for own messages */
+    --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
@@ -39,13 +42,12 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
     display: flex;
-    flex-direction: column; /* Main container stacks elements vertically (Top, Middle, Bottom) */
+    flex-direction: column; /* Stacked layout (Top, Middle, Bottom) */
     overflow: hidden;
     color: var(--color-text); 
-    height: 600px; /* Optional: Give the whole chat app a fixed height */
 }
 
-/* --- Username Area (Top Row) --- */
+/* --- Username Area --- */
 #username-area {
     padding: 10px;
     border-bottom: 1px solid var(--bg-input);
@@ -53,7 +55,6 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    flex-shrink: 0; /* Prevents shrinking */
 }
 
 #username-area h3 {
@@ -79,63 +80,11 @@ body {
     cursor: pointer;
 }
 
-/* --- NEW: Main Content Wrapper (Middle Row - Creates Two Columns) --- */
-#main-content-wrapper {
-    display: flex; /* Creates the horizontal split */
-    flex-grow: 1; /* Allows it to take up available vertical space */
-    overflow: hidden; /* Important for scrollable children */
-}
-
-/* --- NEW: Wrapper for Message Display and Input --- */
-#chat-and-input-wrapper {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1; /* Takes remaining horizontal space */
-    overflow: hidden;
-}
-
-/* --- Messages Box (Main Chat Area - Left Column) --- */
-#messages {
-    flex-grow: 1; /* Allows message area to fill the height */
-    padding: 15px;
-    height: 100%; /* Overridden by flex-grow: 1, but keeps it constrained */
-    overflow-y: auto; 
-    background: var(--bg-secondary);
-    /* Removed border-bottom, as the input area is now separate */
-}
-
-.message {
-    padding: 5px 0;
-    border-bottom: 1px dotted #383838;
-    word-wrap: break-word;
-    color: var(--color-text);
-}
-
-.message:last-child {
-    border-bottom: none;
-}
-
-/* Style the username strongly */
-.message strong {
-    color: var(--color-text); 
-}
-
-/* Highlighting the System messages */
-.message:has(strong:contains("System")) {
-    color: var(--color-system);
-    font-style: italic;
-    font-weight: 500;
-}
-
-
-/* --- Online Users Area (Sidebar - Right Column) --- */
+/* --- Online Users Area (TOP ROW) --- */
 #online-users-area {
-    width: 180px; /* Fixed width for the sidebar */
     padding: 10px;
-    border-left: 1px solid var(--bg-input); /* Separator line */
-    background: var(--bg-input); /* Slightly darker background */
-    flex-shrink: 0; /* Prevents it from shrinking */
-    overflow-y: auto;
+    border-bottom: 1px solid var(--bg-input);
+    background: var(--bg-secondary);
 }
 
 #online-users-area h4 {
@@ -150,8 +99,8 @@ body {
     padding: 0;
     margin: 0;
     display: flex;
-    flex-direction: column; /* Display users vertically in the sidebar */
-    gap: 5px;
+    flex-wrap: wrap;
+    gap: 10px;
     font-size: 0.85em;
 }
 
@@ -161,17 +110,92 @@ body {
     border-radius: 3px;
     color: var(--color-online-text);
     font-weight: bold;
-    display: block;
 }
 
-/* --- Input Area (Bottom Row) --- */
+/* --- Messages Box (Fixed Height, Main Content) --- */
+#messages {
+    flex-grow: 1;
+    padding: 15px;
+    height: 350px; /* Fixed height for stable layout */
+    overflow-y: auto; 
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--bg-input);
+}
+
+/* --- CHAT BUBBLE STYLES --- */
+
+/* Wrapper for every message (used for flex alignment) */
+.message {
+    padding: 5px 0;
+    word-wrap: break-word;
+    color: var(--color-text);
+    display: flex; /* Enable flex to align the content bubble */
+    margin: 8px 0;
+}
+
+/* Inner content (the actual bubble) */
+.message > * {
+    max-width: 70%; /* Limit bubble width */
+    padding: 10px 15px;
+    border-radius: 18px;
+    line-height: 1.4;
+    font-size: 0.95em;
+    word-break: break-word; /* Ensure long words wrap */
+}
+
+/* 1. Messages from OTHER users (Left-Aligned Bubble) */
+.other-message {
+    justify-content: flex-start;
+}
+.other-message > * {
+    background: var(--color-bubble-other);
+    color: var(--color-text);
+    border-bottom-left-radius: 4px; /* Square corner near the bottom left */
+    margin-right: auto; /* Push to the left */
+}
+
+/* 2. Messages from the CURRENT user (Right-Aligned Bubble) */
+.user-message {
+    justify-content: flex-end;
+}
+.user-message > * {
+    background: var(--color-bubble-self);
+    color: white; /* White text looks better on blue/accent colors */
+    border-bottom-right-radius: 4px; /* Square corner near the bottom right */
+    margin-left: auto; /* Push to the right */
+}
+
+/* 3. System/Announcement Messages (Full Width, Centered/Standard) */
+.system-message {
+    justify-content: center;
+    padding: 5px 0;
+}
+.system-message > * {
+    /* Revert bubble styling for system messages */
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    text-align: center;
+    color: var(--color-system);
+    font-style: italic;
+    font-weight: 500;
+}
+
+/* Style the username strongly within bubbles */
+.message strong {
+    color: inherit; /* Inherit color from the bubble */
+    font-weight: bold;
+    display: block; /* Username on its own line */
+    margin-bottom: 2px;
+}
+
+/* --- Input Area --- */
 #message-input-area {
     display: flex;
     padding: 10px;
     gap: 10px;
     background: var(--bg-input);
-    border-top: 1px solid #555; /* Separator */
-    flex-shrink: 0; /* Prevents shrinking */
+    border-top: 1px solid #555; 
 }
 
 #message-input {
@@ -214,7 +238,7 @@ body {
 
 /* --- Formatting Styles --- */
 u { 
-    text-decoration-color: var(--color-accent-blue);
+    text-decoration-color: white; 
     text-decoration-thickness: 1.5px;
 }
 del { 
