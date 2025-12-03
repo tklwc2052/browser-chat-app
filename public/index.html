@@ -15,24 +15,25 @@
             <button id="set-username-btn">Save</button>
         </div>
 
-        <div id="main-content-wrapper">
-            
-            <div id="chat-and-input-wrapper">
-                
-                <div id="messages">
-                    </div>
-            </div> <div id="online-users-area">
-                <h4>Online Users:</h4>
-                <ul id="online-users-list">
-                    </ul>
-            </div> </div> <div id="message-input-area">
+        <div id="online-users-area">
+            <h4>Online Users:</h4>
+            <ul id="online-users-list">
+                </ul>
+        </div>
+        
+        <div id="messages">
+            </div>
+
+        <div id="message-input-area">
             <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
             <button id="file-upload-btn" title="File Upload (Not implemented)">
                 📁
             </button>
             <button id="send-button">Send</button>
         </div>
-    </div> <script>
+    </div>
+
+    <script>
         const socket = io();
 
         // --- DOM Elements ---
@@ -122,10 +123,27 @@
             }
         });
         
-        // --- 4. Message Display Helper Function ---
+        // --- 4. Message Display Helper Function (UPDATED) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
+
+            // --- NEW ALIGNMENT LOGIC ---
+            // The formatted message starts with "**[User]**:"
+            // Use regex to safely extract the sender's name
+            const usernameMatch = formattedMessage.match(/\*\*(.*?)\*\*/);
+            const sender = usernameMatch ? usernameMatch[1] : '';
+
+            // Check if the sender is the current user
+            if (sender && sender === currentUsername) {
+                messageEl.classList.add('user-message');
+            } else if (sender === 'Announcement' || sender === 'System') {
+                 // System messages should always be centered/left-aligned for clarity
+                messageEl.classList.add('system-message');
+            } else {
+                 // All other users (non-self)
+                messageEl.classList.add('other-message');
+            }
             
             // Apply formatting logic to the message text
             messageEl.innerHTML = parseFormatting(formattedMessage);
@@ -138,6 +156,8 @@
         
         // Listen for 'history' event (sent only on connection)
         socket.on('history', (history) => {
+            // Must clear the messages before loading history to prevent duplicates on reconnect
+            messagesDiv.innerHTML = ''; 
             history.forEach(msg => {
                 displayMessage(msg);
             });
@@ -167,4 +187,3 @@
         
     </script>
 </body>
-</html>
