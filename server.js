@@ -1,165 +1,163 @@
-// Load the necessary modules
 const express = require('express');
 const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+const io = socketIo(server);
 
-// Use the environment variable for the allowed origin (CORS) for Render stability
-const allowedOrigin = process.env.RENDER_EXTERNAL_URL || "*";
+// --- State Management ---
+const users = {}; // Stores socket.id -> username mapping
+const messageHistory = []; // Stores formatted message strings
 
-// Initialize Socket.IO and attach it to the server
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigin, 
-    methods: ["GET", "POST"]
-  }
-});
+// Maximum number of messages to keep in history
+const MAX_HISTORY = 50; 
 
-// --- Server Configuration ---
+// --- Utility Functions ---
 
-// Serve static files (index.html, styles.css) from the 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Define the port. We use the environment variable PORT provided by Render
-const PORT = process.env.PORT || 3000;
-
-// --- Real-Time (Socket.IO) Logic ---
-
-// A simple object to track all online users: { socketId: username }
-let onlineUsers = {};
-// Array to store the message history (in-memory, limited to 100)
-const messageHistory = []; 
-
-// Listen for new client connections
-io.on('connection', (socket) => {
-  console.log(`A user connected: ${socket.id}`);
-
-  // Send the entire message history to the newly connected client only
-  socket.emit('history', messageHistory); 
-
-  // 1. Listen for 'set-username' event
-  socket.on('set-username', (username) => {
-    onlineUsers[socket.id] = username;
-    
-    // Announce the new user to everyone
-    socket.broadcast.emit('chat-message', formatMessage('System', `${username} has joined the chat.`));
-    
-    // Update the online list for ALL connected clients
-    io.emit('user-list-update', Object.values(onlineUsers)); 
-  });
-
-  // 2. Listen for 'chat-message' event
-  socket.on('chat-message', (msg) => {
-    let user = onlineUsers[socket.id] || 'Guest';
-    let messageText = msg;
-    
-    // Check for moderator user
-    const isModerator = (user === 'kl_');
-
-    // --- Command Detection and Private Feedback ---
-    
-    // Identify if the message is any command we care about
-    const isServerCommand = messageText.toLowerCase().startsWith('/server ');
-    const isClearCommand = messageText.toLowerCase() === '/clear';
-    const isCommand = isServerCommand || isClearCommand;
-
-    // If it is a command, but the user is NOT a moderator, send private feedback and exit.
-    if (isCommand && !isModerator) {
-        const commandName = messageText.split(' ')[0];
-        const feedbackMessage = formatMessage('System', `You do not have permission to execute the "${commandName}" command.`);
-        
-        // Use socket.emit() to send the message ONLY to the sender's socket
-        socket.emit('chat-message', feedbackMessage); 
-        
-        // Exit the function to prevent the command from being processed/broadcast.
-        return;
-    }
-    // --- END Command Detection ---
-
-    // --- Handle /server announcement command (ONLY if isModerator is true) ---
-    if (isServerCommand && isModerator) {
-      messageText = messageText.substring(8).trim(); 
-      
-      if (messageText) {
-          // Format as BOLD and UNDERLINE
-          messageText = `__**${messageText}**__`; 
-          user = 'Announcement'; // Change the displayed sender name
-      } else {
-          user = 'kl_';
-      }
-    }
-    
-    // --- Handle /clear command (ONLY if isModerator is true) ---
-    if (isClearCommand && isModerator) {
-      
-      messageHistory.length = 0; // 1. Clear history on the server immediately
-      
-      // 2. Send the signal to all clients to clear their screens first.
-      io.emit('clear-chat'); 
-
-      // 3. Create the announcement message.
-      const clearAnnouncement = formatMessage('System', 'Chat history has been cleared by the moderator.');
-      
-      // 4. Use a short delay before sending the confirmation message.
-      // This ensures the client finishes clearing the screen before receiving the next message.
-      setTimeout(() => {
-        io.emit('chat-message', clearAnnouncement); 
-      }, 50);
-      
-      return; // Stop processing/storing/broadcasting the literal "/clear" message
-    }
-    // --- END command handling ---
-
-    // If not a command or if the command was executed by a moderator, continue standard message handling
-    const fullMessage = formatMessage(user, messageText);
-    
-    // Store history and broadcast as usual
-    messageHistory.push(fullMessage);
-    if (messageHistory.length > 100) { 
-      messageHistory.shift(); 
-    }
-    io.emit('chat-message', fullMessage);
-  });
-
-  // 3. Listen for 'disconnect' event
-  socket.on('disconnect', () => {
-    const disconnectedUser = onlineUsers[socket.id];
-    
-    if (disconnectedUser) {
-      console.log(`User disconnected: ${disconnectedUser}`);
-      delete onlineUsers[socket.id];
-      
-      // Announce the user left
-      socket.broadcast.emit('chat-message', formatMessage('System', `${disconnectedUser} has left the chat.`));
-      
-      // Update the online list for ALL connected clients
-      io.emit('user-list-update', Object.values(onlineUsers));
-    }
-  });
-});
-
-// --- Helper Function ---
-function formatMessage(user, text) {
-  const now = new Date();
-  
-  // Explicitly set the time zone to Eastern Time (EST/EDT)
-  const options = {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'America/New_York'
-  };
-
-  const time = now.toLocaleTimeString('en-US', options);
-  
-  // Return the full message string: **[user]**: [message] [time]
-  return `**${user}**: ${text} [${time}]`;
+/**
+ * Formats a message string with username and timestamp.
+ * Example: **[System]**: User 'NewUser' joined. [04:30 PM]
+ * @param {string} sender - The sender's name (or System/Announcement).
+ * @param {string} text - The raw message content.
+ * @returns {string} The formatted message string.
+ */
+function formatMessage(sender, text) {
+    const now = new Date();
+    // Use US time format (e.g., 04:30 PM)
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return `**${sender}**: ${text} [${time}]`;
 }
 
+/**
+ * Sends the current list of online users to all connected clients.
+ */
+function broadcastUserList() {
+    const onlineUsernames = Object.values(users);
+    io.emit('user-list-update', onlineUsernames);
+}
+
+/**
+ * Adds a message to history and truncates it if necessary.
+ * @param {string} msg - The formatted message string.
+ */
+function addToHistory(msg) {
+    messageHistory.push(msg);
+    if (messageHistory.length > MAX_HISTORY) {
+        messageHistory.shift(); // Remove the oldest message
+    }
+}
+
+// --- Serve Static Files ---
+app.use(express.static('public'));
+
+// --- Socket.IO Connection Handler ---
+io.on('connection', (socket) => {
+    console.log(`User connected: ${socket.id}`);
+
+    // Send the message history to the newly connected user
+    socket.emit('history', messageHistory);
+
+    // --- 1. Set Username ---
+    socket.on('set-username', (username) => {
+        const oldUsername = users[socket.id];
+
+        // Ensure username is not empty and hasn't been set yet (or is being changed)
+        if (!username || username === oldUsername) {
+            return;
+        }
+
+        // Check for duplicate names (case-insensitive)
+        const usernameLower = username.toLowerCase();
+        const isDuplicate = Object.values(users).some(name => name.toLowerCase() === usernameLower);
+
+        if (isDuplicate) {
+            // Send an error back to the client
+            const errorMsg = formatMessage('System', `The username '${username}' is already taken. Please choose another.`);
+            socket.emit('chat-message', errorMsg);
+            return;
+        }
+
+        // Store and announce the new username
+        users[socket.id] = username;
+        console.log(`Username set for ${socket.id}: ${username}`);
+        
+        const joinMsg = formatMessage('System', `User '${username}' joined the chat.`);
+        io.emit('chat-message', joinMsg);
+        addToHistory(joinMsg);
+        
+        broadcastUserList();
+    });
+
+    // --- 2. Handle Chat Messages ---
+    socket.on('chat-message', (msg) => {
+        const sender = users[socket.id] || 'Anonymous';
+
+        // Check if the message is a command
+        if (msg.startsWith('/')) {
+            const parts = msg.trim().slice(1).split(/\s+/); // Remove '/' and split by space
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
+            
+            let response = '';
+
+            switch (command) {
+                case 'help':
+                    response = "Available commands: /help, /users, /clear, /time";
+                    break;
+                case 'users':
+                    const userList = Object.values(users).join(', ') || 'No users online.';
+                    response = `Online users: ${userList}`;
+                    break;
+                case 'clear':
+                    if (sender === 'Admin' || sender === 'System') { // Basic check for privileged command
+                        io.emit('clear-chat'); // Tell clients to clear their screens
+                        messageHistory.length = 0; // Clear server history
+                        response = "Chat history cleared by the system.";
+                    } else {
+                        response = "You do not have permission to use /clear.";
+                    }
+                    break;
+                case 'time':
+                    const now = new Date();
+                    response = `Server time is ${now.toLocaleTimeString('en-US')}.`;
+                    break;
+                default:
+                    response = `Unknown command: /${command}. Type /help for a list of commands.`;
+            }
+
+            const commandResponse = formatMessage('Announcement', response);
+            socket.emit('chat-message', commandResponse);
+
+        } else if (msg.trim()) {
+            // Not a command, broadcast the message
+            const formattedMsg = formatMessage(sender, msg);
+            io.emit('chat-message', formattedMsg);
+            addToHistory(formattedMsg);
+        }
+    });
+
+    // --- 3. Handle Disconnect ---
+    socket.on('disconnect', () => {
+        const username = users[socket.id];
+        
+        if (username) {
+            delete users[socket.id];
+            console.log(`User disconnected: ${username} (${socket.id})`);
+            
+            const leaveMsg = formatMessage('System', `User '${username}' left the chat.`);
+            io.emit('chat-message', leaveMsg);
+            addToHistory(leaveMsg);
+            
+            broadcastUserList();
+        } else {
+            console.log(`Anonymous user disconnected: ${socket.id}`);
+        }
+    });
+});
+
 // Start the server
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
