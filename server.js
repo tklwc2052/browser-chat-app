@@ -53,17 +53,33 @@ io.on('connection', (socket) => {
 
   // 2. Listen for 'chat-message' event
   socket.on('chat-message', (msg) => {
-    const user = onlineUsers[socket.id] || 'Guest';
-    const fullMessage = formatMessage(user, msg);
+    let user = onlineUsers[socket.id] || 'Guest';
+    let messageText = msg;
     
+    // --- NEW: Handle /server announcement command ---
+    // Check if the user is 'kl_' AND the message starts with the command
+    if (user === 'kl_' && messageText.toLowerCase().startsWith('/server ')) {
+      // 1. Strip the command: "/server " (8 characters)
+      messageText = messageText.substring(8).trim(); 
+      
+      if (messageText) {
+          // 2. Format the message as BOLD and UNDERLINE using markdown
+          messageText = `__**${messageText}**__`; 
+          user = 'Announcement'; // Change the displayed sender name
+      } else {
+          // Command was empty, ensure user remains 'kl_' so they see their own error if they sent just "/server"
+          user = 'kl_';
+      }
+    }
+    // --- END /server handling ---
+    
+    const fullMessage = formatMessage(user, messageText);
+    
+    // Store history and broadcast as usual
     messageHistory.push(fullMessage);
-    
-    // Limit history size
     if (messageHistory.length > 100) { 
       messageHistory.shift(); 
     }
-
-    // Send the formatted message to ALL connected clients
     io.emit('chat-message', fullMessage);
   });
 
