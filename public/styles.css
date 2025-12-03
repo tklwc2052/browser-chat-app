@@ -154,23 +154,26 @@ body {
 
 /* 4. System/Announcement Messages (FIXED: Centered, No Bubble) */
 .system-message {
-    justify-content: center; 
+    /* Use block display for proper centering via margins */
+    display: block;
     text-align: center; 
     color: var(--color-system);
     font-style: italic;
     font-weight: 500;
     margin: 10px auto; 
-    width: fit-content; 
     max-width: 80%;
+    padding: 0;
 }
+/* Crucial: Ensure no bubble styling is inherited by *any* element inside */
 .system-message * {
     background: none !important;
     border-radius: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     color: var(--color-system) !important;
-    all: unset; 
-    display: inline;
+    /* Use "display: contents" to let its children bypass the element and inherit alignment */
+    display: contents; 
+    text-align: center;
 }
 
 
