@@ -7,17 +7,15 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // --- State Management ---
-const users = {}; // Stores socket.id -> username mapping
-const messageHistory = []; // Stores formatted message strings
-
-// Maximum number of messages to keep in history
+const users = {}; 
+const messageHistory = []; 
 const MAX_HISTORY = 50; 
 
 // --- Utility Functions ---
 
 /**
  * Formats a message string with username and timestamp.
- * Example: **[System]**: User 'NewUser' joined. [04:30 PM]
+ * Example: **[User]**: Raw message content [04:30 PM]
  * @param {string} sender - The sender's name (or System/Announcement).
  * @param {string} text - The raw message content.
  * @returns {string} The formatted message string.
@@ -44,7 +42,7 @@ function broadcastUserList() {
 function addToHistory(msg) {
     messageHistory.push(msg);
     if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift(); // Remove the oldest message
+        messageHistory.shift(); 
     }
 }
 
@@ -62,23 +60,19 @@ io.on('connection', (socket) => {
     socket.on('set-username', (username) => {
         const oldUsername = users[socket.id];
 
-        // Ensure username is not empty and hasn't been set yet (or is being changed)
         if (!username || username === oldUsername) {
             return;
         }
 
-        // Check for duplicate names (case-insensitive)
         const usernameLower = username.toLowerCase();
         const isDuplicate = Object.values(users).some(name => name.toLowerCase() === usernameLower);
 
         if (isDuplicate) {
-            // Send an error back to the client
             const errorMsg = formatMessage('System', `The username '${username}' is already taken. Please choose another.`);
             socket.emit('chat-message', errorMsg);
             return;
         }
 
-        // Store and announce the new username
         users[socket.id] = username;
         console.log(`Username set for ${socket.id}: ${username}`);
         
@@ -95,9 +89,8 @@ io.on('connection', (socket) => {
 
         // Check if the message is a command
         if (msg.startsWith('/')) {
-            const parts = msg.trim().slice(1).split(/\s+/); // Remove '/' and split by space
+            const parts = msg.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
-            const args = parts.slice(1);
             
             let response = '';
 
@@ -110,9 +103,9 @@ io.on('connection', (socket) => {
                     response = `Online users: ${userList}`;
                     break;
                 case 'clear':
-                    if (sender === 'Admin' || sender === 'System') { // Basic check for privileged command
-                        io.emit('clear-chat'); // Tell clients to clear their screens
-                        messageHistory.length = 0; // Clear server history
+                    if (sender === 'Admin' || sender === 'System') { 
+                        io.emit('clear-chat'); 
+                        messageHistory.length = 0; 
                         response = "Chat history cleared by the system.";
                     } else {
                         response = "You do not have permission to use /clear.";
