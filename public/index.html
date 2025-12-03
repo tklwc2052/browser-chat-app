@@ -46,7 +46,7 @@
 
         let currentUsername = '';
         let lastUserMessageTime = 0; 
-        let lastOtherMessageSender = ''; // CRITICAL for grouping other user messages
+        let lastOtherMessageSender = ''; 
 
         // --- 1. Utility Function to Handle Formatting ---
         function parseFormatting(text) {
@@ -137,7 +137,7 @@
                 // Check for the System format: **[User]** [Message Text] [Time] (No colon)
                 const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
                 
-                // CRITICAL: Reset trackers on system message
+                // CRITICAL FIX: Reset trackers on system message
                 lastUserMessageTime = 0; 
                 lastOtherMessageSender = ''; 
 
@@ -252,13 +252,21 @@
         // --- 5. Receiving Messages (History and Live) (CRITICAL FIX: Reset trackers on history load) ---
         
         socket.on('history', (history) => {
+            // Reset trackers before starting the loop
             lastUserMessageTime = 0; 
             lastOtherMessageSender = ''; 
             messagesDiv.innerHTML = ''; 
+
             // Loop through history messages sequentially
             history.forEach(msg => {
                 displayMessage(msg);
             });
+            
+            // CRITICAL FIX: Reset trackers again after history is loaded and processed
+            // This prevents the *first* message sent after history load from being grouped with the *last* history message.
+            lastUserMessageTime = 0; 
+            lastOtherMessageSender = ''; 
+
             messagesDiv.scrollTop = messagesDiv.scrollHeight; 
         });
 
