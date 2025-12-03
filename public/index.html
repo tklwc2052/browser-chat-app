@@ -45,7 +45,6 @@
         const onlineUsersList = document.getElementById('online-users-list');
 
         let currentUsername = '';
-        // Tracks the time (in total minutes since midnight) of the last message sent by this user.
         let lastUserMessageTime = 0; 
 
         // --- 1. Utility Function to Handle Formatting ---
@@ -124,7 +123,7 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FINAL UI REVISION) ---
+        // --- 4. Message Display Helper Function (FIXED SYSTEM MESSAGES) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
@@ -132,10 +131,9 @@
             // Regex to extract the parts: **[User]**: [Message Text] [Time]
             const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
-            // --- Handle System Messages/Announcements ---
+            // --- Handle System Messages/Announcements (FIXED: Bypasses bubble wrappers) ---
             if (!fullMatch) {
                 messageEl.classList.add('system-message');
-                // System messages are centered, no bubble
                 messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -144,8 +142,8 @@
             
             // Extracted parts:
             const sender = fullMatch[1];
-            const messageText = fullMatch[2]; // Raw message content (no username, no time)
-            const timeString = fullMatch[3]; // e.g., "04:30 PM"
+            const messageText = fullMatch[2];
+            const timeString = fullMatch[3]; 
 
             // 1. Determine alignment class and grouping logic
             const isUserMessage = (sender === currentUsername);
@@ -154,7 +152,7 @@
             
             if (isUserMessage) {
                 messageEl.classList.add('user-message');
-                showUsername = false; // Hide username for self-messages
+                showUsername = false; 
                 
                 // --- TIME GROUPING LOGIC (1-minute window) ---
                 const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
@@ -176,13 +174,15 @@
                 }
 
             } else {
-                // Other User Message: Always show name/time, left align
                 lastUserMessageTime = 0; 
                 messageEl.classList.add('other-message');
                 showUsername = true;
             }
 
             // 2. Build the Bubble Content
+            const contentWrapper = document.createElement('div');
+            contentWrapper.classList.add('message-content-wrapper'); 
+            
             const bubbleContent = document.createElement('span');
             bubbleContent.classList.add('bubble-content');
             
@@ -190,28 +190,24 @@
             
             // Add the username *inside* the bubble only if it's NOT the current user
             if (showUsername) {
-                 // Recreate the bold username tag and separator for other users
                 contentHtml += `<strong>${sender}</strong><span class="username-separator">:</span>`;
             }
 
-            // Add the message text (applying formatting)
             contentHtml += parseFormatting(messageText); 
 
             bubbleContent.innerHTML = contentHtml;
+            contentWrapper.appendChild(bubbleContent); 
             
             // 3. Build the Time Content
-            let timeSpan = null;
             if (showTime) {
-                timeSpan = document.createElement('span');
+                const timeSpan = document.createElement('span');
                 timeSpan.classList.add('message-time');
-                timeSpan.textContent = `[${timeString}]`;
+                timeSpan.textContent = timeString; 
+                contentWrapper.appendChild(timeSpan); 
             }
 
             // 4. Assemble the final message element
-            // Structure: [Bubble] [Time] for both L/R alignment
-
-            messageEl.appendChild(bubbleContent);
-            if (timeSpan) messageEl.appendChild(timeSpan);
+            messageEl.appendChild(contentWrapper);
             
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
