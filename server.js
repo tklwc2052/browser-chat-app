@@ -56,23 +56,35 @@ io.on('connection', (socket) => {
     let user = onlineUsers[socket.id] || 'Guest';
     let messageText = msg;
     
-    // --- NEW: Handle /server announcement command ---
-    // Check if the user is 'kl_' AND the message starts with the command
-    if (user === 'kl_' && messageText.toLowerCase().startsWith('/server ')) {
-      // 1. Strip the command: "/server " (8 characters)
+    // Check for moderator user
+    const isModerator = (user === 'kl_');
+
+    // --- Handle /server announcement command ---
+    if (isModerator && messageText.toLowerCase().startsWith('/server ')) {
       messageText = messageText.substring(8).trim(); 
       
       if (messageText) {
-          // 2. Format the message as BOLD and UNDERLINE using markdown
+          // Format as BOLD and UNDERLINE
           messageText = `__**${messageText}**__`; 
           user = 'Announcement'; // Change the displayed sender name
       } else {
-          // Command was empty, ensure user remains 'kl_' so they see their own error if they sent just "/server"
           user = 'kl_';
       }
     }
-    // --- END /server handling ---
     
+    // --- Handle /clear command ---
+    if (isModerator && messageText.toLowerCase() === '/clear') {
+      messageHistory.length = 0; // Clear the server-side history array
+      
+      // Announce the action to all clients
+      io.emit('chat-message', formatMessage('System', 'Chat history has been cleared by the moderator.'));
+      io.emit('clear-chat'); // Signal the frontend to clear the message display
+      
+      return; // Stop processing/storing/broadcasting the literal "/clear" message
+    }
+    // --- END command handling ---
+
+    // If not a command, continue standard message handling
     const fullMessage = formatMessage(user, messageText);
     
     // Store history and broadcast as usual
