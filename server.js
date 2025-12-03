@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 
-// Use the environment variable for the allowed origin (CORS)
+// Use the environment variable for the allowed origin (CORS) for Render stability
 const allowedOrigin = process.env.RENDER_EXTERNAL_URL || "*";
 
 // Initialize Socket.IO and attach it to the server
@@ -30,14 +30,14 @@ const PORT = process.env.PORT || 3000;
 
 // A simple object to track all online users: { socketId: username }
 let onlineUsers = {};
-// Array to store the message history (in-memory)
+// Array to store the message history (in-memory, limited to 100)
 const messageHistory = []; 
 
 // Listen for new client connections
 io.on('connection', (socket) => {
   console.log(`A user connected: ${socket.id}`);
 
-  // NEW: Send the entire message history to the newly connected client only
+  // Send the entire message history to the newly connected client only
   socket.emit('history', messageHistory); 
 
   // 1. Listen for 'set-username' event
@@ -54,13 +54,13 @@ io.on('connection', (socket) => {
   // 2. Listen for 'chat-message' event
   socket.on('chat-message', (msg) => {
     const user = onlineUsers[socket.id] || 'Guest';
-    const fullMessage = formatMessage(user, msg); // Store the full formatted message
+    const fullMessage = formatMessage(user, msg);
     
-    messageHistory.push(fullMessage); // Store the message
+    messageHistory.push(fullMessage);
     
-    // Optional: Limit history size to prevent running out of memory on Render
+    // Limit history size
     if (messageHistory.length > 100) { 
-      messageHistory.shift(); // Remove the oldest message
+      messageHistory.shift(); 
     }
 
     // Send the formatted message to ALL connected clients
@@ -86,12 +86,19 @@ io.on('connection', (socket) => {
 
 // --- Helper Function ---
 function formatMessage(user, text) {
-  // Get time in 12hr format: HH:MM AM/PM
   const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  
+  // Explicitly set the time zone to Eastern Time (EST/EDT)
+  const options = {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'America/New_York'
+  };
+
+  const time = now.toLocaleTimeString('en-US', options);
   
   // Return the full message string: **[user]**: [message] [time]
-  // Note: The formatting symbols (** etc.) are left in the string for the client to parse.
   return `**${user}**: ${text} [${time}]`;
 }
 
