@@ -1,14 +1,14 @@
 /* --- Dark Mode Variables --- */
 :root {
     /* Main Backgrounds */
-    --bg-primary: #1e1e1e;   /* Deep Dark Gray */
-    --bg-secondary: #252526; /* Slightly lighter for containers */
-    --bg-input: #3c3c3c;     /* Darker input background */
+    --bg-primary: #1e1e1e;   
+    --bg-secondary: #252526; 
+    --bg-input: #3c3c3c;     
 
     /* Text and Elements */
-    --color-text: #f0f0f0;   /* Light gray/white text */
-    --color-muted: #aaaaaa;  /* Muted text/borders */
-    --color-system: #ff8c00; /* Orange for System messages */
+    --color-text: #f0f0f0;   
+    --color-muted: #aaaaaa;  
+    --color-system: #ff8c00; 
 
     /* Accent Colors (Buttons) */
     --color-accent-blue: #007acc;
@@ -16,8 +16,8 @@
     --color-accent-yellow: #ffc107;
 
     /* Online User List */
-    --color-online-bg: #2a3847; /* Dark blue background for list items */
-    --color-online-text: #90caf9; /* Light blue text for users */
+    --color-online-bg: #2a3847; 
+    --color-online-text: #90caf9; 
 }
 
 
@@ -25,7 +25,7 @@ body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    background-color: var(--bg-primary); /* Dark Background */
+    background-color: var(--bg-primary); 
     display: flex;
     justify-content: center;
     align-items: center;
@@ -35,13 +35,13 @@ body {
 #chat-container {
     width: 90%;
     max-width: 800px;
-    background: var(--bg-secondary); /* Slightly lighter container */
+    background: var(--bg-secondary); 
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); /* Darker shadow */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    color: var(--color-text); /* Default text color */
+    color: var(--color-text); 
 }
 
 /* --- Username Area --- */
@@ -64,7 +64,7 @@ body {
     padding: 8px;
     border: 1px solid #555;
     border-radius: 4px;
-    background: var(--bg-input); /* Dark input background */
+    background: var(--bg-input); 
     color: var(--color-text);
 }
 
@@ -121,9 +121,8 @@ body {
 
 .message {
     padding: 5px 0;
-    border-bottom: 1px dotted #383838; /* Lighter dotted line for dark mode */
+    border-bottom: 1px dotted #383838;
     word-wrap: break-word;
-    /* Style for System messages */
     color: var(--color-text);
 }
 
@@ -136,7 +135,7 @@ body {
     color: var(--color-text); 
 }
 
-/* Highlighting the System messages using the orange color code */
+/* Highlighting the System messages */
 .message:has(strong:contains("System")) {
     color: var(--color-system);
     font-style: italic;
@@ -159,7 +158,7 @@ body {
     resize: none;
     max-height: 80px;
     box-sizing: border-box;
-    background: var(--bg-secondary); /* Dark input field */
+    background: var(--bg-secondary); 
     color: var(--color-text);
 }
 
@@ -170,7 +169,7 @@ body {
     cursor: pointer;
     font-weight: bold;
     align-self: flex-end;
-    color: white; /* Ensure button text remains white */
+    color: white; 
 }
 
 #send-button {
@@ -179,7 +178,7 @@ body {
 
 #file-upload-btn {
     background: var(--color-accent-yellow);
-    color: var(--bg-primary); /* Dark text on yellow button */
+    color: var(--bg-primary); 
     font-size: 1.2em;
 }
 
@@ -189,8 +188,7 @@ body {
     cursor: not-allowed;
 }
 
-/* --- Formatting Styles (Ensure visibility in dark mode) --- */
-/* The HTML tags (del, u, em, strong) are already used in index.html to render formatting */
+/* --- Formatting Styles --- */
 u { 
     text-decoration-color: var(--color-accent-blue);
     text-decoration-thickness: 1.5px;
