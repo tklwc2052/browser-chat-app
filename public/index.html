@@ -45,8 +45,8 @@
         const onlineUsersList = document.getElementById('online-users-list');
 
         let currentUsername = '';
-        // Tracks the time (in total minutes since midnight) of the last message sent by this user.
         let lastUserMessageTime = 0; 
+        let lastOtherMessageSender = ''; // CRITICAL for grouping other user messages
 
         // --- 1. Utility Function to Handle Formatting ---
         function parseFormatting(text) {
@@ -76,7 +76,7 @@
             return formattedText;
         }
 
-        // --- 2. Username Handling ---
+        // --- 2. Username Handling (No Change) ---
         
         document.addEventListener('DOMContentLoaded', () => {
             const storedUsername = localStorage.getItem('chatUsername');
@@ -105,7 +105,7 @@
             messageInput.focus();
         }
 
-        // --- 3. Message Sending ---
+        // --- 3. Message Sending (No Change) ---
 
         function sendMessage() {
             let msg = messageInput.value.trim();
@@ -124,30 +124,33 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FIXED SYSTEM MESSAGES & GROUPING) ---
+        // --- 4. Message Display Helper Function (FINAL MESSAGE FIXES) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
 
-            // Regex to extract regular messages: **[User]**: [Message Text] [Time]
+            // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
             const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
-            // --- Handle System Messages/Announcements (FIXED: Bypasses bubble wrappers) ---
+            // --- Handle System Messages/Announcements ---
             if (!fullMatch) {
                 // Check for the System format: **[User]** [Message Text] [Time] (No colon)
                 const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
                 
+                // CRITICAL: Reset trackers on system message
+                lastUserMessageTime = 0; 
+                lastOtherMessageSender = ''; 
+
                 if (systemMatch) {
                     messageEl.classList.add('system-message');
-                    // System messages should only show the message content (systemMatch[2])
                     const systemText = systemMatch[2];
                     messageEl.innerHTML = parseFormatting(systemText);
                     messagesDiv.appendChild(messageEl);
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                     return;
                 }
-
-                // If neither regex matches, it's an old-style system message or error, display raw centered.
+                
+                // Fallback for unparseable system messages/errors
                 messageEl.classList.add('system-message');
                 messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
@@ -155,7 +158,7 @@
                 return;
             }
             
-            // Extracted parts:
+            // Extracted parts for REGULAR messages:
             const sender = fullMatch[1];
             const messageText = fullMatch[2];
             const timeString = fullMatch[3]; 
@@ -163,81 +166,96 @@
             // 1. Determine alignment class and grouping logic
             const isUserMessage = (sender === currentUsername);
             let showTime = true;
-            let showUsername = true;
-            
-            if (isUserMessage) {
-                messageEl.classList.add('user-message');
-                showUsername = false; // Hide username for self-messages
+            let showUsername = true; 
+
+            // --- Calculate Time in Minutes for Grouping ---
+            let currentTimeInMinutes = 0;
+            const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+            if (timeParts) {
+                let hours = parseInt(timeParts[1]);
+                const minutes = parseInt(timeParts[2]);
+                const isPM = timeParts[3] === 'PM';
                 
-                // --- TIME GROUPING LOGIC (1-minute window) ---
-                const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
-                if (timeParts) {
-                    let hours = parseInt(timeParts[1]);
-                    const minutes = parseInt(timeParts[2]);
-                    const isPM = timeParts[3] === 'PM';
-                    
-                    if (isPM && hours !== 12) hours += 12;
-                    if (!isPM && hours === 12) hours = 0;
-
-                    const currentTimeInMinutes = hours * 60 + minutes;
-
-                    // If the current message time is within 1 minute of the last, hide time and group it
-                    if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
-                        showTime = false;
-                        messageEl.classList.add('grouped-message'); 
-                    }
-                    // Always set the time for the current message, regardless of whether its time is shown
-                    lastUserMessageTime = currentTimeInMinutes;
-                }
-
-            } else {
-                // Other User Message: Always show name/time, left align
-                lastUserMessageTime = 0; // Reset grouping history when receiving a message from another user
-                messageEl.classList.add('other-message');
-                showUsername = true;
+                if (isPM && hours !== 12) hours += 12;
+                if (!isPM && hours === 12) hours = 0;
+                currentTimeInMinutes = hours * 60 + minutes;
             }
 
-            // 2. Build the Bubble Content
+            if (isUserMessage) {
+                messageEl.classList.add('user-message');
+                showUsername = false; 
+
+                // User Message Grouping (Time only on the LAST message, hiding on previous consecutive ones)
+                if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
+                    showTime = false;
+                    messageEl.classList.add('grouped-message'); 
+                }
+                lastUserMessageTime = currentTimeInMinutes;
+                lastOtherMessageSender = ''; // Reset other sender tracker
+                
+            } else {
+                // Other User Message Grouping (Name only on the FIRST message, time on the LAST message)
+                
+                // If the sender is the same AND time difference is < 1 minute
+                if (lastOtherMessageSender === sender && (currentTimeInMinutes - lastUserMessageTime) < 1) {
+                    showUsername = false; // Hide username
+                    showTime = false; // Hide time (as we only want it on the very last)
+                    messageEl.classList.add('grouped-message');
+                } else {
+                    // Reset time tracking when a new sender or gap is detected
+                    lastUserMessageTime = 0; 
+                }
+
+                messageEl.classList.add('other-message');
+                lastOtherMessageSender = sender; // Update the last sender tracker
+                lastUserMessageTime = currentTimeInMinutes; // Track time for other users too
+            }
+
+
+            // --- 2. Assemble the Message Structure ---
+            
+            // 2a. Username (ONLY for other users, above the bubble)
+            if (showUsername && !isUserMessage) {
+                const usernameDiv = document.createElement('div');
+                usernameDiv.classList.add('message-username');
+                usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
+                messageEl.appendChild(usernameDiv);
+            }
+
+            // 2b. Content Wrapper (Bubble + Time)
             const contentWrapper = document.createElement('div');
-            contentWrapper.classList.add('message-content-wrapper'); // Wrapper for Bubble + Time
+            contentWrapper.classList.add('message-content-wrapper');
             
             const bubbleContent = document.createElement('span');
             bubbleContent.classList.add('bubble-content');
             
-            let contentHtml = '';
-            
-            // Add the username *inside* the bubble only if it's NOT the current user
-            if (showUsername) {
-                // Note: The colon is included in the regex match, so we recreate the display here.
-                contentHtml += `<strong>${sender}</strong><span class="username-separator">:</span>`;
-            }
-
-            // Add the message text (applying formatting)
-            contentHtml += parseFormatting(messageText); 
+            let contentHtml = parseFormatting(messageText); 
 
             bubbleContent.innerHTML = contentHtml;
-            contentWrapper.appendChild(bubbleContent); // Bubble goes first in the wrapper
+            contentWrapper.appendChild(bubbleContent); 
             
-            // 3. Build the Time Content
+            // 2c. Time Content
             if (showTime) {
                 const timeSpan = document.createElement('span');
                 timeSpan.classList.add('message-time');
                 timeSpan.textContent = timeString; 
-                contentWrapper.appendChild(timeSpan); // Time goes second in the wrapper
+                contentWrapper.appendChild(timeSpan); 
             }
 
-            // 4. Assemble the final message element
+            // 3. Assemble the final message element
             messageEl.appendChild(contentWrapper);
             
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // --- 5. Receiving Messages (History and Live) ---
+        // --- 5. Receiving Messages (History and Live) (CRITICAL FIX: Reset trackers on history load) ---
         
         socket.on('history', (history) => {
             lastUserMessageTime = 0; 
+            lastOtherMessageSender = ''; 
             messagesDiv.innerHTML = ''; 
+            // Loop through history messages sequentially
             history.forEach(msg => {
                 displayMessage(msg);
             });
@@ -252,7 +270,7 @@
             messagesDiv.innerHTML = '';
         });
 
-        // --- 6. Online User List Update ---
+        // --- 6. Online User List Update (No Change) ---
         
         socket.on('user-list-update', (users) => {
             onlineUsersList.innerHTML = '';
