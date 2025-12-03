@@ -45,6 +45,7 @@
         const onlineUsersList = document.getElementById('online-users-list');
 
         let currentUsername = '';
+        // Tracks the time (in total minutes since midnight) of the last message sent by this user.
         let lastUserMessageTime = 0; 
 
         // --- 1. Utility Function to Handle Formatting ---
@@ -123,16 +124,30 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FIXED SYSTEM MESSAGES) ---
+        // --- 4. Message Display Helper Function (FIXED SYSTEM MESSAGES & GROUPING) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
 
-            // Regex to extract the parts: **[User]**: [Message Text] [Time]
+            // Regex to extract regular messages: **[User]**: [Message Text] [Time]
             const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
             // --- Handle System Messages/Announcements (FIXED: Bypasses bubble wrappers) ---
             if (!fullMatch) {
+                // Check for the System format: **[User]** [Message Text] [Time] (No colon)
+                const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+                
+                if (systemMatch) {
+                    messageEl.classList.add('system-message');
+                    // System messages should only show the message content (systemMatch[2])
+                    const systemText = systemMatch[2];
+                    messageEl.innerHTML = parseFormatting(systemText);
+                    messagesDiv.appendChild(messageEl);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    return;
+                }
+
+                // If neither regex matches, it's an old-style system message or error, display raw centered.
                 messageEl.classList.add('system-message');
                 messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
@@ -152,7 +167,7 @@
             
             if (isUserMessage) {
                 messageEl.classList.add('user-message');
-                showUsername = false; 
+                showUsername = false; // Hide username for self-messages
                 
                 // --- TIME GROUPING LOGIC (1-minute window) ---
                 const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
@@ -166,22 +181,25 @@
 
                     const currentTimeInMinutes = hours * 60 + minutes;
 
+                    // If the current message time is within 1 minute of the last, hide time and group it
                     if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
                         showTime = false;
                         messageEl.classList.add('grouped-message'); 
                     }
+                    // Always set the time for the current message, regardless of whether its time is shown
                     lastUserMessageTime = currentTimeInMinutes;
                 }
 
             } else {
-                lastUserMessageTime = 0; 
+                // Other User Message: Always show name/time, left align
+                lastUserMessageTime = 0; // Reset grouping history when receiving a message from another user
                 messageEl.classList.add('other-message');
                 showUsername = true;
             }
 
             // 2. Build the Bubble Content
             const contentWrapper = document.createElement('div');
-            contentWrapper.classList.add('message-content-wrapper'); 
+            contentWrapper.classList.add('message-content-wrapper'); // Wrapper for Bubble + Time
             
             const bubbleContent = document.createElement('span');
             bubbleContent.classList.add('bubble-content');
@@ -190,20 +208,22 @@
             
             // Add the username *inside* the bubble only if it's NOT the current user
             if (showUsername) {
+                // Note: The colon is included in the regex match, so we recreate the display here.
                 contentHtml += `<strong>${sender}</strong><span class="username-separator">:</span>`;
             }
 
+            // Add the message text (applying formatting)
             contentHtml += parseFormatting(messageText); 
 
             bubbleContent.innerHTML = contentHtml;
-            contentWrapper.appendChild(bubbleContent); 
+            contentWrapper.appendChild(bubbleContent); // Bubble goes first in the wrapper
             
             // 3. Build the Time Content
             if (showTime) {
                 const timeSpan = document.createElement('span');
                 timeSpan.classList.add('message-time');
                 timeSpan.textContent = timeString; 
-                contentWrapper.appendChild(timeSpan); 
+                contentWrapper.appendChild(timeSpan); // Time goes second in the wrapper
             }
 
             // 4. Assemble the final message element
