@@ -1,0 +1,152 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#chat-container {
+    width: 90%;
+    max-width: 800px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* --- Username Area --- */
+#username-area {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    background: #eef;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#username-area h3 {
+    margin: 0;
+    font-size: 1em;
+}
+
+#username-input {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#set-username-btn {
+    padding: 8px 15px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* --- Online Users Area --- */
+#online-users-area {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+}
+
+#online-users-area h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #555;
+}
+
+#online-users-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.85em;
+}
+
+#online-users-list li {
+    padding: 2px 6px;
+    background-color: #e0f7fa;
+    border-radius: 3px;
+    color: #00796b;
+    font-weight: bold;
+}
+
+/* --- Messages Box --- */
+#messages {
+    flex-grow: 1;
+    padding: 15px;
+    max-height: 400px; /* Limit the size of the chat history */
+    overflow-y: auto; /* Enable scrolling */
+    background: #fff;
+    border-bottom: 1px solid #eee;
+}
+
+.message {
+    padding: 5px 0;
+    border-bottom: 1px dotted #f0f0f0;
+    word-wrap: break-word;
+}
+
+.message:last-child {
+    border-bottom: none;
+}
+
+.message strong {
+    color: #333; /* For the username */
+}
+
+/* --- Input Area --- */
+#message-input-area {
+    display: flex;
+    padding: 10px;
+    gap: 10px;
+    background: #f0f0f0;
+}
+
+#message-input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: none; /* Disable manual resizing */
+    max-height: 80px;
+    box-sizing: border-box;
+}
+
+#send-button, #file-upload-btn {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    align-self: flex-end; /* Align to the bottom of the input area */
+}
+
+#send-button {
+    background: #28a745;
+    color: white;
+}
+
+#file-upload-btn {
+    background: #ffc107;
+    color: #333;
+    font-size: 1.2em;
+}
+
+/* Non-functional styling for the file button */
+#file-upload-btn[title*="Not implemented"] {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
