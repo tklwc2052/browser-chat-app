@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Chat App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="username-area">
+            <h3>Set Your Username:</h3>
+            <input type="text" id="username-input" placeholder="Enter Username...">
+            <button id="set-username-btn">Save</button>
+        </div>
+
+        <div id="online-users-area">
+            <h4>Online Users:</h4>
+            <ul id="online-users-list">
+                </ul>
+        </div>
+        
+        <div id="messages">
+            </div>
+
+        <div id="message-input-area">
+            <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
+            <button id="file-upload-btn" title="File Upload (Not implemented in this version)">
+                📁
+            </button>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // CLIENT-SIDE JAVASCRIPT LOGIC
+        
+        // Connect to the Socket.IO server.
+        const socket = io();
+
+        // --- DOM Elements ---
+        const messagesDiv = document.getElementById('messages');
+        const usernameInput = document.getElementById('username-input');
+        const setUsernameBtn = document.getElementById('set-username-btn');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const onlineUsersList = document.getElementById('online-users-list');
+
+        let currentUsername = '';
+
+        // --- 1. Username Handling ---
+        
+        // Load username from browser storage on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const storedUsername = localStorage.getItem('chatUsername');
+            if (storedUsername) {
+                usernameInput.value = storedUsername;
+                setUsername(storedUsername);
+            }
+        });
+
+        setUsernameBtn.addEventListener('click', () => {
+            const username = usernameInput.value.trim();
+            if (username) {
+                localStorage.setItem('chatUsername', username);
+                setUsername(username);
+            } else {
+                alert('Please enter a username.');
+            }
+        });
+        
+        // Function to set the username and inform the server
+        function setUsername(username) {
+            currentUsername = username;
+            // Tell the server this client's username
+            socket.emit('set-username', currentUsername); 
+            // Lock the input area
+            usernameInput.disabled = true;
+            setUsernameBtn.disabled = true;
+            usernameInput.placeholder = 'Username set!';
+            messageInput.focus();
+        }
+
+        // --- 2. Message Sending ---
+
+        function sendMessage() {
+            const msg = messageInput.value.trim();
+            if (msg && currentUsername) {
+                // Send the message text to the server
+                socket.emit('chat-message', msg);
+                messageInput.value = ''; // Clear the input
+            }
+        }
+
+        // Send on "Send" button click
+        sendButton.addEventListener('click', sendMessage);
+
+        // Send on Enter key press in the textarea
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // Prevent new line
+                sendMessage();
+            }
+        });
+        
+        // --- 3. Receiving Messages ---
+        
+        // Listen for 'chat-message' events from the server
+        socket.on('chat-message', (formattedMessage) => {
+            // Create a new div for the message
+            const messageEl = document.createElement('div');
+            messageEl.classList.add('message');
+            
+            // Basic HTML injection for simplicity 
+            messageEl.innerHTML = formattedMessage; 
+            
+            messagesDiv.appendChild(messageEl);
+            // Scroll to the latest message
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        // --- 4. Online User List Update ---
+        
+        // Listen for 'user-list-update' events from the server
+        socket.on('user-list-update', (users) => {
+            onlineUsersList.innerHTML = ''; // Clear the list
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user;
+                onlineUsersList.appendChild(li);
+            });
+        });
+        
+    </script>
+</body>
+</html>
