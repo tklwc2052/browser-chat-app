@@ -39,12 +39,13 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Main container stacks elements vertically (Top, Middle, Bottom) */
     overflow: hidden;
     color: var(--color-text); 
+    height: 600px; /* Optional: Give the whole chat app a fixed height */
 }
 
-/* --- Username Area --- */
+/* --- Username Area (Top Row) --- */
 #username-area {
     padding: 10px;
     border-bottom: 1px solid var(--bg-input);
@@ -52,6 +53,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0; /* Prevents shrinking */
 }
 
 #username-area h3 {
@@ -77,46 +79,29 @@ body {
     cursor: pointer;
 }
 
-/* --- Online Users Area --- */
-#online-users-area {
-    padding: 10px;
-    border-bottom: 1px solid var(--bg-input);
-    background: var(--bg-secondary);
+/* --- NEW: Main Content Wrapper (Middle Row - Creates Two Columns) --- */
+#main-content-wrapper {
+    display: flex; /* Creates the horizontal split */
+    flex-grow: 1; /* Allows it to take up available vertical space */
+    overflow: hidden; /* Important for scrollable children */
 }
 
-#online-users-area h4 {
-    margin-top: 0;
-    margin-bottom: 5px;
-    font-size: 0.9em;
-    color: var(--color-muted);
-}
-
-#online-users-list {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
+/* --- NEW: Wrapper for Message Display and Input --- */
+#chat-and-input-wrapper {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    font-size: 0.85em;
+    flex-direction: column;
+    flex-grow: 1; /* Takes remaining horizontal space */
+    overflow: hidden;
 }
 
-#online-users-list li {
-    padding: 2px 6px;
-    background-color: var(--color-online-bg);
-    border-radius: 3px;
-    color: var(--color-online-text);
-    font-weight: bold;
-}
-
-/* --- Messages Box (Fixed Height) --- */
+/* --- Messages Box (Main Chat Area - Left Column) --- */
 #messages {
-    flex-grow: 0;
+    flex-grow: 1; /* Allows message area to fill the height */
     padding: 15px;
-    height: 350px; /* Fixed height for stable layout */
+    height: 100%; /* Overridden by flex-grow: 1, but keeps it constrained */
     overflow-y: auto; 
     background: var(--bg-secondary);
-    border-bottom: 1px solid var(--bg-input);
+    /* Removed border-bottom, as the input area is now separate */
 }
 
 .message {
@@ -142,12 +127,51 @@ body {
     font-weight: 500;
 }
 
-/* --- Input Area --- */
+
+/* --- Online Users Area (Sidebar - Right Column) --- */
+#online-users-area {
+    width: 180px; /* Fixed width for the sidebar */
+    padding: 10px;
+    border-left: 1px solid var(--bg-input); /* Separator line */
+    background: var(--bg-input); /* Slightly darker background */
+    flex-shrink: 0; /* Prevents it from shrinking */
+    overflow-y: auto;
+}
+
+#online-users-area h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: var(--color-muted);
+}
+
+#online-users-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column; /* Display users vertically in the sidebar */
+    gap: 5px;
+    font-size: 0.85em;
+}
+
+#online-users-list li {
+    padding: 2px 6px;
+    background-color: var(--color-online-bg);
+    border-radius: 3px;
+    color: var(--color-online-text);
+    font-weight: bold;
+    display: block;
+}
+
+/* --- Input Area (Bottom Row) --- */
 #message-input-area {
     display: flex;
     padding: 10px;
     gap: 10px;
     background: var(--bg-input);
+    border-top: 1px solid #555; /* Separator */
+    flex-shrink: 0; /* Prevents shrinking */
 }
 
 #message-input {
