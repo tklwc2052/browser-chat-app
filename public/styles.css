@@ -110,11 +110,12 @@ body {
 }
 
 /* --- Messages Box --- */
+/* --- Messages Box (Fixed Height) --- */
 #messages {
-    flex-grow: 1;
+    flex-grow: 0; /* Important: Prevents it from consuming all vertical space */
     padding: 15px;
-    max-height: 400px;
-    overflow-y: auto;
+    height: 350px; /* <-- NEW: Set a fixed height (adjust this value if needed) */
+    overflow-y: auto; /* Ensures scrollbar appears when content exceeds the fixed height */
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--bg-input);
 }
