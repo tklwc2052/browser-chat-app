@@ -129,53 +129,52 @@ body {
     padding: 5px 0;
     word-wrap: break-word;
     color: var(--color-text);
-    display: flex; /* Enable flex to align the content bubble */
+    display: flex; /* Enable flex to align the bubble horizontally */
     margin: 8px 0;
 }
 
 /* Inner content (the actual bubble) */
-.message > * {
+.bubble-content {
     max-width: 70%; /* Limit bubble width */
     padding: 10px 15px;
     border-radius: 18px;
     line-height: 1.4;
     font-size: 0.95em;
-    word-break: break-word; /* Ensure long words wrap */
+    word-break: break-word; 
+    white-space: pre-wrap; /* Preserve line breaks from text area */
 }
 
 /* 1. Messages from OTHER users (Left-Aligned Bubble) */
 .other-message {
-    justify-content: flex-start;
+    justify-content: flex-start; /* Push the bubble left */
 }
-.other-message > * {
+.other-message .bubble-content {
     background: var(--color-bubble-other);
     color: var(--color-text);
     border-bottom-left-radius: 4px; /* Square corner near the bottom left */
-    margin-right: auto; /* Push to the left */
 }
 
 /* 2. Messages from the CURRENT user (Right-Aligned Bubble) */
 .user-message {
-    justify-content: flex-end;
+    justify-content: flex-end; /* Push the bubble right */
 }
-.user-message > * {
+.user-message .bubble-content {
     background: var(--color-bubble-self);
-    color: white; /* White text looks better on blue/accent colors */
+    color: white; 
     border-bottom-right-radius: 4px; /* Square corner near the bottom right */
-    margin-left: auto; /* Push to the right */
 }
 
 /* 3. System/Announcement Messages (Full Width, Centered/Standard) */
 .system-message {
     justify-content: center;
     padding: 5px 0;
+    text-align: center;
 }
-.system-message > * {
+.system-message .bubble-content {
     /* Revert bubble styling for system messages */
     background: transparent;
     border-radius: 0;
     padding: 0;
-    text-align: center;
     color: var(--color-system);
     font-style: italic;
     font-weight: 500;
@@ -183,7 +182,7 @@ body {
 
 /* Style the username strongly within bubbles */
 .message strong {
-    color: inherit; /* Inherit color from the bubble */
+    color: inherit; 
     font-weight: bold;
     display: block; /* Username on its own line */
     margin-bottom: 2px;
