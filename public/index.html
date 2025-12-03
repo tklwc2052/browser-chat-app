@@ -150,7 +150,7 @@
             displayMessage(formattedMessage);
         });
 
-        // NEW: Listen for 'clear-chat' event from the server
+        // Listen for 'clear-chat' event from the server
         socket.on('clear-chat', () => {
             messagesDiv.innerHTML = ''; // Clears the entire message display area
         });
