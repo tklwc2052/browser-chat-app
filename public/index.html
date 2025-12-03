@@ -48,7 +48,7 @@
         let lastUserMessageTime = 0; 
         let lastOtherMessageSender = ''; 
 
-        // --- 1. Utility Function to Handle Formatting ---
+        // --- 1. Utility Function to Handle Formatting (No Change) ---
         function parseFormatting(text) {
             let formattedText = text
                 .replace(/&/g, '&amp;')
@@ -124,7 +124,7 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FINAL MESSAGE FIXES) ---
+        // --- 4. Message Display Helper Function (CRITICAL Grouping Fix) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
@@ -155,7 +155,7 @@
                 messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
+                    return;
             }
             
             // Extracted parts for REGULAR messages:
@@ -186,21 +186,24 @@
                 showUsername = false; 
 
                 // User Message Grouping (Time only on the LAST message, Retroactive Fix)
-                if (lastUserMessageTime > 0 && (currentTimeInMinutes - lastUserMessageTime) < 1) {
+                const previousMessageEl = messagesDiv.lastChild;
+                
+                if (previousMessageEl && 
+                    previousMessageEl.classList.contains('user-message') && 
+                    (currentTimeInMinutes - lastUserMessageTime) < 1) {
+                        
                     showTime = false;
                     messageEl.classList.add('grouped-message'); 
                     
-                    // === CRITICAL FIX: RETROACTIVE TIMESTAMP REMOVAL for self messages ===
-                    const previousMessageEl = messagesDiv.lastChild;
-                    if (previousMessageEl) {
-                        // Find the time element in the previous message's content wrapper and remove it
-                        const prevTimeSpan = previousMessageEl.querySelector('.message-time');
-                        if (prevTimeSpan) {
-                            prevTimeSpan.remove();
-                        }
+                    // === CRITICAL FINAL FIX: Remove the time from the PREVIOUS message ===
+                    // Find the previous message's time element and remove it
+                    const prevTimeSpan = previousMessageEl.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove();
                     }
                     // ===================================================
                 }
+
                 lastUserMessageTime = currentTimeInMinutes;
                 lastOtherMessageSender = ''; // Reset other sender tracker
                 
@@ -212,10 +215,6 @@
                     showUsername = false; // Hide username
                     showTime = false; // Hide time (as we only want it on the very last)
                     messageEl.classList.add('grouped-message');
-                    
-                    // This logic assumes the retroactive fix for self-messages (above) isn't needed here,
-                    // as the grouping logic naturally keeps the time on the latest non-grouped message.
-                    
                 } else {
                     // Reset time tracking when a new sender or gap is detected
                     lastUserMessageTime = 0; 
@@ -277,9 +276,7 @@
                 displayMessage(msg);
             });
             
-            // CRITICAL FIX: Reset trackers again after history is loaded and processed
-            lastUserMessageTime = 0; 
-            lastOtherMessageSender = ''; 
+            // DO NOT reset trackers again here. They should hold the state of the last history message.
 
             messagesDiv.scrollTop = messagesDiv.scrollHeight; 
         });
