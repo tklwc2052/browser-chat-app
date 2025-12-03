@@ -47,16 +47,8 @@ body {
     color: var(--color-text); 
 }
 
-/* --- Username/Online Users Area (Standard Layout) --- */
-#username-area {
-    padding: 10px;
-    border-bottom: 1px solid var(--bg-input);
-    background: var(--bg-secondary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
+/* --- Top/Bottom UI (Standard Layout) --- */
+#username-area { padding: 10px; border-bottom: 1px solid var(--bg-input); background: var(--bg-secondary); display: flex; align-items: center; gap: 10px; }
 #username-area h3 { margin: 0; font-size: 1em; }
 #username-input { flex-grow: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: var(--bg-input); color: var(--color-text); }
 #set-username-btn { padding: 8px 15px; background: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
@@ -66,7 +58,6 @@ body {
 #online-users-list { list-style-type: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.85em; }
 #online-users-list li { padding: 2px 6px; background-color: var(--color-online-bg); border-radius: 3px; color: var(--color-online-text); font-weight: bold; }
 
-/* --- Messages Box --- */
 #messages {
     flex-grow: 1;
     padding: 15px;
@@ -76,27 +67,31 @@ body {
     border-bottom: 1px solid var(--bg-input);
 }
 
+
 /* --- CHAT BUBBLE & MESSAGE STYLES --- */
 
 /* 1. Message Wrapper: Full width container */
 .message {
-    word-wrap: break-word;
-    color: var(--color-text);
-    display: flex; /* Makes bubble and time flexible */
-    margin: 8px 0; /* Default spacing */
-    align-items: flex-end; /* Vertically aligns time/bubble to the bottom */
-    gap: 5px; /* Space between bubble and time */
+    display: flex;
+    margin: 8px 0; 
+    padding: 0 5px; 
 }
 
-/* Grouping: Reduces margin for consecutive self-messages */
+/* Grouping: Reduces margin for consecutive messages */
 .grouped-message {
     margin-top: 2px;
     margin-bottom: 2px;
 }
 
+/* New Wrapper: This controls the stacking of the bubble and the time */
+.message-content-wrapper {
+    display: flex;
+    flex-direction: column; /* Stack Bubble over Time */
+    max-width: 75%;
+}
+
 /* Inner content: The actual colored bubble */
 .bubble-content {
-    max-width: 75%; 
     padding: 10px 15px;
     border-radius: 18px;
     line-height: 1.4;
@@ -106,18 +101,20 @@ body {
     text-align: left; 
 }
 
-/* --- Time Styling (Outside the bubble) --- */
+/* --- Time Styling (Underneath the bubble) --- */
 .message-time {
-    font-size: 0.75em;
+    font-size: 0.7em;
     color: var(--color-muted);
-    align-self: flex-end;
-    white-space: nowrap;
-    padding-bottom: 3px; /* slight visual lift */
+    margin-top: 2px;
+    margin-bottom: 0;
+    padding: 0 3px;
+    opacity: 0.8;
 }
 
 /* Username Style (Inside the bubble for other users) */
 .bubble-content strong {
-    display: inline; /* Keep strong inline */
+    display: block; 
+    margin-bottom: 2px;
     color: inherit;
     font-weight: bold;
 }
@@ -126,57 +123,54 @@ body {
     font-weight: normal;
 }
 
+
 /* 2. Messages from OTHER users (Left-Aligned) */
 .other-message {
-    justify-content: flex-start; /* Pushes content to the left edge */
-    flex-direction: row-reverse; /* Puts Time on the left, Bubble on the right *within the content box* */
-    gap: 2px; /* Reduce gap since the time is now next to it */
+    justify-content: flex-start; 
+}
+.other-message .message-content-wrapper {
+    align-items: flex-start; 
 }
 .other-message .bubble-content {
     background: var(--color-bubble-other);
     color: var(--color-text);
     border-bottom-left-radius: 4px; 
-    order: 2; /* Ensure bubble is on the right side of the time */
 }
-.other-message .message-time {
-    order: 1; /* Ensure time is on the far left */
-}
+
 
 /* 3. Messages from the CURRENT user (Far Right-Aligned) */
 .user-message {
-    /* Pushes the entire message block to the far right */
-    margin-left: auto; 
-    width: fit-content; 
-    max-width: 100%;
-    /* Flexbox inside only organizes Bubble and Time */
     justify-content: flex-end; 
-    flex-direction: row; /* Puts Bubble first, Time second (R-L order) */
-    gap: 5px;
+}
+.user-message .message-content-wrapper {
+    align-items: flex-end; 
 }
 .user-message .bubble-content {
     background: var(--color-bubble-self);
     color: white; 
     border-bottom-right-radius: 4px; 
-    order: 1;
-}
-.user-message .message-time {
-    order: 2;
 }
 
-/* 4. System/Announcement Messages (Centered, No Bubble) */
+
+/* 4. System/Announcement Messages (FIXED: Centered, No Bubble) */
 .system-message {
-    justify-content: center;
-    margin: 5px 0;
-    text-align: center;
+    justify-content: center; 
+    text-align: center; 
     color: var(--color-system);
     font-style: italic;
     font-weight: 500;
+    margin: 10px auto; 
+    width: fit-content; 
+    max-width: 80%;
 }
-.system-message .bubble-content {
-    background: transparent !important;
+.system-message * {
+    background: none !important;
     border-radius: 0 !important;
     padding: 0 !important;
-    max-width: 100% !important;
+    margin: 0 !important;
+    color: var(--color-system) !important;
+    all: unset; 
+    display: inline;
 }
 
 
@@ -212,25 +206,9 @@ body {
     color: white; 
 }
 
-#send-button {
-    background: var(--color-accent-green);
-}
+#send-button { background: var(--color-accent-green); }
+#file-upload-btn { background: var(--color-accent-yellow); color: var(--bg-primary); font-size: 1.2em; }
+#file-upload-btn[title*="Not implemented"] { opacity: 0.7; cursor: not-allowed; }
 
-#file-upload-btn {
-    background: var(--color-accent-yellow);
-    color: var(--bg-primary); 
-    font-size: 1.2em;
-}
-
-#file-upload-btn[title*="Not implemented"] {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-u { 
-    text-decoration-color: white; 
-    text-decoration-thickness: 1.5px;
-}
-del { 
-    color: var(--color-muted);
-}
+u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
+del { color: var(--color-muted); }
