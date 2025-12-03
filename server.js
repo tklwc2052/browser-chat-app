@@ -72,20 +72,22 @@ io.on('connection', (socket) => {
       }
     }
     
-    // --- Handle /clear command ---
+    // --- Handle /clear command (FINALIZED SEQUENTIAL) ---
     if (isModerator && messageText.toLowerCase() === '/clear') {
-      messageHistory.length = 0; // 1. Clear history on the server
       
-      const clearAnnouncement = formatMessage('System', 'Chat history has been cleared by the moderator.');
+      // 1. Clear history on the server immediately
+      messageHistory.length = 0; 
       
-      // 2. Send the announcement to all clients to display
-      io.emit('chat-message', clearAnnouncement); 
-      
-      // 3. Clear the client's screen 
+      // 2. Send the signal to all clients to clear their screens first.
       io.emit('clear-chat'); 
 
-      // 4. Add the announcement to the new, empty history 
-      messageHistory.push(clearAnnouncement); 
+      // 3. Create the announcement message.
+      const clearAnnouncement = formatMessage('System', 'Chat history has been cleared by the moderator.');
+      
+      // 4. Use a short delay before sending the confirmation message.
+      setTimeout(() => {
+        io.emit('chat-message', clearAnnouncement); 
+      }, 50);
       
       return; // Stop processing/storing/broadcasting the literal "/clear" message
     }
