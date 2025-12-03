@@ -3,14 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Tab</title>
-
-
-    
-    <link rel="icon" type="image/svg+xml" href="https://i.postimg.cc/gnyG638y/chromeicon2.png" />
-
-   
-    
+    <title>Simple Chat App</title>
     <link rel="stylesheet" href="styles.css">
     <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -110,7 +103,7 @@
             messageInput.focus();
         }
 
-        // --- 3. Message Sending (UPDATED for /server command) ---
+        // --- 3. Message Sending ---
 
         function sendMessage() {
             let msg = messageInput.value.trim();
@@ -155,6 +148,11 @@
         // Receiving Live Messages
         socket.on('chat-message', (formattedMessage) => {
             displayMessage(formattedMessage);
+        });
+
+        // NEW: Listen for 'clear-chat' event from the server
+        socket.on('clear-chat', () => {
+            messagesDiv.innerHTML = ''; // Clears the entire message display area
         });
 
         // --- 6. Online User List Update ---
