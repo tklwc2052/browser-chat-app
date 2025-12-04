@@ -8,7 +8,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // Serve static files (Assuming client files are in the same directory)
-app.use(express.static(__dirname));
+app.use(express.static(__dirname+'/public'));
 
 // --- SERVER-SIDE STATE ---
 let history = []; 
