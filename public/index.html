@@ -15,6 +15,9 @@
         <div id="username-area">
             <h3>username:</h3>
             <input type="text" id="username-input" placeholder="whatr we callin ya">
+            
+            <input type="password" id="password-input" placeholder="password" class="password-input">
+            
             <button id="set-username-btn">Save</button>
         </div>
 
@@ -52,11 +55,10 @@
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
         
-        // NEW: Selectors for Input Area elements
+        // Selectors for Input Area elements
         const messageInputArea = document.getElementById('message-input-area');
         const fileUploadBtn = document.getElementById('file-upload-btn');
         const sendButton = document.getElementById('send-button');
-
 
         if (mainWrapper) {
             // Remove the gap
@@ -99,6 +101,8 @@
     // --- DOM Elements ---
     const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
+    // NEW ELEMENT
+    const passwordInput = document.getElementById('password-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
@@ -145,31 +149,38 @@
         const storedUsername = localStorage.getItem('chatUsername');
         if (storedUsername) {
             usernameInput.value = storedUsername;
-            setUsername(storedUsername);
+            // NOTE: We cannot auto-login without the stored password.
+            // The user must re-enter their password to log in.
         }
     });
 
     setUsernameBtn.addEventListener('click', () => {
         const username = usernameInput.value.trim();
-        if (username) {
+        const password = passwordInput.value;
+        
+        if (username && password) {
             localStorage.setItem('chatUsername', username);
-            setUsername(username);
+            setUsername(username, password); // Pass password to the setter
         } else {
-            // Using console warning instead of intrusive alert
-            console.warn('Please enter a username.');
+            console.warn('Please enter both a username and password.');
         }
     });
     
-    function setUsername(username) {
+    // --- Updated setUsername function ---
+    function setUsername(username, password) {
         currentUsername = username;
-        socket.emit('set-username', currentUsername); 
+        // CRITICAL CHANGE: Send both username AND password to the server
+        socket.emit('set-username', currentUsername, password); 
+        
+        // Disable fields immediately regardless of login success (server will handle errors)
         usernameInput.disabled = true;
+        passwordInput.disabled = true;
         setUsernameBtn.disabled = true;
         usernameInput.placeholder = 'Username set!';
-        messageInput.focus();
     }
-
+    
     // --- 3. Message Sending ---
+    // ... (rest of the message sending logic remains the same)
 
     function sendMessage() {
         let msg = messageInput.value.trim();
@@ -354,6 +365,11 @@
     socket.on('chat-message', (formattedMessage) => {
         displayMessage(formattedMessage);
     });
+    
+    // NEW: Handle System messages (includes server errors like "Incorrect password")
+    socket.on('system-message', (message) => {
+        displayMessage(`**[SYSTEM]** ${message} [${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}]`);
+    });
 
     socket.on('clear-chat', () => {
         messagesDiv.innerHTML = '';
@@ -384,7 +400,5 @@
     }
     
 </script>
-
-
 </body>
 </html>
