@@ -50,9 +50,9 @@ html, body {
 #chat-container {
     /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
-    max-width: 800px;
+    max-width: 1200px;
     height: 100%; /* Fill the height of the main wrapper */
-    min-width: 300px; /* Ensure chat is readable */
+    min-width: 100px; /* Ensure chat is readable */
 
     background: var(--bg-secondary); 
     border-radius: 8px;
