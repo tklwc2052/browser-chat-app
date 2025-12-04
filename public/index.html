@@ -165,7 +165,7 @@
 
             // 1. Determine alignment class and grouping logic
             const isUserMessage = (sender === currentUsername);
-            let showTime = true;
+            let showTime = true; // Default to true for simplicity
             let showUsername = true; 
 
             // --- Calculate Time in Minutes for Grouping ---
@@ -192,7 +192,7 @@
                     previousMessageEl.classList.contains('user-message') && 
                     (currentTimeInMinutes - lastUserMessageTime) < 1) {
                         
-                    showTime = false;
+                    // CRITICAL CHANGE: showTime remains true! We rely entirely on the removal below.
                     messageEl.classList.add('grouped-message'); 
                     
                     // === CRITICAL FINAL FIX: Robustly Remove the time from the PREVIOUS message ===
@@ -203,7 +203,7 @@
                         const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
                         if (prevTimeSpan) {
                             prevTimeSpan.remove();
-                            // console.log('Removed time from previous message.');
+                            // console.log('Removed time from previous message.'); 
                         }
                     }
                     // ==============================================================================
