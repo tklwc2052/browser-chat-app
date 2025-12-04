@@ -110,6 +110,8 @@ body {
     display: flex;
     flex-direction: column; /* CRITICAL: Stack Bubble over Time */
     max-width: 75%;
+    /* Safety measure to prevent height collapse */
+    min-height: 20px; 
 }
 
 /* Inner content: The actual colored bubble */
@@ -127,7 +129,7 @@ body {
 .message-time {
     font-size: 0.7em;
     color: var(--color-muted);
-    margin-top: 2px;
+    margin-top: 2px; /* Small space below bubble */
     margin-bottom: 0;
     padding: 0 3px;
     opacity: 0.8;
@@ -139,7 +141,7 @@ body {
     align-items: flex-start;
 }
 .other-message .message-content-wrapper {
-    align-items: flex-start; 
+    align-items: flex-start; /* Aligns bubble and time to the left */
 }
 .other-message .bubble-content {
     background: var(--color-bubble-other);
