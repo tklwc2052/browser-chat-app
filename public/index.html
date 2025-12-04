@@ -212,11 +212,19 @@
                 // NEW: Private Message Check (uses the specific tags we set in server.js)
                 if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
                     messageEl.classList.add('private-message');
-                    // We remove the italic font-style from the system-message for PMs
-                    messageEl.style.fontStyle = 'normal';
+                    // Remove the surrounding bolding and colon introduced by the server's formatMessage
+                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
+                    
+                    // We wrap the entire content in <u> tags to force underline
+                    // The inner message (e.g., 'hi') is already bolded by the server.
+                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
+
+                    messagesDiv.appendChild(messageEl);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    return; // PM handled, exit function
                 }
-
-
+                
+                // Standard System Message / Announcement
                 messageEl.innerHTML = parseFormatting(systemText);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
