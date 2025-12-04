@@ -225,3 +225,16 @@ body {
 
 u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
+
+/* --- CRITICAL FINAL TIMESTAMP VISIBILITY FIX --- */
+
+/* Ensure the time element always sits correctly aligned */
+.user-message .message-content-wrapper .message-time {
+    /* Explicitly align to the right side of the content wrapper */
+    align-self: flex-end; 
+    /* Ensure no collapsing width issue */
+    width: fit-content;
+    /* Ensure it's not hidden by setting opacity explicitly */
+    opacity: 1 !important; 
+}
+
