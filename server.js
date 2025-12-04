@@ -12,7 +12,7 @@ const messageHistory = [];
 const MAX_HISTORY = 50; 
 
 // --- Configuration ---
-const ADMIN_USERNAME = 'kl_'; // <<< Designated Admin User
+const ADMIN_USERNAME = 'kl_'; // Designated Admin User
 
 // --- Utility Functions ---
 
@@ -108,8 +108,9 @@ io.on('connection', (socket) => {
                 switch (command) {
                     case 'server':
                         if (args) {
-                            // Send a global bold announcement to all users
-                            const serverMsg = formatMessage('Announcement', `**SERVER MESSAGE**: **${args}**`);
+                            // Message format: **[Announcement]** **SERVER MESSAGE:** **[The message]** [Time]
+                            // The inner **[The message]** provides the requested bold formatting.
+                            const serverMsg = formatMessage('Announcement', `**SERVER MESSAGE:** **${args}**`);
                             io.emit('chat-message', serverMsg);
                             addToHistory(serverMsg);
                             return; // Stop processing after execution
