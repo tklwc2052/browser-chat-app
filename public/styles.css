@@ -47,7 +47,7 @@ html, body {
     /* CRITICAL FIX: SET TO 2000px WIDE */
     max-width: 2000px; 
     height: 90vh; /* Use dynamic height for the container */
-    min-width: 320px;
+    min-width: 2000px;
 }
 
 #chat-container {
@@ -69,7 +69,7 @@ html, body {
 /* --- NEW: Right Side Panel Styling --- */
 #right-panel {
     width: 250px; /* Fixed width for the panel */
-    min-width: 200px;
+   
     height: 100%;
     padding: 15px;
     background: var(--bg-secondary);
