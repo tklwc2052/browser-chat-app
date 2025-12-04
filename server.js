@@ -8,7 +8,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // CRITICAL FIX: Serve static files (index.html, styles.css, etc.) from the root directory
-app.use(express.static(__dirname));
+app.use(express.static(__dirname+'/public'));
 
 // --- SERVER-SIDE STATE ---
 let history = []; // Stores the last N messages
