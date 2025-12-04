@@ -51,6 +51,12 @@
         const mainWrapper = document.getElementById('main-wrapper');
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
+        
+        // NEW: Selectors for Input Area elements
+        const messageInputArea = document.getElementById('message-input-area');
+        const fileUploadBtn = document.getElementById('file-upload-btn');
+        const sendButton = document.getElementById('send-button');
+
 
         if (mainWrapper) {
             // Remove the gap
@@ -66,6 +72,25 @@
             // Ensure the chat container fills the available wrapper space
             chatContainer.style.maxWidth = '100%';
         }
+
+        // --- NEW INPUT LAYOUT FOR POPUP MODE ---
+        if (messageInputArea) {
+            // 1. Change the input area to a vertical stack
+            messageInputArea.style.flexDirection = 'column';
+            // 2. Add padding/gap back manually
+            messageInputArea.style.gap = '5px';
+        }
+        if (fileUploadBtn) {
+            // 3. Make buttons full width to span the column
+            fileUploadBtn.style.width = '100%';
+            fileUploadBtn.style.alignSelf = 'stretch';
+        }
+        if (sendButton) {
+            // 3. Make buttons full width to span the column
+            sendButton.style.width = '100%';
+            sendButton.style.alignSelf = 'stretch';
+        }
+        // --- END NEW INPUT LAYOUT ---
     }
     // ------------------------------------
 
@@ -353,9 +378,13 @@
             // Add the new popup flag to the URL
             const newUrl = `${currentUrl}?mode=popup`; 
             
-            // FIX: Open a new window with a width of 200px and a height of 700px
+            // Open a new window with a width of 200px and a height of 700px
             window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
         });
     }
     
 </script>
+
+
+</body>
+</html>
