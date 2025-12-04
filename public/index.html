@@ -37,23 +37,15 @@
     </div>
     
     <div id="right-panel">
-        <h3 class="panel-title">Settings</h3>
-
-        <div>
-            <button id="bg-upload-btn" class="panel-btn">Upload Background</button>
-            <input type="file" id="bg-file-input" accept="image/*" style="display: none;">
-            <p class="panel-hint">Select a local image (JPG, PNG, GIF).</p>
-        </div>
-        
-        <h3 class="panel-title">Window</h3>
-        <button id="launch-custom-window-btn" class="panel-btn">Launch Chat Window</button>
-        <p class="panel-hint">Opens the chat in a new resizable window.</p>
+        <h4 class="panel-title">other stuff</h4>
+        <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+        <p class="panel-hint"></p>
     </div>
     
 </div>
 
 <script>
-    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel and sets custom width when URL contains ?mode=popup) ---
+    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
@@ -63,16 +55,16 @@
         if (mainWrapper) {
             // Remove the gap
             mainWrapper.style.gap = '0';
-            // Set the maximum content width to 100px in popup mode
-            mainWrapper.style.maxWidth = '250px'; 
+            // FIX: Set the maximum content width to 150px in popup mode
+            mainWrapper.style.maxWidth = '150px'; 
         }
         if (rightPanel) {
             // Hide the side panel
             rightPanel.style.display = 'none';
         }
         if (chatContainer) {
-            // Ensure the chat container fills the available wrapper space (100px)
-            chatContainer.style.maxWidth = '100%'; 
+            // Ensure the chat container fills the available wrapper space
+            chatContainer.style.maxWidth = '100%';
         }
     }
     // ------------------------------------
@@ -86,10 +78,8 @@
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const onlineUsersList = document.getElementById('online-users-list');
+    // New Button
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
-    // Selectors for Background
-    const bgUploadBtn = document.getElementById('bg-upload-btn');
-    const bgFileInput = document.getElementById('bg-file-input');
 
 
     let currentUsername = '';
@@ -320,39 +310,7 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- 5. Background Upload Logic ---
-    // 5a. Button Click: Triggers the hidden file input
-    if (bgUploadBtn) {
-        bgUploadBtn.addEventListener('click', () => {
-            bgFileInput.click();
-        });
-    }
-
-    // 5b. File Input Change: Handles the selected file
-    if (bgFileInput) {
-        bgFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-
-                reader.onload = (event) => {
-                    const dataUrl = event.target.result;
-                    // Set the body's background directly using the loaded data URL
-                    document.body.style.background = `url(${dataUrl}) center center / cover no-repeat, var(--bg-primary)`;
-                };
-
-                reader.readAsDataURL(file); // Read the file as a data URL (Base64 string)
-            } else if (file) {
-                alert("Please select a valid image file.");
-            }
-            // Clear the input value so the 'change' event fires again if the user selects the same file
-            e.target.value = null; 
-        });
-    }
-
-
-    // --- 6. Receiving Messages (History and Live) ---
+    // --- 5. Receiving Messages (History and Live) ---
     
     socket.on('history', (history) => {
         // Reset trackers before starting the loop
@@ -376,7 +334,7 @@
         messagesDiv.innerHTML = '';
     });
 
-    // --- 7. Online User List Update ---
+    // --- 6. Online User List Update ---
     
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
@@ -387,7 +345,7 @@
         });
     });
 
-    // --- 8. Launch Custom Window Logic (UPDATED) ---
+    // --- 7. Launch Custom Window Logic (UPDATED) ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             // Get the current URL root (removing any existing query params)
@@ -395,8 +353,8 @@
             // Add the new popup flag to the URL
             const newUrl = `${currentUrl}?mode=popup`; 
             
-            // Open a new window with the specific query parameter and a smaller width (150px)
-            window.open(newUrl, '_blank', 'width=300,height=780,resizable=yes'); 
+            // FIX: Open a new window with a width of 200px
+            window.open(newUrl, '_blank', 'width=200,height=600,resizable=yes');
         });
     }
     
@@ -404,4 +362,3 @@
 
 
 </body>
-</html>
