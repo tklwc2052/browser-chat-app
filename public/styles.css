@@ -24,7 +24,10 @@
 }
 
 
-body {
+/* --- CRITICAL DYNAMIC HEIGHT FIX --- */
+html, body {
+    height: 100%;
+    min-height: 100vh;
     font-family: sans-serif;
     margin: 0;
     padding: 0;
@@ -32,12 +35,14 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
 }
 
 #chat-container {
     width: 90%;
     max-width: 800px;
+    /* Use dynamic height for the container */
+    height: 90vh; 
+    
     background: var(--bg-secondary); 
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
@@ -46,6 +51,8 @@ body {
     overflow: hidden;
     color: var(--color-text); 
 }
+/* ------------------------------------- */
+
 
 /* --- Top/Bottom UI (Standard Layout) --- */
 #username-area { padding: 10px; border-bottom: 1px solid var(--bg-input); background: var(--bg-secondary); display: flex; align-items: center; gap: 10px; }
@@ -59,9 +66,11 @@ body {
 #online-users-list li { padding: 2px 6px; background-color: var(--color-online-bg); border-radius: 3px; color: var(--color-online-text); font-weight: bold; }
 
 #messages {
+    /* --- CRITICAL CHANGE: Use flex-grow instead of fixed height --- */
     flex-grow: 1;
+    height: auto; 
+    /* ---------------------------------------------------------------- */
     padding: 15px;
-    height: 350px; 
     overflow-y: auto; 
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--bg-input);
@@ -110,7 +119,6 @@ body {
     display: flex;
     flex-direction: column; /* CRITICAL: Stack Bubble over Time */
     max-width: 75%;
-    /* Safety measure to prevent height collapse */
     min-height: 20px; 
 }
 
@@ -129,19 +137,26 @@ body {
 .message-time {
     font-size: 0.7em;
     color: var(--color-muted);
-    margin-top: 2px; /* Small space below bubble */
+    margin-top: 2px; 
     margin-bottom: 0;
     padding: 0 3px;
     opacity: 0.8;
 }
 
+/* CRITICAL FINAL TIMESTAMP VISIBILITY FIX */
+.user-message .message-content-wrapper .message-time {
+    align-self: flex-end; 
+    width: fit-content;
+    opacity: 1 !important; 
+}
+
+
 /* 2. Messages from OTHER users (Left-Aligned) */
 .other-message {
-    /* Use flex-start for the main container's items (Name and Content Wrapper) */
     align-items: flex-start;
 }
 .other-message .message-content-wrapper {
-    align-items: flex-start; /* Aligns bubble and time to the left */
+    align-items: flex-start; 
 }
 .other-message .bubble-content {
     background: var(--color-bubble-other);
@@ -152,11 +167,10 @@ body {
 
 /* 3. Messages from the CURRENT user (Far Right-Aligned) */
 .user-message {
-    /* Main container aligns items to the right */
     align-items: flex-end; 
 }
 .user-message .message-content-wrapper {
-    align-items: flex-end; /* CRITICAL: Aligns bubble and time to the right */
+    align-items: flex-end; 
 }
 .user-message .bubble-content {
     background: var(--color-bubble-self);
@@ -225,16 +239,3 @@ body {
 
 u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
-
-/* --- CRITICAL FINAL TIMESTAMP VISIBILITY FIX --- */
-
-/* Ensure the time element always sits correctly aligned */
-.user-message .message-content-wrapper .message-time {
-    /* Explicitly align to the right side of the content wrapper */
-    align-self: flex-end; 
-    /* Ensure no collapsing width issue */
-    width: fit-content;
-    /* Ensure it's not hidden by setting opacity explicitly */
-    opacity: 1 !important; 
-}
-
