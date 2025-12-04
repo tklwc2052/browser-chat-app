@@ -40,14 +40,19 @@ html, body {
 }
 
 /* NEW: Wrapper for Chat Container + Right Panel */
+/* NEW: Wrapper for Chat Container + Right Panel */
 #main-wrapper {
-    display: flex;
-    gap: 10px; /* Space between the chat and the panel */
-    width: 95%;
-    /* CRITICAL FIX: SET TO 2000px WIDE */
-    max-width: 950px; 
-    height: 90vh; /* Use dynamic height for the container */
-    min-width: 950px;
+    display: flex;
+    gap: 10px; /* Space between the chat and the panel */
+    width: 95%;
+    
+    /* Main Window Max Width: Limits the size of the whole app */
+    max-width: 950px; 
+    
+    height: 90vh; /* Use dynamic height for the container */
+    
+    /* CRITICAL FIX: Changed from 950px. This allows the wrapper to shrink in the popup. */
+    min-width: 320px; 
 }
 
 #chat-container {
