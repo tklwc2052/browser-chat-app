@@ -8,11 +8,13 @@
     /* Chat Bubbles */
     --color-bubble-self: #007acc; /* Blue for own messages */
     --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
+    --color-bubble-pm: #303030; /* Very dark background for PMs */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
     --color-system: #ff8c00; 
+    --color-pm-accent: #ffc107; /* Yellow for PM border/text */
 
     /* Accent Colors (Buttons) */
     --color-accent-blue: #007acc;
@@ -48,7 +50,8 @@ html, body {
     
     /* HEIGHT FIX: Changed to 700px */
     height: 700px; 
-    min-width: 200px;
+    min-width: 200px; /* Min width needed for smaller popups */
+
 }
 
 #chat-container {
@@ -248,6 +251,37 @@ html, body {
     display: contents;
     text-align: center;
 }
+
+/* 5. Private Messages (Based on System, but distinct) */
+.private-message {
+    /* Override system-message centered alignment and color */
+    text-align: left;
+    margin: 10px auto;
+    padding: 8px 15px;
+    border-radius: 8px;
+    background-color: var(--color-bubble-pm); 
+    color: var(--color-text);
+    border-left: 4px solid var(--color-pm-accent); /* Yellow border to signify PM */
+    font-style: normal !important;
+    max-width: 90%;
+    width: fit-content;
+}
+/* Ensure inner content inherits PM color/style */
+.private-message * {
+    background: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: inherit !important;
+    display: contents;
+    text-align: inherit;
+    font-style: inherit;
+}
+.private-message strong {
+    /* Color the "PM from/to" tag */
+    color: var(--color-pm-accent);
+}
+
 
 /* --- Input Area & Formatting Styles --- */
 
