@@ -42,12 +42,13 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     
-    /* FIX: Main Window is now exactly 950px wide */
+    /* WIDTH: Fixed at 950px */
     width: 950px; 
     max-width: 950px; 
     
-    height: 90vh; /* Use dynamic height for the container */
-    min-width: 320px;
+    /* HEIGHT FIX: Changed to 700px */
+    height: 700px; 
+    min-width: 200px;
 }
 
 #chat-container {
