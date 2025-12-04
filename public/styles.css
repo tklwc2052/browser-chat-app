@@ -45,9 +45,9 @@ html, body {
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
     /* CRITICAL FIX: SET TO 2000px WIDE */
-    max-width: 1500px; 
+    max-width: 950px; 
     height: 90vh; /* Use dynamic height for the container */
-    min-width: 1500px;
+    min-width: 9500px;
 }
 
 #chat-container {
