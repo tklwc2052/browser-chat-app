@@ -92,7 +92,7 @@ body {
     margin-bottom: 3px;
     padding: 0 5px; 
     text-align: left;
-    width: fit-content; /* Ensure name doesn't span full width */
+    width: fit-content; 
 }
 .message-username strong {
     color: var(--color-text); 
@@ -108,7 +108,7 @@ body {
 /* New Wrapper: This controls the stacking of the bubble and the time */
 .message-content-wrapper {
     display: flex;
-    flex-direction: column; /* Stack Bubble over Time */
+    flex-direction: column; /* CRITICAL: Stack Bubble over Time */
     max-width: 75%;
 }
 
@@ -154,7 +154,7 @@ body {
     align-items: flex-end; 
 }
 .user-message .message-content-wrapper {
-    align-items: flex-end; 
+    align-items: flex-end; /* CRITICAL: Aligns bubble and time to the right */
 }
 .user-message .bubble-content {
     background: var(--color-bubble-self);
