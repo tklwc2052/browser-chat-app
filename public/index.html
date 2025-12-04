@@ -92,8 +92,12 @@
 
 
     let currentUsername = '';
-    let lastUserMessageTime = 0; 
-    let lastOtherMessageSender = ''; 
+    // Use an object to track the last time/sender for better multi-user grouping
+    let lastMessageInfo = { 
+        timeInMinutes: 0,
+        sender: ''
+    }; 
+
 
     // --- 1. Utility Function to Handle Formatting ---
     function parseFormatting(text) {
@@ -186,8 +190,8 @@
             const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
             
             // CRITICAL: Reset trackers on system message
-            lastUserMessageTime = 0; 
-            lastOtherMessageSender = ''; 
+            lastMessageInfo.timeInMinutes = 0; 
+            lastMessageInfo.sender = ''; 
 
             if (systemMatch) {
                 messageEl.classList.add('system-message');
@@ -239,13 +243,10 @@
         }
 
 
-        // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
-        let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
-        let lastTime = lastUserMessageTime;
-        let currentSender = sender;
-
+        // 1b. Unified Grouping Logic (Applies to All Messages)
+        
         // Check if this message should be grouped with the previous one
-        const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
+        const shouldGroup = (lastMessageInfo.sender === sender) && (currentTimeInMinutes - lastMessageInfo.timeInMinutes) < 1;
 
         if (shouldGroup) {
             showUsername = false; 
@@ -263,23 +264,12 @@
                 }
             }
             // =======================================================================
-
-        } else {
-            // If not grouped, reset the opposing sender's tracker to break future grouping blocks
-            if (isUserMessage) {
-                lastOtherMessageSender = '';
-            } else {
-                lastUserMessageTime = 0; // Reset other user's time tracker
-            }
-        }
-
+        } 
+        
         // 1c. Update Tracking Variables (After Grouping Check)
-        if (isUserMessage) {
-            lastUserMessageTime = currentTimeInMinutes;
-        } else {
-            lastOtherMessageSender = currentSender;
-            lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
-        }
+        // Always update the tracking info for the next message comparison
+        lastMessageInfo.timeInMinutes = currentTimeInMinutes;
+        lastMessageInfo.sender = sender;
 
 
         // --- 2. Assemble the Message Structure ---
@@ -323,8 +313,8 @@
     
     socket.on('history', (history) => {
         // Reset trackers before starting the loop
-        lastUserMessageTime = 0; 
-        lastOtherMessageSender = ''; 
+        lastMessageInfo.timeInMinutes = 0; 
+        lastMessageInfo.sender = ''; 
         messagesDiv.innerHTML = ''; 
 
         // Loop through history messages sequentially
