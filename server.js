@@ -7,7 +7,7 @@ const server = http.createServer(app);
 // Attach Socket.IO to the HTTP server
 const io = socketIo(server);
 
-// Serve static files (index.html, styles.css, etc.)
+// CRITICAL FIX: Serve static files (index.html, styles.css, etc.) from the root directory
 app.use(express.static(__dirname));
 
 // --- SERVER-SIDE STATE ---
@@ -37,7 +37,7 @@ function getFormattedTime() {
 io.on('connection', (socket) => {
     console.log(`a user connected: ${socket.id}`);
 
-    // --- NEW: Handle username and password setting ---
+    // --- Handle username and password setting ---
     socket.on('set-username', (username, password) => {
         const safeUsername = username.trim();
 
