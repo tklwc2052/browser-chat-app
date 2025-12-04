@@ -124,7 +124,7 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (CRITICAL Grouping Fix) ---
+        // --- 4. Message Display Helper Function (FINAL UNIFIED Grouping Fix) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
@@ -163,9 +163,9 @@
             const messageText = fullMatch[2];
             const timeString = fullMatch[3]; 
 
-            // 1. Determine alignment class and grouping logic
+            // 1. Determine alignment class, tracking variables, and grouping logic
             const isUserMessage = (sender === currentUsername);
-            let showTime = true; // Default to true for simplicity
+            let showTime = true; // Always default to true, rely on removal logic
             let showUsername = true; 
 
             // --- Calculate Time in Minutes for Grouping ---
@@ -181,59 +181,62 @@
                 currentTimeInMinutes = hours * 60 + minutes;
             }
 
+
+            // 1a. Set base alignment/username visibility
             if (isUserMessage) {
                 messageEl.classList.add('user-message');
+                showUsername = false; // Never show username on self-messages
+            } else {
+                messageEl.classList.add('other-message');
+            }
+
+
+            // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
+            let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
+            let lastTime = lastUserMessageTime;
+            let currentSender = sender;
+
+            // Check if this message should be grouped with the previous one
+            const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
+
+            if (shouldGroup) {
                 showUsername = false; 
+                messageEl.classList.add('grouped-message');
 
-                // User Message Grouping (Time only on the LAST message, Retroactive Fix)
+                // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
                 const previousMessageEl = messagesDiv.lastChild;
-                
-                if (previousMessageEl && 
-                    previousMessageEl.classList.contains('user-message') && 
-                    (currentTimeInMinutes - lastUserMessageTime) < 1) {
-                        
-                    // CRITICAL CHANGE: showTime remains true! We rely entirely on the removal below.
-                    messageEl.classList.add('grouped-message'); 
-                    
-                    // === CRITICAL FINAL FIX: Robustly Remove the time from the PREVIOUS message ===
+                if (previousMessageEl) {
                     const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-
                     if (prevContentWrapper) {
-                        // Find the time element within that wrapper and remove it
                         const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
                         if (prevTimeSpan) {
-                            prevTimeSpan.remove();
-                            // console.log('Removed time from previous message.'); 
+                            prevTimeSpan.remove(); // DELETE TIME from the previous message
                         }
                     }
-                    // ==============================================================================
                 }
+                // =======================================================================
 
-                lastUserMessageTime = currentTimeInMinutes;
-                lastOtherMessageSender = ''; // Reset other sender tracker
-                
             } else {
-                // Other User Message Grouping (Name only on the FIRST message, time on the LAST message)
-                
-                // If the sender is the same AND time difference is < 1 minute
-                if (lastOtherMessageSender === sender && (currentTimeInMinutes - lastUserMessageTime) < 1) {
-                    showUsername = false; // Hide username
-                    showTime = false; // Hide time (as we only want it on the very last)
-                    messageEl.classList.add('grouped-message');
+                // If not grouped, reset the opposing sender's tracker to break future grouping blocks
+                if (isUserMessage) {
+                    lastOtherMessageSender = '';
                 } else {
-                    // Reset time tracking when a new sender or gap is detected
-                    lastUserMessageTime = 0; 
+                    lastUserMessageTime = 0; // Reset other user's time tracker
                 }
+            }
 
-                messageEl.classList.add('other-message');
-                lastOtherMessageSender = sender; // Update the last sender tracker
-                lastUserMessageTime = currentTimeInMinutes; // Track time for other users too
+            // 1c. Update Tracking Variables (After Grouping Check)
+            if (isUserMessage) {
+                lastUserMessageTime = currentTimeInMinutes;
+            } else {
+                lastOtherMessageSender = currentSender;
+                lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
             }
 
 
             // --- 2. Assemble the Message Structure ---
             
-            // 2a. Username (ONLY for other users, above the bubble)
+            // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
             if (showUsername && !isUserMessage) {
                 const usernameDiv = document.createElement('div');
                 usernameDiv.classList.add('message-username');
@@ -253,7 +256,7 @@
             bubbleContent.innerHTML = contentHtml;
             contentWrapper.appendChild(bubbleContent); 
             
-            // 2c. Time Content
+            // 2c. Time Content (Renders only for the last message because previous times were removed)
             if (showTime) {
                 const timeSpan = document.createElement('span');
                 timeSpan.classList.add('message-time');
@@ -281,8 +284,6 @@
                 displayMessage(msg);
             });
             
-            // DO NOT reset trackers again here. They should hold the state of the last history message.
-
             messagesDiv.scrollTop = messagesDiv.scrollHeight; 
         });
 
