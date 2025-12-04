@@ -9,7 +9,7 @@ const io = socketIo(server);
 // --- State Management ---
 const users = {}; 
 const messageHistory = []; 
-const MAX_HISTORY = 100; 
+const MAX_HISTORY = 50; 
 
 // --- Utility Functions ---
 
@@ -91,42 +91,9 @@ io.on('connection', (socket) => {
     socket.on('chat-message', (msg) => {
         const sender = users[socket.id] || 'Anonymous';
 
-        // Check if the message is a command
-        if (msg.startsWith('/')) {
-            const parts = msg.trim().slice(1).split(/\s+/); 
-            const command = parts[0].toLowerCase();
-            
-            let response = '';
-
-            switch (command) {
-                case 'help':
-                    response = "Available commands: /help, /users, /clear, /time, /server";
-                    break;
-                case 'users':
-                    const userList = Object.values(users).join(', ') || 'No users online.';
-                    response = `Online users: ${userList}`;
-                    break;
-                case 'clear':
-                    io.emit('clear-chat'); 
-                    messageHistory.length = 0; 
-                    response = "Chat history cleared by the user.";
-                    break;
-                case 'time':
-                    const now = new Date();
-                    response = `Server time is ${now.toLocaleTimeString('en-US')}.`;
-                    break;
-                case 'server': 
-                    response = `Server is running Node.js with Express and Socket.IO.`;
-                    break;
-                default:
-                    response = `Unknown command: /${command}. Type /help for a list of commands.`;
-            }
-
-            const commandResponse = formatMessage('Announcement', response);
-            socket.emit('chat-message', commandResponse);
-
-        } else if (msg.trim()) {
-            // Not a command, broadcast the message
+        // Command handling logic has been removed. 
+        // All non-empty messages are now treated as regular chat messages.
+        if (msg.trim()) {
             const formattedMsg = formatMessage(sender, msg);
             io.emit('chat-message', formattedMsg);
             addToHistory(formattedMsg);
