@@ -44,7 +44,7 @@ html, body {
     width: 95%;
     /* 1. INCREASED MAX-WIDTH for better full-screen usage */
     max-width: 1600px; 
-    height: 90vh; /* Use dynamic height for the container */
+    height: 100vh; /* Use dynamic height for the container */
     min-width: 320px;
 }
 
@@ -67,8 +67,8 @@ html, body {
 
 /* --- NEW: Right Side Panel Styling --- */
 #right-panel {
-    width: 250px; /* Fixed width for the panel */
-    min-width: 200px;
+    width: 200px; /* Fixed width for the panel */
+    min-width: 100px;
     height: 100%;
     padding: 15px;
     background: var(--bg-secondary);
