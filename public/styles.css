@@ -38,10 +38,10 @@ html, body {
 }
 
 #chat-container {
-    width: 90%;
-    max-width: 800px;
-    /* Use dynamic height for the container */
+    width: 100vw;
+   
     height: 90vh; 
+ 
     
     background: var(--bg-secondary); 
     border-radius: 8px;
