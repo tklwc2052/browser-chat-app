@@ -12,7 +12,7 @@ const messageHistory = [];
 const MAX_HISTORY = 50; 
 
 // --- Configuration ---
-const ADMIN_USERNAME = 'kl_'; // Designated Admin User
+const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
 
 // --- Utility Functions ---
 
@@ -29,7 +29,7 @@ function formatMessage(sender, text) {
 
     // CRITICAL FIX: Only add the colon if it's a regular message.
     if (sender === 'System' || sender === 'Announcement') {
-        return `**${sender}** ${text} [${time}]`; // NO colon here
+        return `**${sender}** ${text} [${time}]`; // NO colon here (Colon added in command handler for specific cases)
     }
     return `**${sender}**: ${text} [${time}]`; // Regular message retains colon
 }
@@ -90,55 +90,82 @@ io.on('connection', (socket) => {
         broadcastUserList();
     });
 
-    // --- 2. Handle Chat Messages (Implementing Admin Commands) ---
+    // --- 2. Handle Chat Messages (Implementing Admin and Private Message Commands) ---
     socket.on('chat-message', (msg) => {
         const sender = users[socket.id] || 'Anonymous';
+        const senderId = socket.id;
 
         // Check if the message is a command
         if (msg.startsWith('/')) {
             const parts = msg.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
-            // Get the rest of the message for command arguments
             const args = parts.slice(1).join(' '); 
             
             let response = '';
+
+            // --- 1. GENERAL COMMANDS (e.g., /msg) ---
+            if (command === 'msg') {
+                const targetUsername = parts[1];
+                const privateMessage = parts.slice(2).join(' ').trim();
+                
+                if (!targetUsername || !privateMessage) {
+                    response = `Usage: /msg <username> <message>. This message is private and not logged.`;
+                } else {
+                    // Find the recipient's socket ID
+                    const recipientId = Object.keys(users).find(id => users[id].toLowerCase() === targetUsername.toLowerCase());
+
+                    if (!recipientId) {
+                        response = `User '${targetUsername}' not found or not online.`;
+                    } else if (recipientId === senderId) {
+                        response = `You cannot send a private message to yourself.`;
+                    } else {
+                        // --- Send PMs ---
+                        
+                        // 1. Send to Sender (Confirmation, visible to sender only)
+                        const sentMsg = formatMessage('System', `**[PM to ${targetUsername}]**: **${privateMessage}**`);
+                        socket.emit('chat-message', sentMsg);
+
+                        // 2. Send to Receiver (Actual PM, visible to receiver only)
+                        const receivedMsg = formatMessage('System', `**[PM from ${sender}]**: **${privateMessage}**`);
+                        io.to(recipientId).emit('chat-message', receivedMsg);
+                        
+                        return; // PM handled, exit command processing
+                    }
+                }
+            } 
             
-            // Check for admin privileges
-            if (sender === ADMIN_USERNAME) {
+            // --- 2. ADMIN COMMANDS (kl_ only) ---
+            else if (sender === ADMIN_USERNAME) {
                 switch (command) {
                     case 'server':
                         if (args) {
-                            // Message format: **[Announcement]** **SERVER MESSAGE:** **[The message]** [Time]
-                            // The inner **[The message]** provides the requested bold formatting.
-                            const serverMsg = formatMessage('Announcement', `**Announcement:** **${args}**`);
+                            // Format: **Announcement**: **[Your message]** [Time]
+                            const serverMsg = formatMessage('Announcement', `: **${args}**`);
                             io.emit('chat-message', serverMsg);
                             addToHistory(serverMsg);
-                            return; // Stop processing after execution
+                            return; 
                         } else {
-                            response = `Usage: /server [message]. The message will be broadcast server-wide in bold.`;
+                            response = `Usage: /server [message]. Broadcasts a server-wide announcement.`;
                         }
                         break;
 
                     case 'clear':
-                        // 1. Tell all clients to clear their chat history
                         io.emit('clear-chat'); 
-                        // 2. Clear server-side history
                         messageHistory.length = 0; 
-                        // 3. Send confirmation message to all clients
                         const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
                         io.emit('chat-message', clearConfirmationMsg);
                         addToHistory(clearConfirmationMsg);
-                        return; // Stop processing after execution
+                        return; 
                     
                     default:
                         response = `Unknown Admin Command: /${command}. Available: /server, /clear.`;
                 }
             } else {
-                // Not an admin, check for non-admin commands (currently none)
-                response = `You do not have permission to use commands. Only '${ADMIN_USERNAME}' can use privileged commands.`;
+                // Non-admin trying to use any command (or a command other than /msg)
+                response = `Unknown command: /${command}. Only the /msg command is generally available.`;
             }
 
-            // If a response was generated (i.e., a command was attempted)
+            // If a response was generated (e.g., error, usage message)
             if (response) {
                 const commandResponse = formatMessage('System', response);
                 socket.emit('chat-message', commandResponse);
