@@ -24,7 +24,7 @@
 }
 
 
-/* --- CRITICAL DYNAMIC HEIGHT FIX --- */
+/* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
 html, body {
     height: 100%;
     min-height: 100vh;
@@ -37,11 +37,22 @@ html, body {
     align-items: center;
 }
 
+/* NEW: Wrapper for Chat Container + Right Panel */
+#main-wrapper {
+    display: flex;
+    gap: 10px; /* Space between the chat and the panel */
+    width: 95%;
+    max-width: 1200px; /* Allow overall app to be wider */
+    height: 90vh; /* Use dynamic height for the container */
+    min-width: 320px;
+}
+
 #chat-container {
-    width: 100vw;
-   
-    height: 90vh; 
- 
+    /* CHAT CONTAINER is now flexible, taking up most of the space */
+    flex-grow: 1; 
+    max-width: 800px;
+    height: 100%; /* Fill the height of the main wrapper */
+    min-width: 300px; /* Ensure chat is readable */
     
     background: var(--bg-secondary); 
     border-radius: 8px;
@@ -50,6 +61,48 @@ html, body {
     flex-direction: column; 
     overflow: hidden;
     color: var(--color-text); 
+}
+
+/* --- NEW: Right Side Panel Styling --- */
+#right-panel {
+    width: 250px; /* Fixed width for the panel */
+    min-width: 200px;
+    height: 100%;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.panel-title {
+    margin-top: 0;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--bg-input);
+    color: var(--color-system);
+}
+
+.panel-btn {
+    padding: 10px 15px;
+    background: var(--color-accent-blue);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.panel-btn:hover {
+    background: #005f99;
+}
+
+.panel-hint {
+    font-size: 0.75em;
+    color: var(--color-muted);
+    margin: 0;
 }
 /* ------------------------------------- */
 
@@ -66,10 +119,8 @@ html, body {
 #online-users-list li { padding: 2px 6px; background-color: var(--color-online-bg); border-radius: 3px; color: var(--color-online-text); font-weight: bold; }
 
 #messages {
-    /* --- CRITICAL CHANGE: Use flex-grow instead of fixed height --- */
     flex-grow: 1;
     height: auto; 
-    /* ---------------------------------------------------------------- */
     padding: 15px;
     overflow-y: auto; 
     background: var(--bg-secondary);
