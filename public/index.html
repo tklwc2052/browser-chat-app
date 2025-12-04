@@ -7,31 +7,15 @@
 <title>Simple Chat App</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
-
-<script src="https://cdn.jsdelivr.net/npm/@nhost/nhost-js"></script>
-<script>
-    // 🔑 YOUR NHOST CREDENTIALS (from your prompt)
-    const NHOST_SUBDOMAIN = 'kfkbjfsvpssdjtqhlncy';
-    const NHOST_REGION = 'us-east-1';
-    
-    // Initialize the Nhost client
-    const nhost = new Nhost.NhostClient({
-        subdomain: NHOST_SUBDOMAIN,
-        region: NHOST_REGION
-    });
-</script>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="chat-container">
         <div id="username-area">
-            <h3>Auth:</h3>
-            <input type="text" id="username-input" placeholder="enter email" required>
-            <input type="password" id="password-input" placeholder="password" class="password-input" required>
-            
-            <button id="auth-main-btn" data-action="login">Login</button>
-            <button id="auth-toggle-btn">Register</button>
+            <h3>username:</h3>
+            <input type="text" id="username-input" placeholder="whatr we callin ya">
+            <button id="set-username-btn">Save</button>
         </div>
 
         <div id="online-users-area">
@@ -44,11 +28,11 @@
             </div>
 
         <div id="message-input-area">
-            <textarea id="message-input" placeholder="type type type..." rows="1" disabled></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented)" disabled>
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
                 📁
             </button>
-            <button id="send-button" disabled>Send</button>
+            <button id="send-button">Send</button>
         </div>
     </div>
     
@@ -61,38 +45,52 @@
 </div>
 
 <script>
-    // --- 0. Popup Mode Check ---
+    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
+        
+        // NEW: Selectors for Input Area elements
         const messageInputArea = document.getElementById('message-input-area');
         const fileUploadBtn = document.getElementById('file-upload-btn');
         const sendButton = document.getElementById('send-button');
 
+
         if (mainWrapper) {
+            // Remove the gap
             mainWrapper.style.gap = '0';
-            mainWrapper.style.maxWidth = '300px'; 
+            // FIX: Set the maximum content width to 150px in popup mode
+            mainWrapper.style.maxWidth = '150px'; 
         }
         if (rightPanel) {
+            // Hide the side panel
             rightPanel.style.display = 'none';
         }
         if (chatContainer) {
+            // Ensure the chat container fills the available wrapper space
             chatContainer.style.maxWidth = '100%';
         }
+
+        // --- NEW INPUT LAYOUT FOR POPUP MODE ---
         if (messageInputArea) {
+            // 1. Change the input area to a vertical stack
             messageInputArea.style.flexDirection = 'column';
+            // 2. Add padding/gap back manually
             messageInputArea.style.gap = '5px';
         }
         if (fileUploadBtn) {
+            // 3. Make buttons full width to span the column
             fileUploadBtn.style.width = '100%';
             fileUploadBtn.style.alignSelf = 'stretch';
         }
         if (sendButton) {
+            // 3. Make buttons full width to span the column
             sendButton.style.width = '100%';
             sendButton.style.alignSelf = 'stretch';
         }
+        // --- END NEW INPUT LAYOUT ---
     }
     // ------------------------------------
 
@@ -101,138 +99,78 @@
     // --- DOM Elements ---
     const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
-    const passwordInput = document.getElementById('password-input');
-    const authMainBtn = document.getElementById('auth-main-btn'); // Login/Save button
-    const authToggleBtn = document.getElementById('auth-toggle-btn'); // Register/Toggle button
-
+    const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const fileUploadBtn = document.getElementById('file-upload-btn');
     const onlineUsersList = document.getElementById('online-users-list');
+    // New Button
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+
 
     let currentUsername = '';
     let lastUserMessageTime = 0; 
     let lastOtherMessageSender = ''; 
-    
-    // --- AUTHENTICATION LOGIC ---
 
-    // Toggle button switches between Login and Register modes
-    authToggleBtn.addEventListener('click', () => {
-        if (authMainBtn.dataset.action === 'login') {
-            // Switch to Register mode
-            authMainBtn.dataset.action = 'register';
-            authMainBtn.textContent = 'Register';
-            authToggleBtn.textContent = 'Login Instead';
-            usernameInput.placeholder = 'choose new email (required by Nhost)';
-            passwordInput.placeholder = 'choose new password';
-        } else {
-            // Switch back to Login mode
-            authMainBtn.dataset.action = 'login';
-            authMainBtn.textContent = 'Login';
-            authToggleBtn.textContent = 'Register';
-            usernameInput.placeholder = 'enter email';
-            passwordInput.placeholder = 'password';
-        }
-        usernameInput.focus();
-    });
+    // --- 1. Utility Function to Handle Formatting ---
+    function parseFormatting(text) {
+        let formattedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
 
-    authMainBtn.addEventListener('click', async () => {
-        const email = usernameInput.value.trim(); 
-        const password = passwordInput.value;
-        const action = authMainBtn.dataset.action;
-
-        if (!email || !password) {
-            socket.emit('system-message', `Warning: Email and password are required.`);
-            return;
-        }
-
-        disableAuthFields(true); // Disable while waiting for Nhost response
-
-        try {
-            let result;
-            
-            if (action === 'register') {
-                // --- REGISTRATION with Nhost ---
-                // Nhost requires email and password for sign up.
-                const displayName = email.split('@')[0];
-                result = await nhost.auth.signUp({ 
-                    email: email, 
-                    password: password,
-                    options: { 
-                        displayName: displayName
-                    } 
-                });
-
-                if (result.error) throw result.error;
-
-                await handleSuccessfulLogin(result.user.displayName || displayName);
-
-            } else if (action === 'login') {
-                // --- LOGIN with Nhost ---
-                result = await nhost.auth.signIn({ 
-                    email: email, 
-                    password: password 
-                });
-
-                if (result.error) throw result.error;
-                
-                await handleSuccessfulLogin(result.user.displayName);
-            }
-            
-        } catch (error) {
-            console.error("Nhost Auth Error:", error);
-            let errorMessage = (error.message && error.message.includes('400')) ? "Invalid credentials or user not verified." : "An unknown error occurred during authentication.";
-            socket.emit('system-message', `Auth Failed: ${errorMessage}`);
-            disableAuthFields(false);
-        }
-    });
-
-    // --- New Handler for Login Success ---
-    async function handleSuccessfulLogin(displayName) {
-        currentUsername = displayName; 
+        // Crossout: ~~text~~ with <del>text</del>
+        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
         
-        // 1. Tell your Socket.IO server the user's name has been verified by Nhost
-        socket.emit('nhost-login-success', displayName); 
-
-        // 2. Enable UI
-        messageInput.disabled = false;
-        sendButton.disabled = false;
-        fileUploadBtn.disabled = false;
-        messageInput.focus();
+        // Bold: **text** with <strong>text</strong>
+        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         
-        // Save the email for next visit
-        localStorage.setItem('chatEmail', usernameInput.value.trim()); 
+        // Underline: __text__ with <u>text</u>
+        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
         
-        // Hide the auth controls
-        document.getElementById('username-area').style.display = 'none';
+        // Slanted (Italics): *text* with <em>text</em>
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // UNSANITIZE only the newly added HTML tags for rendering
+        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
+        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
+        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
 
-        socket.emit('system-message', `Logged in as **${displayName}**!`);
-    }
-    
-    // Helper to disable/enable inputs
-    function disableAuthFields(disable) {
-        usernameInput.disabled = disable;
-        passwordInput.disabled = disable;
-        authMainBtn.disabled = disable;
-        authToggleBtn.disabled = disable;
+        return formattedText;
     }
 
+    // --- 2. Username Handling ---
+    
     document.addEventListener('DOMContentLoaded', () => {
-        const storedEmail = localStorage.getItem('chatEmail');
-        if (storedEmail) {
-            usernameInput.value = storedEmail;
-            passwordInput.focus();
-        } else {
-            usernameInput.focus();
+        const storedUsername = localStorage.getItem('chatUsername');
+        if (storedUsername) {
+            usernameInput.value = storedUsername;
+            setUsername(storedUsername);
         }
-        // Chat inputs start disabled until successful login
-        messageInput.disabled = true;
-        sendButton.disabled = true;
-        fileUploadBtn.disabled = true;
     });
+
+    setUsernameBtn.addEventListener('click', () => {
+        const username = usernameInput.value.trim();
+        if (username) {
+            localStorage.setItem('chatUsername', username);
+            setUsername(username);
+        } else {
+            // Using console warning instead of intrusive alert
+            console.warn('Please enter a username.');
+        }
+    });
+    
+    function setUsername(username) {
+        currentUsername = username;
+        socket.emit('set-username', currentUsername); 
+        usernameInput.disabled = true;
+        setUsernameBtn.disabled = true;
+        usernameInput.placeholder = 'Username set!';
+        messageInput.focus();
+    }
 
     // --- 3. Message Sending ---
+
     function sendMessage() {
         let msg = messageInput.value.trim();
         if (!msg || !currentUsername) return; 
@@ -252,12 +190,201 @@
     
     // --- 4. Message Display Helper Function (Grouping Logic) ---
     function displayMessage(formattedMessage) {
-        // [Existing logic for displayMessage remains the same]
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
+        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
         const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
         // --- Handle System Messages/Announcements ---
         if (!fullMatch) {
-            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:
+            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
+            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+            
+            // CRITICAL: Reset trackers on system message
+            lastUserMessageTime = 0; 
+            lastOtherMessageSender = ''; 
+
+            if (systemMatch) {
+                messageEl.classList.add('system-message');
+                const systemText = systemMatch[2];
+                messageEl.innerHTML = parseFormatting(systemText);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+            }
+            
+            // Fallback for unparseable system messages/errors
+            messageEl.classList.add('system-message');
+                messageEl.innerHTML = parseFormatting(formattedMessage);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+        }
+        
+        // Extracted parts for REGULAR messages:
+        const sender = fullMatch[1];
+        const messageText = fullMatch[2];
+        const timeString = fullMatch[3]; 
+
+        // 1. Determine alignment class, tracking variables, and grouping logic
+        const isUserMessage = (sender === currentUsername);
+        let showTime = true; 
+        let showUsername = true; 
+
+        // --- Calculate Time in Minutes for Grouping ---
+        let currentTimeInMinutes = 0;
+        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+        if (timeParts) {
+            let hours = parseInt(timeParts[1]);
+            const minutes = parseInt(timeParts[2]);
+            const isPM = timeParts[3] === 'PM';
+            
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            currentTimeInMinutes = hours * 60 + minutes;
+        }
+
+
+        // 1a. Set base alignment/username visibility
+        if (isUserMessage) {
+            messageEl.classList.add('user-message');
+            showUsername = false; // Never show username on self-messages
+        } else {
+            messageEl.classList.add('other-message');
+        }
+
+
+        // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
+        let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
+        let lastTime = lastUserMessageTime;
+        let currentSender = sender;
+
+        // Check if this message should be grouped with the previous one
+        const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
+
+        if (shouldGroup) {
+            showUsername = false; 
+            messageEl.classList.add('grouped-message');
+
+            // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
+            const previousMessageEl = messagesDiv.lastChild;
+            if (previousMessageEl) {
+                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                if (prevContentWrapper) {
+                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove(); // DELETE TIME from the previous message
+                    }
+                }
+            }
+            // =======================================================================
+
+        } else {
+            // If not grouped, reset the opposing sender's tracker to break future grouping blocks
+            if (isUserMessage) {
+                lastOtherMessageSender = '';
+            } else {
+                lastUserMessageTime = 0; // Reset other user's time tracker
+            }
+        }
+
+        // 1c. Update Tracking Variables (After Grouping Check)
+        if (isUserMessage) {
+            lastUserMessageTime = currentTimeInMinutes;
+        } else {
+            lastOtherMessageSender = currentSender;
+            lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
+        }
+
+
+        // --- 2. Assemble the Message Structure ---
+        
+        // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
+        if (showUsername && !isUserMessage) {
+            const usernameDiv = document.createElement('div');
+            usernameDiv.classList.add('message-username');
+            usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
+            messageEl.appendChild(usernameDiv);
+        }
+
+        // 2b. Content Wrapper (Bubble + Time)
+        const contentWrapper = document.createElement('div');
+        contentWrapper.classList.add('message-content-wrapper');
+        
+        const bubbleContent = document.createElement('span');
+        bubbleContent.classList.add('bubble-content');
+        
+        let contentHtml = parseFormatting(messageText); 
+
+        bubbleContent.innerHTML = contentHtml;
+        contentWrapper.appendChild(bubbleContent); 
+        
+        // 2c. Time Content (Renders only for the last message because previous times were removed)
+        if (showTime) {
+            const timeSpan = document.createElement('span');
+            timeSpan.classList.add('message-time');
+            timeSpan.textContent = timeString; 
+            contentWrapper.appendChild(timeSpan); 
+        }
+
+        // 3. Assemble the final message element
+        messageEl.appendChild(contentWrapper);
+        
+        messagesDiv.appendChild(messageEl);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // --- 5. Receiving Messages (History and Live) ---
+    
+    socket.on('history', (history) => {
+        // Reset trackers before starting the loop
+        lastUserMessageTime = 0; 
+        lastOtherMessageSender = ''; 
+        messagesDiv.innerHTML = ''; 
+
+        // Loop through history messages sequentially
+        history.forEach(msg => {
+            displayMessage(msg);
+        });
+        
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+    });
+
+    socket.on('chat-message', (formattedMessage) => {
+        displayMessage(formattedMessage);
+    });
+
+    socket.on('clear-chat', () => {
+        messagesDiv.innerHTML = '';
+    });
+
+    // --- 6. Online User List Update ---
+    
+    socket.on('user-list-update', (users) => {
+        onlineUsersList.innerHTML = '';
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = user;
+            onlineUsersList.appendChild(li);
+        });
+    });
+
+    // --- 7. Launch Custom Window Logic (UPDATED) ---
+    if (launchCustomWindowBtn) {
+         launchCustomWindowBtn.addEventListener('click', () => {
+            // Get the current URL root (removing any existing query params)
+            const currentUrl = window.location.href.split('?')[0]; 
+            // Add the new popup flag to the URL
+            const newUrl = `${currentUrl}?mode=popup`; 
+            
+            // Open a new window with a width of 200px and a height of 700px
+            window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
+        });
+    }
+    
+</script>
+
+
+</body>
+</html>
