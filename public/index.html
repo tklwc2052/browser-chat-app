@@ -208,6 +208,15 @@
             if (systemMatch) {
                 messageEl.classList.add('system-message');
                 const systemText = systemMatch[2];
+                
+                // NEW: Private Message Check (uses the specific tags we set in server.js)
+                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
+                    messageEl.classList.add('private-message');
+                    // We remove the italic font-style from the system-message for PMs
+                    messageEl.style.fontStyle = 'normal';
+                }
+
+
                 messageEl.innerHTML = parseFormatting(systemText);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
