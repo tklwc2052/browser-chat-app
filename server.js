@@ -9,7 +9,7 @@ const io = socketIo(server);
 // --- State Management ---
 const users = {}; 
 const messageHistory = []; 
-const MAX_HISTORY = 50; 
+const MAX_HISTORY = 100; 
 
 // --- Utility Functions ---
 
