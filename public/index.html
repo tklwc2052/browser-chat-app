@@ -5,34 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Chat App</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Include the Socket.IO client library -->
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <div id="chat-container">
-        <div id="username-area">
-            <h3>Set Your Username:</h3>
-            <input type="text" id="username-input" placeholder="Enter Username...">
-            <button id="set-username-btn">Save</button>
-        </div>
-
-        <div id="online-users-area">
-            <h4>Online Users:</h4>
-            <ul id="online-users-list">
-                </ul>
-        </div>
+    <!-- New wrapper for the two-column layout -->
+    <div id="main-wrapper">
         
-        <div id="messages">
+        <div id="chat-container">
+            <!-- Username Setter Area -->
+            <div id="username-area">
+                <h3>Set Your Username:</h3>
+                <input type="text" id="username-input" placeholder="Enter Username...">
+                <button id="set-username-btn">Save</button>
             </div>
 
-        <div id="message-input-area">
-            <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented)">
-                📁
-            </button>
-            <button id="send-button">Send</button>
+            <!-- Online User List Area -->
+            <div id="online-users-area">
+                <h4>Online Users:</h4>
+                <ul id="online-users-list">
+                    <!-- User list items will be inserted here by JavaScript -->
+                </ul>
+            </div>
+            
+            <!-- Main Chat Messages Display -->
+            <div id="messages">
+                <!-- Chat messages will be appended here -->
+            </div>
+
+            <!-- Message Input Area -->
+            <div id="message-input-area">
+                <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
+                <button id="file-upload-btn" title="File Upload (Not implemented)">
+                    📁
+                </button>
+                <button id="send-button">Send</button>
+            </div>
         </div>
+        
+        <!-- NEW Right-Hand Side Panel -->
+        <div id="right-panel">
+            <h4 class="panel-title">Tools & Utilities</h4>
+            <button id="launch-custom-window-btn" class="panel-btn">Launch Resizable Window</button>
+            <p class="panel-hint">Launches the chat into a new window you can freely resize and position.</p>
+        </div>
+        
     </div>
 
+    <!-- Client-side JavaScript Logic -->
     <script>
         const socket = io();
 
@@ -43,6 +63,9 @@
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
         const onlineUsersList = document.getElementById('online-users-list');
+        // New Button
+        const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+
 
         let currentUsername = '';
         let lastUserMessageTime = 0; 
@@ -124,7 +147,7 @@
             }
         });
         
-        // --- 4. Message Display Helper Function (FINAL UNIFIED Grouping Fix) ---
+        // --- 4. Message Display Helper Function (Grouping Logic) ---
         function displayMessage(formattedMessage) {
             const messageEl = document.createElement('div');
             messageEl.classList.add('message');
@@ -165,7 +188,7 @@
 
             // 1. Determine alignment class, tracking variables, and grouping logic
             const isUserMessage = (sender === currentUsername);
-            let showTime = true; // Always default to true, rely on removal logic
+            let showTime = true; 
             let showUsername = true; 
 
             // --- Calculate Time in Minutes for Grouping ---
@@ -304,6 +327,15 @@
                 li.textContent = user;
                 onlineUsersList.appendChild(li);
             });
+        });
+
+        // --- 7. NEW: Launch Custom Window Logic ---
+        launchCustomWindowBtn.addEventListener('click', () => {
+            // window.location.href gives us the current URL of the chat app.
+            const currentUrl = window.location.href;
+            
+            // Open a new window with a defined initial size. The user can then resize it.
+            window.open(currentUrl, '_blank', 'width=400,height=600,resizable=yes');
         });
         
     </script>
