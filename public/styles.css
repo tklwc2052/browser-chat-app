@@ -1,9 +1,8 @@
-/* --- Dark Mode Variables --- */
+/* --- Dark Mode Variables (Your custom colors preserved) --- */
 :root {
     /* Main Backgrounds */
     --bg-primary: #1e1e1e; /* Color fallback for background */
-    /* UPDATED: Set to 'none' to prepare for dynamic JS upload */
-    --bg-image: none; 
+    --bg-image: none; /* Set to none for dynamic JS upload */
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
@@ -33,7 +32,6 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    /* Uses the variable; JS will overwrite the style attribute upon upload */
     background: var(--bg-image) center center / cover no-repeat, var(--bg-primary);
     
     display: flex;
@@ -46,8 +44,8 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* Max-Width set for wider tab viewing */
-    max-width: 1800px; 
+    /* UPDATED: Sets the maximum width of the entire client to 2000 pixels */
+    max-width: 2000px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
 }
@@ -55,9 +53,8 @@ html, body {
 #chat-container {
     /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
-    max-width: 1200px;
+    /* REMOVED max-width property so it can fill the 2000px wrapper space */
     height: 100%; /* Fill the height of the main wrapper */
-    /* Min-Width reduced for very small popup window sizing */
     min-width: 200px; 
 
     background: var(--bg-secondary); 
