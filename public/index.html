@@ -6,35 +6,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Simple Chat App</title>
 <link rel="stylesheet" href="styles.css">
-<!-- Include the Socket.IO client library -->
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-<!-- New wrapper for the two-column layout -->
 <div id="main-wrapper">
 
     <div id="chat-container">
-        <!-- Username Setter Area -->
         <div id="username-area">
             <h3>username:</h3>
             <input type="text" id="username-input" placeholder="whatr we callin ya">
             <button id="set-username-btn">Save</button>
         </div>
 
-        <!-- Online User List Area -->
         <div id="online-users-area">
             <h4>whos online:</h4>
             <ul id="online-users-list">
-                <!-- User list items will be inserted here by JavaScript -->
-            </ul>
+                </ul>
         </div>
         
-        <!-- Main Chat Messages Display -->
         <div id="messages">
-            <!-- Chat messages will be appended here -->
-        </div>
+            </div>
 
-        <!-- Message Input Area -->
         <div id="message-input-area">
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
             <button id="file-upload-btn" title="File Upload (Not implemented)">
@@ -44,277 +36,224 @@
         </div>
     </div>
     
-    <!-- NEW Right-Hand Side Panel -->
     <div id="right-panel">
-        <h4 class="panel-title">other stuff</h4>
-        <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-        <p class="panel-hint"></p>
+        <h3 class="panel-title">Settings</h3>
+
+        <div>
+            <button id="bg-upload-btn" class="panel-btn">Upload Background</button>
+            <input type="file" id="bg-file-input" accept="image/*" style="display: none;">
+            <p class="panel-hint">Select a local image (JPG, PNG, GIF).</p>
+        </div>
+        
+        <h3 class="panel-title">Window</h3>
+        <button id="launch-custom-window-btn" class="panel-btn">Launch Chat Window</button>
+        <p class="panel-hint">Opens the chat in a new resizable window.</p>
     </div>
-    
+
 </div>
 
-<!-- Client-side JavaScript Logic -->
 <script>
-    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('mode') === 'popup') {
-        const mainWrapper = document.getElementById('main-wrapper');
-        const rightPanel = document.getElementById('right-panel');
-        const chatContainer = document.getElementById('chat-container');
-
-        if (mainWrapper) {
-            // Remove the gap and allow the chat container to take up 100% of the space
-            mainWrapper.style.gap = '0';
-            mainWrapper.style.maxWidth = '100%';
-        }
-        if (rightPanel) {
-            // Hide the side panel
-            rightPanel.style.display = 'none';
-        }
-        if (chatContainer) {
-            // Ensure the chat container fills the available wrapper space
-            chatContainer.style.maxWidth = '100%';
-        }
-    }
-    // ------------------------------------
-
     const socket = io();
 
-    // --- DOM Elements ---
+    // --- UI Element Selectors ---
     const messagesDiv = document.getElementById('messages');
-    const usernameInput = document.getElementById('username-input');
-    const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
+    const usernameInput = document.getElementById('username-input');
+    const setUsernameBtn = document.getElementById('set-username-btn');
     const onlineUsersList = document.getElementById('online-users-list');
-    // New Button
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    // New Selectors
+    const bgUploadBtn = document.getElementById('bg-upload-btn');
+    const bgFileInput = document.getElementById('bg-file-input');
 
+    // --- State Variables ---
+    let currentUsername = 'Anonymous';
+    let lastUserMessageTime = 0; // Timestamp of the last message sent by the current user
+    let lastOtherMessageSender = ''; // Username of the last message sent by another user
 
-    let currentUsername = '';
-    // Use an object to track the last time/sender for better multi-user grouping
-    let lastMessageInfo = { 
-        timeInMinutes: 0,
-        sender: ''
-    }; 
+    // --- Utility: Message Grouping ---
 
-
-    // --- 1. Utility Function to Handle Formatting ---
-    function parseFormatting(text) {
-        let formattedText = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-
-        // Crossout: ~~text~~ with <del>text</del>
-        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-        
-        // Bold: **text** with <strong>text</strong>
-        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        
-        // Underline: __text__ with <u>text</u>
-        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        
-        // Slanted (Italics): *text* with <em>text</em>
-        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        
-        // UNSANITIZE only the newly added HTML tags for rendering
-        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
-        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
-        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
-        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
-
-        return formattedText;
-    }
-
-    // --- 2. Username Handling ---
-    
-    document.addEventListener('DOMContentLoaded', () => {
-        const storedUsername = localStorage.getItem('chatUsername');
-        if (storedUsername) {
-            usernameInput.value = storedUsername;
-            setUsername(storedUsername);
-        }
-    });
-
-    setUsernameBtn.addEventListener('click', () => {
-        const username = usernameInput.value.trim();
-        if (username) {
-            localStorage.setItem('chatUsername', username);
-            setUsername(username);
-        } else {
-            // Using console warning instead of intrusive alert
-            console.warn('Please enter a username.');
-        }
-    });
-    
-    function setUsername(username) {
-        currentUsername = username;
-        socket.emit('set-username', currentUsername); 
-        usernameInput.disabled = true;
-        setUsernameBtn.disabled = true;
-        usernameInput.placeholder = 'Username set!';
-        messageInput.focus();
-    }
-
-    // --- 3. Message Sending ---
-
-    function sendMessage() {
-        let msg = messageInput.value.trim();
-        if (!msg || !currentUsername) return; 
-
-        socket.emit('chat-message', msg);
-        messageInput.value = '';
-    }
-
-    sendButton.addEventListener('click', sendMessage);
-
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    // --- 4. Message Display Helper Function (Grouping Logic) ---
+    /**
+     * Parses and displays a single formatted message, handling grouping and styling.
+     * @param {string} formattedMessage - The server-sent message string.
+     */
     function displayMessage(formattedMessage) {
-        const messageEl = document.createElement('div');
-        messageEl.classList.add('message');
+        // 1. Parse the message content
+        // Regex to extract [Username/System/Announcement]: Message Content [Time]
+        const match = formattedMessage.match(/(\*\*.*?\*\*): (.*?) \[(.*?)\]/) ||
+                      formattedMessage.match(/(\*\*.*?\*\*) (.*?) \[(.*?)\]/);
+        
+        // System/Announcement messages
+        let sender = 'System';
+        let text = formattedMessage;
+        let time = '';
+        let messageType = 'system-message';
+        let rawUsername = '';
 
-        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
-        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-
-        // --- Handle System Messages/Announcements ---
-        if (!fullMatch) {
-            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
-            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+        if (match) {
+            rawUsername = match[1].replace(/\*\*/g, ''); // e.g., 'Announcement' or 'User1'
+            text = match[2];
+            time = match[3];
             
-            // CRITICAL: Reset trackers on system message
-            lastMessageInfo.timeInMinutes = 0; 
-            lastMessageInfo.sender = ''; 
-
-            if (systemMatch) {
-                messageEl.classList.add('system-message');
-                const systemText = systemMatch[2];
-                messageEl.innerHTML = parseFormatting(systemText);
-                messagesDiv.appendChild(messageEl);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
+            if (rawUsername === 'System') {
+                messageType = 'system-message';
+                sender = 'System';
+            } else if (rawUsername === 'Announcement') {
+                messageType = 'system-message'; 
+                sender = 'Announcement';
+            } else {
+                sender = rawUsername;
+                messageType = (sender === currentUsername) ? 'user-message' : 'other-message';
             }
-            
-            // Fallback for unparseable system messages/errors
-            messageEl.classList.add('system-message');
-                messageEl.innerHTML = parseFormatting(formattedMessage);
-                messagesDiv.appendChild(messageEl);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
-        }
-        
-        // Extracted parts for REGULAR messages:
-        const sender = fullMatch[1];
-        const messageText = fullMatch[2];
-        const timeString = fullMatch[3]; 
-
-        // 1. Determine alignment class, tracking variables, and grouping logic
-        const isUserMessage = (sender === currentUsername);
-        let showTime = true; 
-        let showUsername = true; 
-
-        // --- Calculate Time in Minutes for Grouping ---
-        let currentTimeInMinutes = 0;
-        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
-        if (timeParts) {
-            let hours = parseInt(timeParts[1]);
-            const minutes = parseInt(timeParts[2]);
-            const isPM = timeParts[3] === 'PM';
-            
-            if (isPM && hours !== 12) hours += 12;
-            if (!isPM && hours === 12) hours = 0;
-            currentTimeInMinutes = hours * 60 + minutes;
-        }
-
-
-        // 1a. Set base alignment/username visibility
-        if (isUserMessage) {
-            messageEl.classList.add('user-message');
-            showUsername = false; // Never show username on self-messages
         } else {
-            messageEl.classList.add('other-message');
+            // Fallback for unexpected format (treated as a system message)
+            console.warn('Message format mismatch:', formattedMessage);
         }
-
-
-        // 1b. Unified Grouping Logic (Applies to All Messages)
         
-        // Check if this message should be grouped with the previous one
-        const shouldGroup = (lastMessageInfo.sender === sender) && (currentTimeInMinutes - lastMessageInfo.timeInMinutes) < 1;
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message', messageType);
+
+        // Get current time in milliseconds for grouping logic
+        const currentTimeMs = new Date().getTime();
+        const isCurrentUser = (sender === currentUsername);
+
+        // --- Message Grouping Logic ---
+        let shouldGroup = false;
+
+        if (isCurrentUser) {
+            // Group consecutive user messages if sent within 60 seconds
+            if (currentTimeMs - lastUserMessageTime < 60000) {
+                shouldGroup = true;
+            }
+            lastUserMessageTime = currentTimeMs;
+            lastOtherMessageSender = ''; // Reset other sender tracker
+        } else if (messageType === 'other-message') {
+            // Group consecutive other-user messages from the same sender
+            if (sender === lastOtherMessageSender) {
+                shouldGroup = true;
+            }
+            lastOtherMessageSender = sender;
+            lastUserMessageTime = 0; // Reset user time tracker
+        } else {
+            // System/Announcement messages reset grouping
+            lastUserMessageTime = 0;
+            lastOtherMessageSender = '';
+        }
 
         if (shouldGroup) {
-            showUsername = false; 
             messageEl.classList.add('grouped-message');
-
-            // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
-            const previousMessageEl = messagesDiv.lastChild;
-            if (previousMessageEl) {
-                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-                if (prevContentWrapper) {
-                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
-                    if (prevTimeSpan) {
-                        prevTimeSpan.remove(); // DELETE TIME from the previous message
-                    }
-                }
-            }
-            // =======================================================================
-        } 
-        
-        // 1c. Update Tracking Variables (After Grouping Check)
-        // Always update the tracking info for the next message comparison
-        lastMessageInfo.timeInMinutes = currentTimeInMinutes;
-        lastMessageInfo.sender = sender;
-
-
-        // --- 2. Assemble the Message Structure ---
-        
-        // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
-        if (showUsername && !isUserMessage) {
-            const usernameDiv = document.createElement('div');
-            usernameDiv.classList.add('message-username');
-            usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
-            messageEl.appendChild(usernameDiv);
         }
 
-        // 2b. Content Wrapper (Bubble + Time)
+        // --- Message Content Construction ---
+
+        // 1. Username (for other-messages only, and only if not grouped)
+        if (messageType === 'other-message' && !shouldGroup) {
+            const usernameSpan = document.createElement('p');
+            usernameSpan.classList.add('message-username');
+            usernameSpan.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
+            messageEl.appendChild(usernameSpan);
+        }
+
+        // 2. Content Wrapper (holds the bubble and the timestamp)
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
-        
-        const bubbleContent = document.createElement('span');
+
+        // 3. The Bubble Content
+        const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
         
-        let contentHtml = parseFormatting(messageText); 
+        // For System/Announcement messages, use the full text
+        if (messageType === 'system-message') {
+            // The server format for system messages already includes the time, so we just wrap it.
+            bubbleContent.innerHTML = formattedMessage;
+            messageEl.appendChild(bubbleContent);
+        } else {
+            // For regular messages, insert the text
+            bubbleContent.textContent = text;
+            contentWrapper.appendChild(bubbleContent);
 
-        bubbleContent.innerHTML = contentHtml;
-        contentWrapper.appendChild(bubbleContent); 
-        
-        // 2c. Time Content (Renders only for the last message because previous times were removed)
-        if (showTime) {
-            const timeSpan = document.createElement('span');
+            // 4. Timestamp
+            const timeSpan = document.createElement('p');
             timeSpan.classList.add('message-time');
-            timeSpan.textContent = timeString; 
-            contentWrapper.appendChild(timeSpan); 
+            timeSpan.textContent = time;
+            contentWrapper.appendChild(timeSpan);
+            
+            messageEl.appendChild(contentWrapper);
         }
-
-        // 3. Assemble the final message element
-        messageEl.appendChild(contentWrapper);
         
+        // Final Append and Scroll
         messagesDiv.appendChild(messageEl);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
     }
 
-    // --- 5. Receiving Messages (History and Live) ---
-    
+
+    // --- Event Handlers ---
+
+    // 1. Set Username Handler
+    setUsernameBtn.addEventListener('click', () => {
+        const newUsername = usernameInput.value.trim();
+        if (newUsername && newUsername !== currentUsername) {
+            socket.emit('set-username', newUsername);
+            currentUsername = newUsername; // Optimistically update client state
+        }
+    });
+
+    // 2. Send Message Handler
+    sendButton.addEventListener('click', () => {
+        const msg = messageInput.value.trim();
+        if (msg) {
+            socket.emit('chat-message', msg);
+            messageInput.value = ''; // Clear the input after sending
+            // Reset lastOtherMessageSender because the next message will be 'user-message'
+            lastOtherMessageSender = '';
+        }
+    });
+
+    // Allow sending with Enter key, but use Shift+Enter for new line
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault(); // Prevent new line
+            sendButton.click();
+        }
+    });
+
+    // --- NEW: Background Upload Logic ---
+
+    // 3. Button Click: Triggers the hidden file input
+    bgUploadBtn.addEventListener('click', () => {
+        bgFileInput.click();
+    });
+
+    // 4. File Input Change: Handles the selected file
+    bgFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                const dataUrl = event.target.result;
+                // Set the body's background directly using the loaded data URL
+                document.body.style.background = `url(${dataUrl}) center center / cover no-repeat, var(--bg-primary)`;
+            };
+
+            reader.readAsDataURL(file); // Read the file as a data URL (Base64 string)
+        } else if (file) {
+            alert("Please select a valid image file.");
+        }
+        // Clear the input value so the 'change' event fires again if the user selects the same file
+        e.target.value = null; 
+    });
+
+
+    // --- Socket Listeners ---
+
+    // 5. Initial History Load and Chat Message Display
     socket.on('history', (history) => {
         // Reset trackers before starting the loop
-        lastMessageInfo.timeInMinutes = 0; 
-        lastMessageInfo.sender = ''; 
+        lastUserMessageTime = 0; 
+        lastOtherMessageSender = ''; 
         messagesDiv.innerHTML = ''; 
 
         // Loop through history messages sequentially
@@ -333,8 +272,7 @@
         messagesDiv.innerHTML = '';
     });
 
-    // --- 6. Online User List Update ---
-    
+    // 6. Online User List Update
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(user => {
@@ -344,7 +282,7 @@
         });
     });
 
-    // --- 7. Launch Custom Window Logic (UPDATED) ---
+    // 7. Launch Custom Window Logic
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             // Get the current URL root (removing any existing query params)
@@ -356,8 +294,8 @@
             window.open(newUrl, '_blank', 'width=400,height=600,resizable=yes');
         });
     }
-    
 </script>
 
 
 </body>
+</html>
