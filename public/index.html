@@ -1,342 +1,373 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Chat App</title>
-    <link rel="stylesheet" href="styles.css">
-    <!-- Include the Socket.IO client library -->
-    <script src="/socket.io/socket.io.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Chat App</title>
+<link rel="stylesheet" href="styles.css">
+<!-- Include the Socket.IO client library -->
+<script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <!-- New wrapper for the two-column layout -->
-    <div id="main-wrapper">
-        
-        <div id="chat-container">
-            <!-- Username Setter Area -->
-            <div id="username-area">
-                <h3>Set Your Username:</h3>
-                <input type="text" id="username-input" placeholder="Enter Username...">
-                <button id="set-username-btn">Save</button>
-            </div>
+<!-- New wrapper for the two-column layout -->
+<div id="main-wrapper">
 
-            <!-- Online User List Area -->
-            <div id="online-users-area">
-                <h4>Online Users:</h4>
-                <ul id="online-users-list">
-                    <!-- User list items will be inserted here by JavaScript -->
-                </ul>
-            </div>
-            
-            <!-- Main Chat Messages Display -->
-            <div id="messages">
-                <!-- Chat messages will be appended here -->
-            </div>
+    <div id="chat-container">
+        <!-- Username Setter Area -->
+        <div id="username-area">
+            <h3>Set Your Username:</h3>
+            <input type="text" id="username-input" placeholder="Enter Username...">
+            <button id="set-username-btn">Save</button>
+        </div>
 
-            <!-- Message Input Area -->
-            <div id="message-input-area">
-                <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
-                <button id="file-upload-btn" title="File Upload (Not implemented)">
-                    📁
-                </button>
-                <button id="send-button">Send</button>
-            </div>
+        <!-- Online User List Area -->
+        <div id="online-users-area">
+            <h4>Online Users:</h4>
+            <ul id="online-users-list">
+                <!-- User list items will be inserted here by JavaScript -->
+            </ul>
         </div>
         
-        <!-- NEW Right-Hand Side Panel -->
-        <div id="right-panel">
-            <h4 class="panel-title">Tools & Utilities</h4>
-            <button id="launch-custom-window-btn" class="panel-btn">Launch Resizable Window</button>
-            <p class="panel-hint">Launches the chat into a new window you can freely resize and position.</p>
+        <!-- Main Chat Messages Display -->
+        <div id="messages">
+            <!-- Chat messages will be appended here -->
         </div>
-        
+
+        <!-- Message Input Area -->
+        <div id="message-input-area">
+            <textarea id="message-input" placeholder="Type your message here... (Press Enter to send)" rows="1"></textarea>
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
+                📁
+            </button>
+            <button id="send-button">Send</button>
+        </div>
     </div>
+    
+    <!-- NEW Right-Hand Side Panel -->
+    <div id="right-panel">
+        <h4 class="panel-title">Tools & Utilities</h4>
+        <button id="launch-custom-window-btn" class="panel-btn">Launch Resizable Window</button>
+        <p class="panel-hint">Launches the chat into a new window you can freely resize and position.</p>
+    </div>
+    
+</div>
 
-    <!-- Client-side JavaScript Logic -->
-    <script>
-        const socket = io();
+<!-- Client-side JavaScript Logic -->
+<script>
+    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('mode') === 'popup') {
+        const mainWrapper = document.getElementById('main-wrapper');
+        const rightPanel = document.getElementById('right-panel');
+        const chatContainer = document.getElementById('chat-container');
 
-        // --- DOM Elements ---
-        const messagesDiv = document.getElementById('messages');
-        const usernameInput = document.getElementById('username-input');
-        const setUsernameBtn = document.getElementById('set-username-btn');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const onlineUsersList = document.getElementById('online-users-list');
-        // New Button
-        const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
-
-
-        let currentUsername = '';
-        let lastUserMessageTime = 0; 
-        let lastOtherMessageSender = ''; 
-
-        // --- 1. Utility Function to Handle Formatting (No Change) ---
-        function parseFormatting(text) {
-            let formattedText = text
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-
-            // Crossout: ~~text~~ with <del>text</del>
-            formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-            
-            // Bold: **text** with <strong>text</strong>
-            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            
-            // Underline: __text__ with <u>text</u>
-            formattedText = formattedText.replace(/__(.*?)__/g, '<u>$1</u>');
-            
-            // Slanted (Italics): *text* with <em>text</em>
-            formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            
-            // UNSANITIZE only the newly added HTML tags for rendering
-            formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
-            formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
-            formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
-            formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
-
-            return formattedText;
+        if (mainWrapper) {
+            // Remove the gap and allow the chat container to take up 100% of the space
+            mainWrapper.style.gap = '0';
+            mainWrapper.style.maxWidth = '100%';
         }
-
-        // --- 2. Username Handling (No Change) ---
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            const storedUsername = localStorage.getItem('chatUsername');
-            if (storedUsername) {
-                usernameInput.value = storedUsername;
-                setUsername(storedUsername);
-            }
-        });
-
-        setUsernameBtn.addEventListener('click', () => {
-            const username = usernameInput.value.trim();
-            if (username) {
-                localStorage.setItem('chatUsername', username);
-                setUsername(username);
-            } else {
-                alert('Please enter a username.');
-            }
-        });
-        
-        function setUsername(username) {
-            currentUsername = username;
-            socket.emit('set-username', currentUsername); 
-            usernameInput.disabled = true;
-            setUsernameBtn.disabled = true;
-            usernameInput.placeholder = 'Username set!';
-            messageInput.focus();
+        if (rightPanel) {
+            // Hide the side panel
+            rightPanel.style.display = 'none';
         }
-
-        // --- 3. Message Sending (No Change) ---
-
-        function sendMessage() {
-            let msg = messageInput.value.trim();
-            if (!msg || !currentUsername) return; 
-
-            socket.emit('chat-message', msg);
-            messageInput.value = '';
+        if (chatContainer) {
+            // Ensure the chat container fills the available wrapper space
+            chatContainer.style.maxWidth = '100%';
         }
+    }
+    // ------------------------------------
 
-        sendButton.addEventListener('click', sendMessage);
+    const socket = io();
 
-        messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
+    // --- DOM Elements ---
+    const messagesDiv = document.getElementById('messages');
+    const usernameInput = document.getElementById('username-input');
+    const setUsernameBtn = document.getElementById('set-username-btn');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const onlineUsersList = document.getElementById('online-users-list');
+    // New Button
+    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+
+
+    let currentUsername = '';
+    let lastUserMessageTime = 0; 
+    let lastOtherMessageSender = ''; 
+
+    // --- 1. Utility Function to Handle Formatting ---
+    function parseFormatting(text) {
+        let formattedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // Crossout: ~~text~~ with <del>text</del>
+        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
         
-        // --- 4. Message Display Helper Function (Grouping Logic) ---
-        function displayMessage(formattedMessage) {
-            const messageEl = document.createElement('div');
-            messageEl.classList.add('message');
+        // Bold: **text** with <strong>text</strong>
+        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Underline: __text__ with <u>text</u>
+        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
+        
+        // Slanted (Italics): *text* with <em>text</em>
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // UNSANITIZE only the newly added HTML tags for rendering
+        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
+        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
+        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
 
-            // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
-            const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+        return formattedText;
+    }
 
-            // --- Handle System Messages/Announcements ---
-            if (!fullMatch) {
-                // Check for the System format: **[User]** [Message Text] [Time] (No colon)
-                const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-                
-                // CRITICAL: Reset trackers on system message
-                lastUserMessageTime = 0; 
-                lastOtherMessageSender = ''; 
+    // --- 2. Username Handling ---
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const storedUsername = localStorage.getItem('chatUsername');
+        if (storedUsername) {
+            usernameInput.value = storedUsername;
+            setUsername(storedUsername);
+        }
+    });
 
-                if (systemMatch) {
-                    messageEl.classList.add('system-message');
-                    const systemText = systemMatch[2];
-                    messageEl.innerHTML = parseFormatting(systemText);
-                    messagesDiv.appendChild(messageEl);
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    return;
-                }
-                
-                // Fallback for unparseable system messages/errors
+    setUsernameBtn.addEventListener('click', () => {
+        const username = usernameInput.value.trim();
+        if (username) {
+            localStorage.setItem('chatUsername', username);
+            setUsername(username);
+        } else {
+            // Using console warning instead of intrusive alert
+            console.warn('Please enter a username.');
+        }
+    });
+    
+    function setUsername(username) {
+        currentUsername = username;
+        socket.emit('set-username', currentUsername); 
+        usernameInput.disabled = true;
+        setUsernameBtn.disabled = true;
+        usernameInput.placeholder = 'Username set!';
+        messageInput.focus();
+    }
+
+    // --- 3. Message Sending ---
+
+    function sendMessage() {
+        let msg = messageInput.value.trim();
+        if (!msg || !currentUsername) return; 
+
+        socket.emit('chat-message', msg);
+        messageInput.value = '';
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // --- 4. Message Display Helper Function (Grouping Logic) ---
+    function displayMessage(formattedMessage) {
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message');
+
+        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
+        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+
+        // --- Handle System Messages/Announcements ---
+        if (!fullMatch) {
+            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
+            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+            
+            // CRITICAL: Reset trackers on system message
+            lastUserMessageTime = 0; 
+            lastOtherMessageSender = ''; 
+
+            if (systemMatch) {
                 messageEl.classList.add('system-message');
+                const systemText = systemMatch[2];
+                messageEl.innerHTML = parseFormatting(systemText);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+            }
+            
+            // Fallback for unparseable system messages/errors
+            messageEl.classList.add('system-message');
                 messageEl.innerHTML = parseFormatting(formattedMessage);
                 messagesDiv.appendChild(messageEl);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    return;
-            }
+                return;
+        }
+        
+        // Extracted parts for REGULAR messages:
+        const sender = fullMatch[1];
+        const messageText = fullMatch[2];
+        const timeString = fullMatch[3]; 
+
+        // 1. Determine alignment class, tracking variables, and grouping logic
+        const isUserMessage = (sender === currentUsername);
+        let showTime = true; 
+        let showUsername = true; 
+
+        // --- Calculate Time in Minutes for Grouping ---
+        let currentTimeInMinutes = 0;
+        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+        if (timeParts) {
+            let hours = parseInt(timeParts[1]);
+            const minutes = parseInt(timeParts[2]);
+            const isPM = timeParts[3] === 'PM';
             
-            // Extracted parts for REGULAR messages:
-            const sender = fullMatch[1];
-            const messageText = fullMatch[2];
-            const timeString = fullMatch[3]; 
-
-            // 1. Determine alignment class, tracking variables, and grouping logic
-            const isUserMessage = (sender === currentUsername);
-            let showTime = true; 
-            let showUsername = true; 
-
-            // --- Calculate Time in Minutes for Grouping ---
-            let currentTimeInMinutes = 0;
-            const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
-            if (timeParts) {
-                let hours = parseInt(timeParts[1]);
-                const minutes = parseInt(timeParts[2]);
-                const isPM = timeParts[3] === 'PM';
-                
-                if (isPM && hours !== 12) hours += 12;
-                if (!isPM && hours === 12) hours = 0;
-                currentTimeInMinutes = hours * 60 + minutes;
-            }
-
-
-            // 1a. Set base alignment/username visibility
-            if (isUserMessage) {
-                messageEl.classList.add('user-message');
-                showUsername = false; // Never show username on self-messages
-            } else {
-                messageEl.classList.add('other-message');
-            }
-
-
-            // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
-            let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
-            let lastTime = lastUserMessageTime;
-            let currentSender = sender;
-
-            // Check if this message should be grouped with the previous one
-            const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
-
-            if (shouldGroup) {
-                showUsername = false; 
-                messageEl.classList.add('grouped-message');
-
-                // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
-                const previousMessageEl = messagesDiv.lastChild;
-                if (previousMessageEl) {
-                    const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-                    if (prevContentWrapper) {
-                        const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
-                        if (prevTimeSpan) {
-                            prevTimeSpan.remove(); // DELETE TIME from the previous message
-                        }
-                    }
-                }
-                // =======================================================================
-
-            } else {
-                // If not grouped, reset the opposing sender's tracker to break future grouping blocks
-                if (isUserMessage) {
-                    lastOtherMessageSender = '';
-                } else {
-                    lastUserMessageTime = 0; // Reset other user's time tracker
-                }
-            }
-
-            // 1c. Update Tracking Variables (After Grouping Check)
-            if (isUserMessage) {
-                lastUserMessageTime = currentTimeInMinutes;
-            } else {
-                lastOtherMessageSender = currentSender;
-                lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
-            }
-
-
-            // --- 2. Assemble the Message Structure ---
-            
-            // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
-            if (showUsername && !isUserMessage) {
-                const usernameDiv = document.createElement('div');
-                usernameDiv.classList.add('message-username');
-                usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
-                messageEl.appendChild(usernameDiv);
-            }
-
-            // 2b. Content Wrapper (Bubble + Time)
-            const contentWrapper = document.createElement('div');
-            contentWrapper.classList.add('message-content-wrapper');
-            
-            const bubbleContent = document.createElement('span');
-            bubbleContent.classList.add('bubble-content');
-            
-            let contentHtml = parseFormatting(messageText); 
-
-            bubbleContent.innerHTML = contentHtml;
-            contentWrapper.appendChild(bubbleContent); 
-            
-            // 2c. Time Content (Renders only for the last message because previous times were removed)
-            if (showTime) {
-                const timeSpan = document.createElement('span');
-                timeSpan.classList.add('message-time');
-                timeSpan.textContent = timeString; 
-                contentWrapper.appendChild(timeSpan); 
-            }
-
-            // 3. Assemble the final message element
-            messageEl.appendChild(contentWrapper);
-            
-            messagesDiv.appendChild(messageEl);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            currentTimeInMinutes = hours * 60 + minutes;
         }
 
-        // --- 5. Receiving Messages (History and Live) ---
-        
-        socket.on('history', (history) => {
-            // Reset trackers before starting the loop
-            lastUserMessageTime = 0; 
-            lastOtherMessageSender = ''; 
-            messagesDiv.innerHTML = ''; 
 
-            // Loop through history messages sequentially
-            history.forEach(msg => {
-                displayMessage(msg);
-            });
+        // 1a. Set base alignment/username visibility
+        if (isUserMessage) {
+            messageEl.classList.add('user-message');
+            showUsername = false; // Never show username on self-messages
+        } else {
+            messageEl.classList.add('other-message');
+        }
+
+
+        // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
+        let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
+        let lastTime = lastUserMessageTime;
+        let currentSender = sender;
+
+        // Check if this message should be grouped with the previous one
+        const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
+
+        if (shouldGroup) {
+            showUsername = false; 
+            messageEl.classList.add('grouped-message');
+
+            // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
+            const previousMessageEl = messagesDiv.lastChild;
+            if (previousMessageEl) {
+                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                if (prevContentWrapper) {
+                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove(); // DELETE TIME from the previous message
+                    }
+                }
+            }
+            // =======================================================================
+
+        } else {
+            // If not grouped, reset the opposing sender's tracker to break future grouping blocks
+            if (isUserMessage) {
+                lastOtherMessageSender = '';
+            } else {
+                lastUserMessageTime = 0; // Reset other user's time tracker
+            }
+        }
+
+        // 1c. Update Tracking Variables (After Grouping Check)
+        if (isUserMessage) {
+            lastUserMessageTime = currentTimeInMinutes;
+        } else {
+            lastOtherMessageSender = currentSender;
+            lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
+        }
+
+
+        // --- 2. Assemble the Message Structure ---
+        
+        // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
+        if (showUsername && !isUserMessage) {
+            const usernameDiv = document.createElement('div');
+            usernameDiv.classList.add('message-username');
+            usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
+            messageEl.appendChild(usernameDiv);
+        }
+
+        // 2b. Content Wrapper (Bubble + Time)
+        const contentWrapper = document.createElement('div');
+        contentWrapper.classList.add('message-content-wrapper');
+        
+        const bubbleContent = document.createElement('span');
+        bubbleContent.classList.add('bubble-content');
+        
+        let contentHtml = parseFormatting(messageText); 
+
+        bubbleContent.innerHTML = contentHtml;
+        contentWrapper.appendChild(bubbleContent); 
+        
+        // 2c. Time Content (Renders only for the last message because previous times were removed)
+        if (showTime) {
+            const timeSpan = document.createElement('span');
+            timeSpan.classList.add('message-time');
+            timeSpan.textContent = timeString; 
+            contentWrapper.appendChild(timeSpan); 
+        }
+
+        // 3. Assemble the final message element
+        messageEl.appendChild(contentWrapper);
+        
+        messagesDiv.appendChild(messageEl);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // --- 5. Receiving Messages (History and Live) ---
+    
+    socket.on('history', (history) => {
+        // Reset trackers before starting the loop
+        lastUserMessageTime = 0; 
+        lastOtherMessageSender = ''; 
+        messagesDiv.innerHTML = ''; 
+
+        // Loop through history messages sequentially
+        history.forEach(msg => {
+            displayMessage(msg);
+        });
+        
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+    });
+
+    socket.on('chat-message', (formattedMessage) => {
+        displayMessage(formattedMessage);
+    });
+
+    socket.on('clear-chat', () => {
+        messagesDiv.innerHTML = '';
+    });
+
+    // --- 6. Online User List Update ---
+    
+    socket.on('user-list-update', (users) => {
+        onlineUsersList.innerHTML = '';
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = user;
+            onlineUsersList.appendChild(li);
+        });
+    });
+
+    // --- 7. Launch Custom Window Logic (UPDATED) ---
+    if (launchCustomWindowBtn) {
+         launchCustomWindowBtn.addEventListener('click', () => {
+            // Get the current URL root (removing any existing query params)
+            const currentUrl = window.location.href.split('?')[0]; 
+            // Add the new popup flag to the URL
+            const newUrl = `${currentUrl}?mode=popup`; 
             
-            messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+            // Open a new window with the specific query parameter
+            window.open(newUrl, '_blank', 'width=400,height=600,resizable=yes');
         });
+    }
+    
+</script>
 
-        socket.on('chat-message', (formattedMessage) => {
-            displayMessage(formattedMessage);
-        });
 
-        socket.on('clear-chat', () => {
-            messagesDiv.innerHTML = '';
-        });
-
-        // --- 6. Online User List Update (No Change) ---
-        
-        socket.on('user-list-update', (users) => {
-            onlineUsersList.innerHTML = '';
-            users.forEach(user => {
-                const li = document.createElement('li');
-                li.textContent = user;
-                onlineUsersList.appendChild(li);
-            });
-        });
-
-        // --- 7. NEW: Launch Custom Window Logic ---
-        launchCustomWindowBtn.addEventListener('click', () => {
-            // window.location.href gives us the current URL of the chat app.
-            const currentUrl = window.location.href;
-            
-            // Open a new window with a defined initial size. The user can then resize it.
-            window.open(currentUrl, '_blank', 'width=400,height=600,resizable=yes');
-        });
-        
-    </script>
 </body>
