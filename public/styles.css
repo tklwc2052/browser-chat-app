@@ -2,7 +2,7 @@
 :root {
     /* Main Backgrounds */
     --bg-primary: #1e1e1e; /* Color fallback for background */
-    --bg-image: none; /* ADDED: Variable for dynamic background */
+    --bg-image: none; /* Variable for dynamic JS upload */
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
@@ -32,7 +32,7 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    /* FIX: Now uses var(--bg-image) and var(--bg-primary) */
+    /* Uses the background image variable */
     background: var(--bg-image) center center / cover no-repeat, var(--bg-primary); 
     display: flex;
     justify-content: center;
@@ -44,7 +44,7 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* FIX: UPDATED to 2000px for a much wider default view */
+    /* CRITICAL FIX: SET TO 2000px WIDE */
     max-width: 2000px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
@@ -53,8 +53,8 @@ html, body {
 #chat-container {
     /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
-    /* FIX: Removed/increased restrictive max-width to allow expansion up to 2000px */
-    height: 100%; /* Fill the height of the main wrapper */
+    /* Allows it to fill the 2000px wrapper space */
+    height: 100%; 
     min-width: 200px; 
 
     background: var(--bg-secondary); 
