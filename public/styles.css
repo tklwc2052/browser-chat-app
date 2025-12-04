@@ -1,27 +1,29 @@
 /* --- Dark Mode Variables --- */
 :root {
     /* Main Backgrounds */
-    --bg-primary: #1e1e1e;
+    --bg-primary: #1e1e1e; /* Color fallback for background */
+    /* NEW: Variable for the background image URL */
+    --bg-image: url('https://your-image-host.com/path/to/your/image.jpg'); 
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
     /* Chat Bubbles */
-    --color-bubble-self: #007acc; /* Blue for own messages */
+    --color-bubble-self: #189BCC; /* Blue for own messages */
     --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
-    --color-system: #ff8c00; 
+    --color-system: #cfcfcf; 
 
     /* Accent Colors (Buttons) */
     --color-accent-blue: #007acc;
-    --color-accent-green: #4caf50;
-    --color-accent-yellow: #ffc107;
+    --color-accent-green: #58825a;
+    --color-accent-yellow: #bda662;
 
     /* Online User List */
     --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
+    --color-online-text: #189BCC; 
 }
 
 /* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
@@ -31,7 +33,9 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    background-color: var(--bg-primary);
+    /* CHANGED: Use full 'background' property for image and color fallback */
+    background: var(--bg-image) center center / cover no-repeat, var(--bg-primary);
+    
     display: flex;
     justify-content: center;
     align-items: center;
@@ -42,9 +46,9 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* 1. INCREASED MAX-WIDTH for better full-screen usage */
-    max-width: 1600px; 
-    height: 100vh; /* Use dynamic height for the container */
+    /* Increased Max-Width for wider tab viewing */
+    max-width: 1800px; 
+    height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
 }
 
@@ -53,8 +57,8 @@ html, body {
     flex-grow: 1;
     max-width: 1200px;
     height: 100%; /* Fill the height of the main wrapper */
-    /* 2. DECREASED MIN-WIDTH for smaller popup window resizing */
-    min-width: 250px; 
+    /* Further reduced Min-Width for very small popup window sizing */
+    min-width: 200px; 
 
     background: var(--bg-secondary); 
     border-radius: 8px;
@@ -67,8 +71,8 @@ html, body {
 
 /* --- NEW: Right Side Panel Styling --- */
 #right-panel {
-    width: 200px; /* Fixed width for the panel */
-    min-width: 100px;
+    width: 250px; /* Fixed width for the panel */
+    min-width: 200px;
     height: 100%;
     padding: 15px;
     background: var(--bg-secondary);
@@ -286,4 +290,28 @@ html, body {
 u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
 
-/* The styles are fixed now, and everything should be dark mode and correctly styled! */
+/* --- Media Query for narrow screens (Popup Mode / Mobile) --- */
+/* This ensures the username input doesn't crush the rest of the chat when width is less than 500px */
+@media (max-width: 500px) {
+    #username-area {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #username-area h3 {
+        margin-bottom: 5px;
+    }
+
+    /* Message input area also benefits from wrapping/stacking */
+    #message-input-area {
+        flex-wrap: wrap; 
+    }
+
+    #message-input {
+        width: 100%;
+    }
+
+    #send-button, #file-upload-btn {
+        flex-grow: 1; /* Make buttons share the bottom row space */
+    }
+}
