@@ -53,7 +53,7 @@
 </div>
 
 <script>
-    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
+    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel and sets custom width when URL contains ?mode=popup) ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
@@ -61,17 +61,18 @@
         const chatContainer = document.getElementById('chat-container');
 
         if (mainWrapper) {
-            // Remove the gap and allow the chat container to take up 100% of the space
+            // Remove the gap
             mainWrapper.style.gap = '0';
-            mainWrapper.style.maxWidth = '100%';
+            // Set the maximum content width to 100px in popup mode
+            mainWrapper.style.maxWidth = '100px'; 
         }
         if (rightPanel) {
             // Hide the side panel
             rightPanel.style.display = 'none';
         }
         if (chatContainer) {
-            // Ensure the chat container fills the available wrapper space
-            chatContainer.style.maxWidth = '100%';
+            // Ensure the chat container fills the available wrapper space (100px)
+            chatContainer.style.maxWidth = '100%'; 
         }
     }
     // ------------------------------------
@@ -386,7 +387,7 @@
         });
     });
 
-    // --- 8. Launch Custom Window Logic ---
+    // --- 8. Launch Custom Window Logic (UPDATED) ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             // Get the current URL root (removing any existing query params)
@@ -394,8 +395,8 @@
             // Add the new popup flag to the URL
             const newUrl = `${currentUrl}?mode=popup`; 
             
-            // Open a new window with the specific query parameter
-            window.open(newUrl, '_blank', 'width=400,height=600,resizable=yes');
+            // Open a new window with the specific query parameter and a smaller width (150px)
+            window.open(newUrl, '_blank', 'width=150,height=600,resizable=yes'); 
         });
     }
     
