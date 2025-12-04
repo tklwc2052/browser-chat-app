@@ -195,13 +195,18 @@
                     showTime = false;
                     messageEl.classList.add('grouped-message'); 
                     
-                    // === CRITICAL FINAL FIX: Remove the time from the PREVIOUS message ===
-                    // Find the previous message's time element and remove it
-                    const prevTimeSpan = previousMessageEl.querySelector('.message-time');
-                    if (prevTimeSpan) {
-                        prevTimeSpan.remove();
+                    // === CRITICAL FINAL FIX: Robustly Remove the time from the PREVIOUS message ===
+                    const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+
+                    if (prevContentWrapper) {
+                        // Find the time element within that wrapper and remove it
+                        const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                        if (prevTimeSpan) {
+                            prevTimeSpan.remove();
+                            // console.log('Removed time from previous message.');
+                        }
                     }
-                    // ===================================================
+                    // ==============================================================================
                 }
 
                 lastUserMessageTime = currentTimeInMinutes;
