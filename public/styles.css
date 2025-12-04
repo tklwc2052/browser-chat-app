@@ -1,8 +1,7 @@
-/* --- Dark Mode Variables (Your custom colors preserved) --- */
+/* --- Dark Mode Variables --- */
 :root {
     /* Main Backgrounds */
-    --bg-primary: #1e1e1e; /* Color fallback for background */
-    --bg-image: none; /* Variable for dynamic JS upload */
+    --bg-primary: #1e1e1e;
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
@@ -32,35 +31,31 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    /* Uses the background image variable */
-    background: var(--bg-image) center center / cover no-repeat, var(--bg-primary); 
+    background-color: var(--bg-primary);
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
 /* NEW: Wrapper for Chat Container + Right Panel */
-/* NEW: Wrapper for Chat Container + Right Panel */
 #main-wrapper {
-    display: flex;
-    gap: 10px; /* Space between the chat and the panel */
-    width: 95%;
-    
-    /* Main Window Max Width: Limits the size of the whole app */
-    max-width: 950px; 
-    
-    height: 90vh; /* Use dynamic height for the container */
-    
-    /* CRITICAL FIX: Changed from 950px. This allows the wrapper to shrink in the popup. */
-    min-width: 320px; 
+    display: flex;
+    gap: 10px; /* Space between the chat and the panel */
+    
+    /* FIX: Main Window is now exactly 950px wide */
+    width: 950px; 
+    max-width: 950px; 
+    
+    height: 90vh; /* Use dynamic height for the container */
+    min-width: 320px;
 }
 
 #chat-container {
     /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
-    /* Allows it to fill the 2000px wrapper space */
-    height: 100%; 
-    min-width: 200px; 
+    max-width: 1200px;
+    height: 100%; /* Fill the height of the main wrapper */
+    min-width: 100px; /* Ensure chat is readable */
 
     background: var(--bg-secondary); 
     border-radius: 8px;
@@ -74,7 +69,7 @@ html, body {
 /* --- NEW: Right Side Panel Styling --- */
 #right-panel {
     width: 250px; /* Fixed width for the panel */
-   
+    min-width: 200px;
     height: 100%;
     padding: 15px;
     background: var(--bg-secondary);
@@ -291,27 +286,3 @@ html, body {
 
 u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
-
-/* --- Media Query for narrow screens (Popup Mode / Mobile) --- */
-@media (max-width: 500px) {
-    #username-area {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #username-area h3 {
-        margin-bottom: 5px;
-    }
-
-    #message-input-area {
-        flex-wrap: wrap; 
-    }
-
-    #message-input {
-        width: 100%;
-    }
-
-    #send-button, #file-upload-btn {
-        flex-grow: 1; 
-    }
-}
