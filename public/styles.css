@@ -2,27 +2,28 @@
 :root {
     /* Main Backgrounds */
     --bg-primary: #1e1e1e; /* Color fallback for background */
-    --bg-image: none; /* Removed static URL, JS will set this dynamically */
+    /* UPDATED: Set to 'none' to prepare for dynamic JS upload */
+    --bg-image: none; 
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
     /* Chat Bubbles */
-    --color-bubble-self: #007acc; /* Blue for own messages */
+    --color-bubble-self: #189BCC; /* Blue for own messages */
     --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
-    --color-system: #ff8c00; 
+    --color-system: #cfcfcf; 
 
     /* Accent Colors (Buttons) */
-    --color-accent-blue: #007acc;
-    --color-accent-green: #4caf50;
-    --color-accent-yellow: #ffc107;
+    --color-accent-blue: #189BCC;
+    --color-accent-green: #58825a;
+    --color-accent-yellow: #bda662;
 
     /* Online User List */
     --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
+    --color-online-text: #189BCC; 
 }
 
 /* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
@@ -32,7 +33,7 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    /* Updated background property to support image variable */
+    /* Uses the variable; JS will overwrite the style attribute upon upload */
     background: var(--bg-image) center center / cover no-repeat, var(--bg-primary);
     
     display: flex;
@@ -45,7 +46,7 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* Max-Width increased for wider tab viewing */
+    /* Max-Width set for wider tab viewing */
     max-width: 1800px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
