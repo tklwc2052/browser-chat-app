@@ -2,28 +2,27 @@
 :root {
     /* Main Backgrounds */
     --bg-primary: #1e1e1e; /* Color fallback for background */
-    /* NEW: Variable for the background image URL */
-    --bg-image: url('https://your-image-host.com/path/to/your/image.jpg'); 
+    --bg-image: none; /* Removed static URL, JS will set this dynamically */
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
     /* Chat Bubbles */
-    --color-bubble-self: #189BCC; /* Blue for own messages */
+    --color-bubble-self: #007acc; /* Blue for own messages */
     --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
-    --color-system: #cfcfcf; 
+    --color-system: #ff8c00; 
 
     /* Accent Colors (Buttons) */
-    --color-accent-blue: #189BCC;
-    --color-accent-green: #58825a;
-    --color-accent-yellow: #bda662;
+    --color-accent-blue: #007acc;
+    --color-accent-green: #4caf50;
+    --color-accent-yellow: #ffc107;
 
     /* Online User List */
     --color-online-bg: #2a3847; 
-    --color-online-text: #189BCC; 
+    --color-online-text: #90caf9; 
 }
 
 /* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
@@ -33,7 +32,7 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    /* CHANGED: Use full 'background' property for image and color fallback */
+    /* Updated background property to support image variable */
     background: var(--bg-image) center center / cover no-repeat, var(--bg-primary);
     
     display: flex;
@@ -46,7 +45,7 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* Increased Max-Width for wider tab viewing */
+    /* Max-Width increased for wider tab viewing */
     max-width: 1800px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
@@ -57,7 +56,7 @@ html, body {
     flex-grow: 1;
     max-width: 1200px;
     height: 100%; /* Fill the height of the main wrapper */
-    /* Further reduced Min-Width for very small popup window sizing */
+    /* Min-Width reduced for very small popup window sizing */
     min-width: 200px; 
 
     background: var(--bg-secondary); 
