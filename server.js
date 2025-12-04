@@ -110,7 +110,7 @@ io.on('connection', (socket) => {
                         if (args) {
                             // Message format: **[Announcement]** **SERVER MESSAGE:** **[The message]** [Time]
                             // The inner **[The message]** provides the requested bold formatting.
-                            const serverMsg = formatMessage('Announcement', `**SERVER MESSAGE:** **${args}**`);
+                            const serverMsg = formatMessage('Announcement', `**Announcement:** **${args}**`);
                             io.emit('chat-message', serverMsg);
                             addToHistory(serverMsg);
                             return; // Stop processing after execution
