@@ -126,7 +126,8 @@ io.on('connection', (socket) => {
                         socket.emit('chat-message', sentMsg);
 
                         // 2. Send to Receiver (Actual PM, visible to receiver only)
-                        const receivedMsg = formatMessage('System', `**[PM from ${sender}]**: **${privateMessage}**`);
+                        // FIX: Change 'System' to 'Announcement' so the client's systemMatch regex works correctly for PM styling.
+                        const receivedMsg = formatMessage('Announcement', `**[PM from ${sender}]**: **${privateMessage}**`);
                         io.to(recipientId).emit('chat-message', receivedMsg);
                         
                         return; // PM handled, exit command processing
