@@ -11,6 +11,9 @@ const users = {};
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 
+// --- Configuration ---
+const ADMIN_USERNAME = 'kl_'; // <<< Designated Admin User
+
 // --- Utility Functions ---
 
 /**
@@ -87,13 +90,61 @@ io.on('connection', (socket) => {
         broadcastUserList();
     });
 
-    // --- 2. Handle Chat Messages ---
+    // --- 2. Handle Chat Messages (Implementing Admin Commands) ---
     socket.on('chat-message', (msg) => {
         const sender = users[socket.id] || 'Anonymous';
 
-        // Command handling logic has been removed. 
-        // All non-empty messages are now treated as regular chat messages.
-        if (msg.trim()) {
+        // Check if the message is a command
+        if (msg.startsWith('/')) {
+            const parts = msg.trim().slice(1).split(/\s+/); 
+            const command = parts[0].toLowerCase();
+            // Get the rest of the message for command arguments
+            const args = parts.slice(1).join(' '); 
+            
+            let response = '';
+            
+            // Check for admin privileges
+            if (sender === ADMIN_USERNAME) {
+                switch (command) {
+                    case 'server':
+                        if (args) {
+                            // Send a global bold announcement to all users
+                            const serverMsg = formatMessage('Announcement', `**SERVER MESSAGE**: **${args}**`);
+                            io.emit('chat-message', serverMsg);
+                            addToHistory(serverMsg);
+                            return; // Stop processing after execution
+                        } else {
+                            response = `Usage: /server [message]. The message will be broadcast server-wide in bold.`;
+                        }
+                        break;
+
+                    case 'clear':
+                        // 1. Tell all clients to clear their chat history
+                        io.emit('clear-chat'); 
+                        // 2. Clear server-side history
+                        messageHistory.length = 0; 
+                        // 3. Send confirmation message to all clients
+                        const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
+                        io.emit('chat-message', clearConfirmationMsg);
+                        addToHistory(clearConfirmationMsg);
+                        return; // Stop processing after execution
+                    
+                    default:
+                        response = `Unknown Admin Command: /${command}. Available: /server, /clear.`;
+                }
+            } else {
+                // Not an admin, check for non-admin commands (currently none)
+                response = `You do not have permission to use commands. Only '${ADMIN_USERNAME}' can use privileged commands.`;
+            }
+
+            // If a response was generated (i.e., a command was attempted)
+            if (response) {
+                const commandResponse = formatMessage('System', response);
+                socket.emit('chat-message', commandResponse);
+            }
+
+        } else if (msg.trim()) {
+            // Not a command, broadcast the message
             const formattedMsg = formatMessage(sender, msg);
             io.emit('chat-message', formattedMsg);
             addToHistory(formattedMsg);
