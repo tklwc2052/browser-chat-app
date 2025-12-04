@@ -1,81 +1,60 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+// NOTE: Removed 'fs' as Nhost handles persistence
 
 const app = express();
 const server = http.createServer(app);
-// Attach Socket.IO to the HTTP server
 const io = socketIo(server);
 
-// CRITICAL FIX: Serve static files (index.html, styles.css, etc.) from the root directory
-app.use(express.static(__dirname+'/public'));
+// Serve static files (Assuming client files are in the same directory)
+app.use(express.static(__dirname));
 
 // --- SERVER-SIDE STATE ---
-let history = []; // Stores the last N messages
+let history = []; 
 const MESSAGE_HISTORY_LIMIT = 50;
 
-// Use a Map to track connected users by username. The value is an object
-// containing the user's password and a Set of their active socket IDs.
+// Use a Map to track connected sessions (sockets)
 const userSessions = new Map();
 
-// Hardcoded Password/Session Key for this example:
-// To log in as 'kl', the user must send '1234'. To log in as 'guest', they must send '0000'.
-const USER_PASSWORDS = {
-    'kl': '1234',
-    'guest': '0000' 
-    // Add more accounts here as needed
-};
-// -------------------------
+// Removed USER_PASSWORDS object and loadUsers/saveUsers functions
 
-// Helper function to get the current time in a readable format
 function getFormattedTime() {
     const now = new Date();
-    // Use toLocaleTimeString for simple HH:MM AM/PM format
     return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 io.on('connection', (socket) => {
     console.log(`a user connected: ${socket.id}`);
 
-    // --- Handle username and password setting ---
-    socket.on('set-username', (username, password) => {
-        const safeUsername = username.trim();
-
-        // 1. Check if the username is defined in our password list
-        if (!USER_PASSWORDS[safeUsername]) {
-            socket.emit('system-message', `Error: Username "${safeUsername}" is not registered.`);
-            return;
-        }
+    // --- NEW: Handle Login Success SIGNAL from Client (Nhost already verified user) ---
+    // This event signals that the user has been successfully logged in/registered via Nhost.
+    socket.on('nhost-login-success', (displayName) => {
+        const safeUsername = displayName; 
         
-        // 2. Verify the password
-        if (USER_PASSWORDS[safeUsername] !== password) {
-            socket.emit('system-message', `Error: Incorrect password for "${safeUsername}".`);
-            return;
-        }
-
-        // 3. User authenticated: Check/create session
+        // 1. Register the connection on the Socket.IO server.
+        
         if (!userSessions.has(safeUsername)) {
-            // New user session: initialize with the current socket ID
+            // New user session
             userSessions.set(safeUsername, {
                 username: safeUsername,
-                password: password,
                 socketIds: new Set([socket.id])
             });
             console.log(`New session created for ${safeUsername}.`);
             socket.username = safeUsername;
-            socket.emit('system-message', `**${safeUsername}** joined the chat.`);
+            // We only broadcast a join message if it's the first connection for this user
+            io.emit('system-message', `**${safeUsername}** joined the chat.`);
             
         } else {
-            // Existing user session: add the new socket ID
+            // Existing user session: add the new socket ID (for a new tab)
             const session = userSessions.get(safeUsername);
             session.socketIds.add(socket.id);
             console.log(`Socket ${socket.id} joined existing session for ${safeUsername}.`);
             socket.username = safeUsername;
-            // Don't send a join message to everyone, just a re-connection message to the user
             socket.emit('system-message', `Reconnected as **${safeUsername}**.`); 
         }
         
-        // Send history and updated list after successful login
+        // Send history and updated list after socket registration
         socket.emit('history', history);
         broadcastUserList();
     });
@@ -85,28 +64,25 @@ io.on('connection', (socket) => {
         const username = socket.username;
         if (!username) return; 
 
-        // Format message with time and username
         const time = getFormattedTime();
         const formattedMessage = `**${username}**: ${msg} [${time}]`;
 
-        // Send to everyone including sender
         io.emit('chat-message', formattedMessage);
 
-        // Update history
         history.push(formattedMessage);
         if (history.length > MESSAGE_HISTORY_LIMIT) {
-            history.shift(); // Remove the oldest message
+            history.shift(); 
         }
     });
 
-    // --- Disconnect Handling (CRITICAL UPDATE) ---
+    // --- Disconnect Handling ---
     socket.on('disconnect', () => {
         console.log(`user disconnected: ${socket.id}`);
         const username = socket.username;
         
         if (username && userSessions.has(username)) {
             const session = userSessions.get(username);
-            session.socketIds.delete(socket.id); // Remove this specific socket ID
+            session.socketIds.delete(socket.id); 
             
             if (session.socketIds.size === 0) {
                 // Last connection for this user closed
@@ -122,12 +98,11 @@ io.on('connection', (socket) => {
 
     // --- Broadcasts unique usernames based on active sessions ---
     function broadcastUserList() {
-        // Get unique usernames from the active sessions
         const activeUsers = Array.from(userSessions.keys());
         io.emit('user-list-update', activeUsers);
     }
     
-    // Clear Chat Logic (triggered by an admin button, or manually)
+    // Clear Chat Logic 
     socket.on('admin-clear-chat', () => {
         history = [];
         io.emit('clear-chat');
