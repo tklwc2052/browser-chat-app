@@ -2,27 +2,27 @@
 :root {
     /* Main Backgrounds */
     --bg-primary: #1e1e1e; /* Color fallback for background */
-    --bg-image: none; /* Set to none for dynamic JS upload */
+    --bg-image: none; /* ADDED: Variable for dynamic background */
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
 
     /* Chat Bubbles */
-    --color-bubble-self: #189BCC; /* Blue for own messages */
+    --color-bubble-self: #007acc; /* Blue for own messages */
     --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
 
     /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
-    --color-system: #cfcfcf; 
+    --color-system: #ff8c00; 
 
     /* Accent Colors (Buttons) */
-    --color-accent-blue: #189BCC;
-    --color-accent-green: #58825a;
-    --color-accent-yellow: #bda662;
+    --color-accent-blue: #007acc;
+    --color-accent-green: #4caf50;
+    --color-accent-yellow: #ffc107;
 
     /* Online User List */
     --color-online-bg: #2a3847; 
-    --color-online-text: #189BCC; 
+    --color-online-text: #90caf9; 
 }
 
 /* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
@@ -32,8 +32,8 @@ html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    background: var(--bg-image) center center / cover no-repeat, var(--bg-primary);
-    
+    /* FIX: Now uses var(--bg-image) and var(--bg-primary) */
+    background: var(--bg-image) center center / cover no-repeat, var(--bg-primary); 
     display: flex;
     justify-content: center;
     align-items: center;
@@ -44,7 +44,7 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    /* UPDATED: Sets the maximum width of the entire client to 2000 pixels */
+    /* FIX: UPDATED to 2000px for a much wider default view */
     max-width: 2000px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
@@ -53,7 +53,7 @@ html, body {
 #chat-container {
     /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
-    /* REMOVED max-width property so it can fill the 2000px wrapper space */
+    /* FIX: Removed/increased restrictive max-width to allow expansion up to 2000px */
     height: 100%; /* Fill the height of the main wrapper */
     min-width: 200px; 
 
@@ -288,7 +288,6 @@ u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
 
 /* --- Media Query for narrow screens (Popup Mode / Mobile) --- */
-/* This ensures the username input doesn't crush the rest of the chat when width is less than 500px */
 @media (max-width: 500px) {
     #username-area {
         flex-direction: column;
@@ -299,7 +298,6 @@ del { color: var(--color-muted); }
         margin-bottom: 5px;
     }
 
-    /* Message input area also benefits from wrapping/stacking */
     #message-input-area {
         flex-wrap: wrap; 
     }
@@ -309,6 +307,6 @@ del { color: var(--color-muted); }
     }
 
     #send-button, #file-upload-btn {
-        flex-grow: 1; /* Make buttons share the bottom row space */
+        flex-grow: 1; 
     }
 }
