@@ -47,7 +47,7 @@ html, body {
     /* CRITICAL FIX: SET TO 2000px WIDE */
     max-width: 950px; 
     height: 90vh; /* Use dynamic height for the container */
-    min-width: 9500px;
+    min-width: 950px;
 }
 
 #chat-container {
