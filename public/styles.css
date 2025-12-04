@@ -42,7 +42,8 @@ html, body {
     display: flex;
     gap: 10px; /* Space between the chat and the panel */
     width: 95%;
-    max-width: 1200px; /* Allow overall app to be wider */
+    /* 1. INCREASED MAX-WIDTH for better full-screen usage */
+    max-width: 1600px; 
     height: 90vh; /* Use dynamic height for the container */
     min-width: 320px;
 }
@@ -52,7 +53,8 @@ html, body {
     flex-grow: 1;
     max-width: 1200px;
     height: 100%; /* Fill the height of the main wrapper */
-    min-width: 100px; /* Ensure chat is readable */
+    /* 2. DECREASED MIN-WIDTH for smaller popup window resizing */
+    min-width: 250px; 
 
     background: var(--bg-secondary); 
     border-radius: 8px;
@@ -284,4 +286,4 @@ html, body {
 u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
 del { color: var(--color-muted); }
 
-The styles are fixed now, and everything should be dark mode and correctly styled!
+/* The styles are fixed now, and everything should be dark mode and correctly styled! */
