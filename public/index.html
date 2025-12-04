@@ -64,7 +64,7 @@
             // Remove the gap
             mainWrapper.style.gap = '0';
             // Set the maximum content width to 100px in popup mode
-            mainWrapper.style.maxWidth = '100px'; 
+            mainWrapper.style.maxWidth = '250px'; 
         }
         if (rightPanel) {
             // Hide the side panel
@@ -396,7 +396,7 @@
             const newUrl = `${currentUrl}?mode=popup`; 
             
             // Open a new window with the specific query parameter and a smaller width (150px)
-            window.open(newUrl, '_blank', 'width=150,height=600,resizable=yes'); 
+            window.open(newUrl, '_blank', 'width=300,height=780,resizable=yes'); 
         });
     }
     
