@@ -86,7 +86,7 @@
     const sendButton = document.getElementById('send-button');
     const onlineUsersList = document.getElementById('online-users-list');
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
-    // New Selectors
+    // RESTORED Selectors for Background
     const bgUploadBtn = document.getElementById('bg-upload-btn');
     const bgFileInput = document.getElementById('bg-file-input');
 
@@ -319,33 +319,36 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- 5. Background Upload Logic ---
+    // --- 5. Background Upload Logic (RESTORED) ---
     // 5a. Button Click: Triggers the hidden file input
-    bgUploadBtn.addEventListener('click', () => {
-        bgFileInput.click();
-    });
+    if (bgUploadBtn) {
+        bgUploadBtn.addEventListener('click', () => {
+            bgFileInput.click();
+        });
+    }
 
     // 5b. File Input Change: Handles the selected file
-    bgFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
+    if (bgFileInput) {
+        bgFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
 
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
 
-            reader.onload = (event) => {
-                const dataUrl = event.target.result;
-                // Set the body's background directly using the loaded data URL
-                // Uses the --bg-primary variable as a solid fallback if the image fails for any reason
-                document.body.style.background = `url(${dataUrl}) center center / cover no-repeat, var(--bg-primary)`;
-            };
+                reader.onload = (event) => {
+                    const dataUrl = event.target.result;
+                    // Set the body's background directly using the loaded data URL
+                    document.body.style.background = `url(${dataUrl}) center center / cover no-repeat, var(--bg-primary)`;
+                };
 
-            reader.readAsDataURL(file); // Read the file as a data URL (Base64 string)
-        } else if (file) {
-            alert("Please select a valid image file.");
-        }
-        // Clear the input value so the 'change' event fires again if the user selects the same file
-        e.target.value = null; 
-    });
+                reader.readAsDataURL(file); // Read the file as a data URL (Base64 string)
+            } else if (file) {
+                alert("Please select a valid image file.");
+            }
+            // Clear the input value so the 'change' event fires again if the user selects the same file
+            e.target.value = null; 
+        });
+    }
 
 
     // --- 6. Receiving Messages (History and Live) ---
