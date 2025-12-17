@@ -6,18 +6,20 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// Serve static files (css, js, images)
 app.use(express.static(__dirname));
+
+// --- 1. THE FIX: Force Serve index.html ---
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
 
 // --- State Management ---
 const users = {}; 
-// vcUsers tracks who is currently in voice: { socketId: { username, isMuted } }
 const vcUsers = {}; 
 const messageHistory = []; 
-
-// --- Configuration ---
 const MAX_HISTORY = 50; 
 
-// --- Helper Functions ---
 function formatMessage(sender, text) {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     return `**${sender}**: ${text} [${time}]`;
@@ -34,11 +36,11 @@ function broadcastVCUserList() {
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
 
-    // 1. Join Chat
+    // Join Chat
     socket.on('set-username', (data) => {
         users[socket.id] = { id: socket.id, username: data.username, avatar: data.avatar };
-        
         const joinMsg = formatMessage('System', `User '${data.username}' joined.`);
+        
         messageHistory.push(joinMsg);
         if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
         
@@ -47,7 +49,7 @@ io.on('connection', (socket) => {
         broadcastUserList();
     });
 
-    // 2. Text Chat
+    // Send Message
     socket.on('send-message', (text) => {
         const user = users[socket.id];
         if (user) {
@@ -58,21 +60,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 3. VOICE CHAT LOGIC ---
-
+    // Voice Chat Logic
     socket.on('join-vc', () => {
         const user = users[socket.id];
         if (user) {
-            // Add to VC List
             vcUsers[socket.id] = { ...user, isMuted: false };
-            
-            // Notify UI
             broadcastVCUserList();
-            
-            // Notify other clients to call this user
             socket.broadcast.emit('vc-user-joined', { id: socket.id });
-            
-            // Chat announcement
             io.emit('chat-message', { text: formatMessage('System', `**${user.username}** joined Voice Chat.`) });
         }
     });
@@ -81,10 +75,8 @@ io.on('connection', (socket) => {
         if (vcUsers[socket.id]) {
             const name = vcUsers[socket.id].username;
             delete vcUsers[socket.id];
-            
             broadcastVCUserList();
             socket.broadcast.emit('vc-user-left', { id: socket.id });
-            
             io.emit('chat-message', { text: formatMessage('System', `**${name}** left Voice Chat.`) });
         }
     });
@@ -96,9 +88,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 4. WebRTC Signaling (The "Cables" of the internet) ---
-    // These events allow two browsers to find each other without sending audio through the server
-    
+    // WebRTC Signaling
     socket.on('voice-offer', (data) => {
         io.to(data.to).emit('voice-offer', { from: socket.id, offer: data.offer });
     });
@@ -111,13 +101,12 @@ io.on('connection', (socket) => {
         io.to(data.to).emit('voice-candidate', { from: socket.id, candidate: data.candidate });
     });
 
-    // 5. Disconnect
+    // Disconnect
     socket.on('disconnect', () => {
         if (users[socket.id]) {
             const name = users[socket.id].username;
             delete users[socket.id];
             
-            // Clean up Voice Chat
             if (vcUsers[socket.id]) {
                 delete vcUsers[socket.id];
                 broadcastVCUserList();
@@ -131,7 +120,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Render provides the PORT env variable
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
