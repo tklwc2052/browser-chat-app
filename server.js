@@ -139,7 +139,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 3. Voice Chat & Signaling ---
+    // --- 3. Voice Chat & Signaling (UPDATED) ---
     socket.on('vc-join', (isJoining) => {
         const userData = users[socket.id];
         if (!userData) return;
@@ -154,6 +154,8 @@ io.on('connection', (socket) => {
             const joinMsg = formatMessage('System', `**${userData.username}** joined Voice Chat.`);
             io.emit('chat-message', { text: joinMsg, avatar: null });
             addToHistory(joinMsg);
+            
+            // Broadcast to others so they can call this user
             socket.broadcast.emit('vc-user-joined', socket.id);
         } else {
             if (vcUsers[socket.id]) {
@@ -161,6 +163,8 @@ io.on('connection', (socket) => {
                 const leaveMsg = formatMessage('System', `**${userData.username}** left Voice Chat.`);
                 io.emit('chat-message', { text: leaveMsg, avatar: null });
                 addToHistory(leaveMsg);
+                
+                // Tell others to hang up
                 socket.broadcast.emit('vc-user-left', socket.id);
             }
         }
@@ -174,6 +178,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // THIS WAS MISSING: Handles the WebRTC Handshake
     socket.on('signal', (data) => {
         io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
     });
