@@ -20,6 +20,7 @@
     --color-accent-blue: #007acc;
     --color-accent-green: #4caf50;
     --color-accent-yellow: #ffc107;
+    --color-vc-red: #dc3545; /* NEW: Color for the "Leave Call" button. */
 
     /* Online User List */
     --color-online-bg: #2a3847; 
@@ -110,6 +111,60 @@ html, body {
     font-size: 0.75em;
     color: var(--color-muted);
     margin: 0;
+}
+
+/* --- NEW: Voice Chat Styling --- */
+#vc-area {
+    padding: 10px;
+    border: 1px solid var(--bg-input);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#vc-controls {
+    display: flex;
+    justify-content: space-between;
+    gap: 5px;
+}
+
+#vc-user-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.85em;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+#vc-user-list li {
+    padding: 3px 0;
+    color: var(--color-accent-green); /* Green dot for active speaking */
+    border-bottom: 1px dotted var(--bg-input);
+}
+
+.vc-btn-mute, .vc-btn-leave {
+    flex-grow: 1;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    border: none;
+    color: white;
+}
+
+.vc-btn-mute {
+    background: var(--color-accent-blue);
+}
+.vc-btn-mute.active {
+    background: var(--color-accent-yellow);
+    color: var(--bg-primary);
+}
+
+.vc-btn-leave {
+    background: var(--color-vc-red);
 }
 /* ------------------------------------- */
 
