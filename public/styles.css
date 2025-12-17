@@ -1,452 +1,250 @@
 /* --- Dark Mode Variables --- */
 :root {
-    /* Main Backgrounds */
     --bg-primary: #1e1e1e;
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
+    --color-bubble-self: #007acc; 
+    --color-bubble-other: #3c3c3c; 
+    --color-bubble-pm: #4b3a5b; 
 
-    /* Chat Bubbles */
-    --color-bubble-self: #007acc; /* Blue for own messages */
-    --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
-    --color-bubble-pm: #4b3a5b; /* Dark purple/blue for PM background */
-
-    /* Text and Elements */
     --color-text: #f0f0f0;   
     --color-muted: #aaaaaa;  
     --color-system: #ff8c00; 
-    --color-pm-accent: #c197ff; /* Light purple accent for PM border/text */
-
-    /* Accent Colors (Buttons) */
+    
     --color-accent-blue: #007acc;
     --color-accent-green: #4caf50;
-    --color-accent-yellow: #ffc107;
-    --color-vc-red: #dc3545; /* Added for VC controls */
-    --color-preview-bg: #4a4a4a; /* Added for Image Preview background */
-
-    /* Online User List */
-    --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
+    --color-vc-red: #dc3545;
+    --color-preview-bg: #4a4a4a;
 }
 
-/* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
+/* --- GLOBAL LAYOUT --- */
 html, body {
-    height: 100%;
-    min-height: 100vh;
-    font-family: sans-serif;
     margin: 0;
     padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--bg-primary);
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    color: var(--color-text);
+    height: 100%;
+    overflow: hidden; 
 }
 
 #main-wrapper {
     display: flex;
-    gap: 10px; 
-    width: 950px; 
-    max-width: 950px; 
-    height: 700px; 
-    min-width: 200px; 
-}
-
-#chat-container {
-    flex-grow: 1;
+    height: 100vh;
     max-width: 1200px;
-    height: 100%; 
-    min-width: 100px; 
-
-    background: var(--bg-secondary); 
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
-    display: flex;
-    flex-direction: column; 
-    overflow: hidden;
-    color: var(--color-text); 
+    margin: 0 auto;
+    border-left: 1px solid #333;
+    border-right: 1px solid #333;
 }
 
-/* --- Right Side Panel Styling --- */
-#right-panel {
-    width: 250px; 
-    min-width: 200px;
-    height: 100%;
-    padding: 15px;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+/* --- CHAT CONTAINER (Left/Middle) --- */
+#chat-container {
+    flex: 1; 
     display: flex;
     flex-direction: column;
+    min-width: 0; 
+    background-color: var(--bg-secondary);
+    position: relative;
+}
+
+/* --- USERNAME AREA --- */
+#username-area {
+    padding: 15px;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
     gap: 10px;
+    flex-wrap: wrap; 
 }
 
-.panel-title {
-    margin-top: 0;
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--bg-input);
-    color: var(--color-system);
+#avatar-upload-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
 }
 
-.panel-btn {
-    padding: 10px 15px;
-    background: var(--color-accent-blue);
+#current-avatar-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #555;
+    transition: border-color 0.2s;
+}
+#current-avatar-preview:hover {
+    border-color: var(--color-accent-blue);
+}
+
+#username-input {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background-color: var(--bg-input);
+    color: var(--color-text);
+}
+
+#set-username-btn {
+    padding: 8px 15px;
+    background-color: var(--color-accent-blue);
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-weight: bold;
-    transition: background 0.2s;
 }
 
-.panel-btn:hover {
-    background: #005f99;
-}
-
-.panel-hint {
-    font-size: 0.75em;
-    color: var(--color-muted);
-    margin: 0;
-}
-/* ------------------------------------- */
-
-/* --- Top/Bottom UI (Standard Layout) --- */
-
-/* UPDATED: Avatar Button Styles added */
-#username-area { 
-    padding: 10px; 
-    border-bottom: 1px solid var(--bg-input); 
-    background: var(--bg-secondary); 
-    display: flex; 
-    align-items: center; 
-    gap: 10px; 
-}
-
-/* --- NEW AVATAR INPUT STYLES --- */
-#avatar-upload-btn {
-    padding: 0;
-    width: 38px; 
-    height: 38px;
-    border: 2px solid var(--color-accent-blue);
-    border-radius: 50%;
-    background: none;
-    cursor: pointer;
-    overflow: hidden;
-    flex-shrink: 0;
-}
-#avatar-upload-btn:hover {
-    opacity: 0.8;
-}
-
-#current-avatar-preview {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border: none; 
-    border-radius: 50%;
-    display: block;
-}
-/* --- END AVATAR INPUT STYLES --- */
-
-
-#username-area h3 { margin: 0; font-size: 1em; }
-#username-input { flex-grow: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: var(--bg-input); color: var(--color-text); }
-#set-username-btn { padding: 8px 15px; background: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
-
-
-#online-users-area { padding: 10px; border-bottom: 1px solid var(--bg-input); background: var(--bg-secondary); }
-#online-users-area h4 { margin-top: 0; margin-bottom: 5px; font-size: 0.9em; color: var(--color-muted); }
-
-/* --- Online User List and VC List --- */
-#online-users-list { 
-    list-style-type: none; 
-    padding: 0; 
-    margin: 0; 
-    display: flex; 
-    flex-wrap: wrap; 
-    gap: 10px; 
-    font-size: 0.85em; 
-}
-#online-users-list li { 
-    padding: 2px 6px; 
-    background-color: var(--color-online-bg); 
-    border-radius: 3px; 
-    color: var(--color-online-text); 
-    font-weight: bold; 
+/* --- ONLINE USERS LIST (Top) --- */
+#online-users-area {
+    padding: 10px 15px;
+    background-color: #2a3847;
+    border-bottom: 1px solid #333;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
+    font-size: 0.9em;
+    color: #90caf9;
+    overflow-x: auto; 
+    white-space: nowrap; 
 }
-#vc-user-list {
+
+#online-users-list {
     list-style: none;
     padding: 0;
     margin: 0;
-    font-size: 0.85em;
-    max-height: 100px;
-    overflow-y: auto;
+    display: flex;
+    gap: 15px;
 }
 
-#vc-user-list li {
-    padding: 3px 0;
-    color: var(--color-accent-green); 
-    border-bottom: 1px dotted var(--bg-input);
-    display: flex; 
+#online-users-list li {
+    display: flex;
     align-items: center;
     gap: 5px;
 }
 
-
+/* --- MESSAGES AREA --- */
 #messages {
     flex-grow: 1;
-    height: auto;
-    padding: 15px;
     overflow-y: auto;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--bg-input);
-    position: relative; 
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px; 
 }
 
-/* --- AVATAR STYLES (NEW) --- */
+/* Scrollbar Styling */
+#messages::-webkit-scrollbar { width: 8px; }
+#messages::-webkit-scrollbar-track { background: var(--bg-primary); }
+#messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+/* Message Bubbles */
+.message {
+    display: flex;
+    align-items: flex-end; /* Align avatar to bottom of bubble */
+    margin-bottom: 10px;
+    max-width: 100%;
+}
+
+.user-message {
+    flex-direction: row-reverse;
+}
+
 .avatar {
-    width: 30px;
-    height: 30px;
+    width: 35px;
+    height: 35px;
     border-radius: 50%;
     object-fit: cover;
-    flex-shrink: 0; 
-    background: var(--color-accent-blue);
-    border: 1px solid var(--color-text);
+    margin: 0 10px;
+    flex-shrink: 0;
 }
-
-.list-avatar {
-    width: 20px;
-    height: 20px;
-    border-width: 0;
-}
-
 .avatar-spacer {
-    /* Used for grouped messages to maintain alignment when avatar is hidden */
-    width: 30px;
-    height: 30px;
-    flex-shrink: 0; 
-    background: transparent !important;
-    border: none !important;
-    border-radius: 50%;
+    width: 35px; 
+    margin: 0 10px;
+    flex-shrink: 0;
 }
 
-
-/* --- CHAT BUBBLE & MESSAGE STYLES (REVISED FOR AVATARS) --- */
-
-.message {
-    display: flex; /* CRITICAL: For horizontal alignment of Avatar and Content */
-    align-items: flex-start; /* Aligns avatar and content-area to the top */
-    margin: 8px 0;
-    padding: 0 5px;
-    gap: 8px; /* Space between avatar and message content */
-}
-
-/* New wrapper to handle username (if present) and content bubble stack */
 .message-content-area {
     display: flex;
     flex-direction: column;
-    max-width: 75%;
-    flex-grow: 1; 
+    max-width: 70%;
 }
 
-
-/* Grouping: Reduces margin for consecutive messages */
-.grouped-message {
-    margin-top: 2px;
-    margin-bottom: 2px;
-}
-
-/* Username above the bubble (only for other users) */
-.message-username {
-    font-size: 0.8em;
-    font-weight: bold;
-    color: var(--color-muted);
-    margin-bottom: 3px;
-    padding: 0 5px;
-    width: fit-content;
-    text-align: left;
-    align-self: flex-start; 
-}
-.message-username strong {
-    color: var(--color-text);
-    font-weight: 600;
-}
-.message-username .username-separator {
-    margin-right: 5px;
-    font-weight: normal;
-    color: var(--color-muted);
-}
-
-
-/* Wrapper for the Bubble and the Time */
-.message-content-wrapper {
-    display: flex;
-    flex-direction: column; 
-    max-width: 100%; 
-    min-height: 20px;
-}
-
-.bubble-content {
-    padding: 10px 15px;
-    border-radius: 18px;
-    line-height: 1.4;
-    font-size: 0.95em;
-    word-break: break-word;
-    white-space: pre-wrap;
-    text-align: left;
-}
-
-/* --- Time Styling (Underneath the bubble) --- */
-.message-time {
-    font-size: 0.7em;
-    color: var(--color-muted);
-    margin-top: 2px;
-    margin-bottom: 0;
-    padding: 0 3px;
-    opacity: 0.8;
-}
-
-/* 2. Messages from OTHER users (Left-Aligned) */
-.other-message .message-content-area {
-    align-items: flex-start;
-}
-.other-message .message-content-wrapper {
-    align-items: flex-start;
-}
-.other-message .bubble-content {
-    background: var(--color-bubble-other);
-    color: var(--color-text);
-    border-bottom-left-radius: 4px;
-}
-
-/* 3. Messages from the CURRENT user (Far Right-Aligned) */
-.user-message {
-    justify-content: flex-end; /* Pushes the message to the right side of the main wrapper */
-}
 .user-message .message-content-area {
     align-items: flex-end;
 }
-.user-message .message-content-wrapper {
-    align-items: flex-end;
-}
-.user-message .bubble-content {
-    background: var(--color-bubble-self);
-    color: white;
-    border-bottom-right-radius: 4px;
-}
-.user-message .message-content-wrapper .message-time {
-    opacity: 1;
+
+.message-username {
+    font-size: 0.8em;
+    color: var(--color-muted);
+    margin-bottom: 2px;
+    margin-left: 5px;
 }
 
-/* 4. System/Announcement Messages */
+.message-content-wrapper {
+    padding: 8px 12px;
+    border-radius: 12px;
+    position: relative;
+    word-wrap: break-word; 
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.other-message .message-content-wrapper {
+    background-color: var(--color-bubble-other);
+    border-bottom-left-radius: 2px;
+}
+
+.user-message .message-content-wrapper {
+    background-color: var(--color-bubble-self);
+    border-bottom-right-radius: 2px;
+}
+
+/* Grouped Messages (Same sender < 1 min) */
+.grouped-message {
+    margin-bottom: 2px;
+    margin-top: -5px; 
+}
+
+/* System Messages */
 .system-message {
-    display: block;
-    text-align: center;
+    align-self: center;
     color: var(--color-system);
     font-style: italic;
-    font-weight: 500;
-    margin: 10px auto;
-    max-width: 80%;
-    padding: 0;
-}
-.system-message * {
-    background: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    color: var(--color-system) !important;
-    display: contents;
+    font-size: 0.85em;
+    margin: 5px 0;
+    width: 100%;
     text-align: center;
 }
-
-/* 5. Private Messages */
 .private-message {
-    text-align: left;
-    margin: 10px auto;
-    padding: 8px 15px;
-    border-radius: 8px;
-    background-color: var(--color-bubble-pm); 
-    color: var(--color-text);
-    border-left: 4px solid var(--color-pm-accent); 
-    font-style: normal !important;
-    max-width: 90%;
-    width: fit-content;
-    font-weight: bold; 
-}
-.private-message * {
-    background: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    color: inherit !important;
-    display: contents;
-    text-align: inherit;
-    font-style: inherit;
-    font-weight: inherit;
-}
-.private-message strong {
-    color: var(--color-pm-accent);
-}
-.private-message u {
-    text-decoration-color: var(--color-pm-accent);
+    background: var(--color-bubble-pm);
+    padding: 5px;
+    border-radius: 5px;
+    border-left: 3px solid var(--color-pm-accent);
+    color: #e0e0e0;
 }
 
-/* --- Image Specific Styling --- */
-.image-bubble-content {
-    padding: 5px !important; 
-    max-width: 300px;
-    height: auto;
-    background: none !important; 
+/* Formatting Helpers */
+del { color: #888; }
+strong { color: #fff; font-weight: 700; }
+em { color: #ddd; }
+u { text-decoration-color: var(--color-accent-blue); text-decoration-thickness: 2px; }
+
+.message-time {
+    font-size: 0.65em;
+    color: rgba(255,255,255,0.6);
+    margin-left: 8px;
+    vertical-align: bottom;
 }
 
-.image-container {
-    max-width: 100%;
-    max-height: 400px;
-    overflow: hidden;
-    border-radius: 12px;
-    padding: 5px; 
-}
-
-.user-message .image-container {
-    background: var(--color-bubble-self);
-}
-.other-message .image-container {
-    background: var(--color-bubble-other);
-}
-
-.image-container img {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    border-radius: 8px; 
-}
-
-.image-caption {
-    padding: 5px 10px;
-    margin-bottom: 5px; 
-    font-size: 0.9em;
-    word-break: break-word;
-    white-space: pre-wrap;
-    background: transparent !important;
-}
-
-
-/* --- Input Area & Formatting Styles --- */
-
+/* --- INPUT AREA --- */
 #message-input-area {
+    padding: 15px;
+    background-color: var(--bg-primary);
+    border-top: 1px solid #333;
     display: flex;
-    padding: 10px;
     gap: 10px;
-    background: var(--bg-input);
-    border-top: 1px solid #555;
-    align-items: flex-end; 
+    align-items: center;
 }
 
-/* NEW: Image Preview Area */
 #image-preview-area {
     display: flex;
     flex-direction: column;
@@ -493,21 +291,89 @@ html, body {
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
-    align-self: flex-end;
+}
+
+#send-button { background-color: var(--color-accent-green); color: white; }
+#send-button:hover { background-color: #43a047; }
+#file-upload-btn { background-color: #555; color: white; }
+
+/* --- RIGHT PANEL (VC & Tools) --- */
+#right-panel {
+    width: 200px;
+    background-color: var(--bg-primary);
+    border-left: 1px solid #333;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.panel-title {
+    margin: 0 0 10px 0;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    font-size: 0.8em;
+    letter-spacing: 1px;
+}
+
+.panel-btn {
+    width: 100%;
+    padding: 8px;
+    background-color: var(--color-accent-blue);
     color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    margin-bottom: 5px;
+}
+.panel-btn:hover { opacity: 0.9; }
+.panel-btn.active { background-color: var(--color-vc-red); }
+
+.panel-hint {
+    font-size: 0.75em;
+    color: #666;
+    margin: 0;
 }
 
-#send-button { background: var(--color-accent-green); }
-#file-upload-btn { background: var(--color-accent-yellow); color: var(--bg-primary); font-size: 1.2em; }
-#file-upload-btn[title*="Not implemented"] { opacity: 0.7; cursor: not-allowed; }
-
-
-/* NEW: VC Mute button active state (Muted is Red) */
-#vc-btn-mute.active {
-    background-color: var(--color-vc-red);
+#vc-user-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
+/* VC List Items */
+#vc-user-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    padding: 5px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.05);
+}
 
-/* Text Formatting */
-u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
-del { color: var(--color-muted); }
+#vc-user-list img.list-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid transparent; /* Prepare for border transition */
+    transition: all 0.1s ease;
+}
+
+/* --- NEW: SPEAKING INDICATOR --- */
+#vc-user-list li.speaking img.list-avatar {
+    border-color: var(--color-accent-green);
+    box-shadow: 0 0 8px var(--color-accent-green);
+    animation: pulse-green 1s infinite;
+}
+
+@keyframes pulse-green {
+    0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+    70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+}
