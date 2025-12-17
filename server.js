@@ -4,7 +4,19 @@ const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+
+// --- CRITICAL FIX FOR RENDER/PRODUCTION DEPLOYMENT ---
+// The CORS configuration allows the Socket.IO client (running in the browser)
+// to connect to the server without being blocked by cross-origin policies.
+const io = socketIo(server, {
+    cors: {
+        // Allows connection from *any* origin. For better security, you can
+        // replace "*" with your specific Render URL: 'https://your-app-name.onrender.com'
+        origin: "*", 
+        methods: ["GET", "POST"]
+    }
+});
+
 
 // --- State Management ---
 const users = {}; 
