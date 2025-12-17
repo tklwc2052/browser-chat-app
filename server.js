@@ -151,4 +151,116 @@ io.on('connection', (socket) => {
                     case 'server':
                         if (args) {
                             // Format: **Announcement**: **[Your message]** [Time]
-                            const serverMsg = formatMessage('Announcement', `: **${args
+                            const serverMsg = formatMessage('Announcement', `: **${args}**`);
+                            io.emit('chat-message', serverMsg);
+                            addToHistory(serverMsg);
+                            return; 
+                        } else {
+                            response = `Usage: /server [message]. Broadcasts a server-wide announcement.`;
+                        }
+                        break;
+
+                    case 'clear':
+                        io.emit('clear-chat'); 
+                        messageHistory.length = 0; 
+                        const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
+                        io.emit('chat-message', clearConfirmationMsg);
+                        addToHistory(clearConfirmationMsg);
+                        return; 
+                    
+                    default:
+                        response = `Unknown Admin Command: /${command}. Available: /server, /clear.`;
+                }
+            } else {
+                // Non-admin trying to use any command (or a command other than /msg)
+                response = `Unknown command: /${command}. Only the /msg command is generally available.`;
+            }
+
+            // If a response was generated (e.g., error, usage message)
+            if (response) {
+                const commandResponse = formatMessage('System', response);
+                socket.emit('chat-message', commandResponse);
+            }
+
+        } else if (msg.trim()) {
+            // Not a command, broadcast the message
+            const formattedMsg = formatMessage(sender, msg);
+            io.emit('chat-message', formattedMsg);
+            addToHistory(formattedMsg);
+        }
+    });
+    
+    // --- 3. Handle Voice Chat Join/Leave ---
+
+    socket.on('vc-join', () => {
+        const username = users[socket.id];
+        if (username && !vcParticipants[socket.id]) {
+            vcParticipants[socket.id] = username;
+            
+            const joinMsg = formatMessage('System', `User '${username}' joined the voice chat.`);
+            io.emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+            
+            broadcastVcUserList();
+            
+            // CRITICAL: Signal to all other clients that this user is attempting to connect (WebRTC signaling)
+            socket.broadcast.emit('vc-user-joined', socket.id, username);
+        }
+    });
+
+    socket.on('vc-leave', () => {
+        const username = users[socket.id];
+        if (username && vcParticipants[socket.id]) {
+            delete vcParticipants[socket.id];
+
+            const leaveMsg = formatMessage('System', `User '${username}' left the voice chat.`);
+            io.emit('chat-message', leaveMsg);
+            addToHistory(leaveMsg);
+            
+            broadcastVcUserList();
+            
+            // CRITICAL: Signal to all other clients that this user has left
+            socket.broadcast.emit('vc-user-left', socket.id);
+        }
+    });
+
+    // --- 4. WebRTC Signaling ---
+    // This relays the signaling data (Offers, Answers, ICE Candidates) between two specific users.
+    socket.on('webrtc-signal', (toId, signal) => {
+        // Relay the signal data from the sender to the specific recipient
+        io.to(toId).emit('webrtc-signal', socket.id, signal);
+    });
+
+
+    // --- 5. Handle Disconnect ---
+    socket.on('disconnect', () => {
+        const username = users[socket.id];
+        
+        // NEW: Voice Chat Cleanup
+        if (vcParticipants[socket.id]) {
+            delete vcParticipants[socket.id];
+            broadcastVcUserList();
+            // Signal to others that this user dropped out of VC
+            socket.broadcast.emit('vc-user-left', socket.id); 
+        }
+
+        if (username) {
+            delete users[socket.id];
+            console.log(`User disconnected: ${username} (${socket.id})`);
+            
+            const leaveMsg = formatMessage('System', `User '${username}' left the chat.`);
+            io.emit('chat-message', leaveMsg);
+            addToHistory(leaveMsg);
+            
+            broadcastUserList();
+        } else {
+            console.log(`Anonymous user disconnected: ${socket.id}`);
+        }
+    });
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
