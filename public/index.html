@@ -29,7 +29,10 @@
 
         <div id="message-input-area">
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented)">
+            
+            <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
+            
+            <button id="file-upload-btn" title="Upload Image/File">
                 📁
             </button>
             <button id="send-button">Send</button>
@@ -63,45 +66,34 @@
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
         
-        // NEW: Selectors for Input Area elements
         const messageInputArea = document.getElementById('message-input-area');
         const fileUploadBtn = document.getElementById('file-upload-btn');
         const sendButton = document.getElementById('send-button');
 
 
         if (mainWrapper) {
-            // Remove the gap
             mainWrapper.style.gap = '0';
-            // FIX: Set the maximum content width to 150px in popup mode
             mainWrapper.style.maxWidth = '150px'; 
         }
         if (rightPanel) {
-            // Hide the side panel
             rightPanel.style.display = 'none';
         }
         if (chatContainer) {
-            // Ensure the chat container fills the available wrapper space
             chatContainer.style.maxWidth = '100%';
         }
 
-        // --- NEW INPUT LAYOUT FOR POPUP MODE ---
         if (messageInputArea) {
-            // 1. Change the input area to a vertical stack
             messageInputArea.style.flexDirection = 'column';
-            // 2. Add padding/gap back manually
             messageInputArea.style.gap = '5px';
         }
         if (fileUploadBtn) {
-            // 3. Make buttons full width to span the column
             fileUploadBtn.style.width = '100%';
             fileUploadBtn.style.alignSelf = 'stretch';
         }
         if (sendButton) {
-            // 3. Make buttons full width to span the column
             sendButton.style.width = '100%';
             sendButton.style.alignSelf = 'stretch';
         }
-        // --- END NEW INPUT LAYOUT ---
     }
     // ------------------------------------
 
@@ -114,10 +106,13 @@
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const onlineUsersList = document.getElementById('online-users-list');
-    // New Button
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     
-    // NEW VC Elements
+    // NEW Media Elements
+    const fileUploadBtn = document.getElementById('file-upload-btn');
+    const imageUploadInput = document.getElementById('image-upload-input');
+
+    // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcBtnLeave = document.getElementById('vc-btn-leave');
@@ -128,9 +123,9 @@
     let lastUserMessageTime = 0; 
     let lastOtherMessageSender = ''; 
     
-    // NEW VC State
+    // VC State
     let localStream = null; 
-    const peerConnections = {}; // Stores RTCPeerConnection objects: { socketId: RTCPeerConnection }
+    const peerConnections = {}; 
     let isMuted = false;
 
 
@@ -141,23 +136,23 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // Crossout: ~~text~~ with <del>text</del>
+        // Order is important: Crossout, Bold, Underline, Italics
         formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-        
-        // Bold: **text** with <strong>text</strong>
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        
-        // Underline: __text__ with <u>text</u>
         formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        
-        // Slanted (Italics): *text* with <em>text</em>
         formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         
-        // UNSANITIZE only the newly added HTML tags for rendering
+        // UNSANITIZE the newly added HTML tags for rendering
         formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
         formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
         formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
         formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
+        formattedText = formattedText.replace(/&lt;div class="image-container"&gt;/g, '<div class="image-container">').replace(/&lt;\/div&gt;/g, '</div>');
+        formattedText = formattedText.replace(/&lt;img src="(.*?)" alt="(.*?)"&gt;/g, (match, src, alt) => {
+            // Re-sanitize Data URLs only to prevent XSS if possible, but keep the structure
+            return `<img src="${src}" alt="${alt}">`;
+        });
+
 
         return formattedText;
     }
@@ -178,7 +173,6 @@
             localStorage.setItem('chatUsername', username);
             setUsername(username);
         } else {
-            // Using console warning instead of intrusive alert
             console.warn('Please enter a username.');
         }
     });
@@ -192,13 +186,14 @@
         messageInput.focus();
     }
 
-    // --- 3. Message Sending ---
+    // --- 3. Message Sending (Text Only) ---
 
     function sendMessage() {
         let msg = messageInput.value.trim();
         if (!msg || !currentUsername) return; 
 
-        socket.emit('chat-message', msg);
+        // Send the raw text, the server handles creating the object
+        socket.emit('chat-message', msg); 
         messageInput.value = '';
     }
 
@@ -210,64 +205,85 @@
             sendMessage();
         }
     });
+
+    // --- NEW: 3b. Image Upload Handling ---
+
+    fileUploadBtn.addEventListener('click', () => {
+        imageUploadInput.click();
+    });
+
+    imageUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file || !file.type.startsWith('image/')) {
+            console.warn('Please select an image file.');
+            imageUploadInput.value = '';
+            return;
+        }
+
+        if (file.size > 500 * 1024) { // Limit size to 500KB (Recommended for Data URLs)
+             alert('Image file size exceeds the 500KB limit for embedded chat images. Please choose a smaller image.');
+             imageUploadInput.value = ''; 
+             return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (readerEvent) => {
+            const dataUrl = readerEvent.target.result;
+            
+            // Send the structured media object to the server
+            socket.emit('send-media', {
+                type: 'image',
+                mimeType: file.type,
+                content: dataUrl // The Base64 encoded image data
+            });
+            
+            imageUploadInput.value = ''; // Clear the input for next upload
+        };
+        reader.readAsDataURL(file);
+    });
     
-    // --- 4. Message Display Helper Function (Grouping Logic) ---
-    function displayMessage(formattedMessage) {
+    // --- 4. Message Display Helper Function (Now accepts a message OBJECT) ---
+    function displayMessage(message) { // NEW: Accepts object {id, sender, content, type, time, target}
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
-        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-
-        // --- Handle System Messages/Announcements ---
-        if (!fullMatch) {
-            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
-            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-            
-            // CRITICAL: Reset trackers on system message
-            lastUserMessageTime = 0; 
-            lastOtherMessageSender = ''; 
-
-            if (systemMatch) {
-                messageEl.classList.add('system-message');
-                const systemText = systemMatch[2];
-                
-                // NEW: Private Message Check (uses the specific tags we set in server.js)
-                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
-                    messageEl.classList.add('private-message');
-                    // Remove the surrounding bolding and colon introduced by the server's formatMessage
-                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
-                    
-                    // We wrap the entire content in <u> tags to force underline
-                    // The inner message (e.g., 'hi') is already bolded by the server.
-                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
-
-                    messagesDiv.appendChild(messageEl);
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    return; // PM handled, exit function
-                }
-                
-                // Standard System Message / Announcement
-                messageEl.innerHTML = parseFormatting(systemText);
-                messagesDiv.appendChild(messageEl);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
-            }
-            
-            // Fallback for unparseable system messages/errors
-            messageEl.classList.add('system-message');
-                messageEl.innerHTML = parseFormatting(formattedMessage);
-                messagesDiv.appendChild(messageEl);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
+        // Reset trackers on non-regular message types
+        if (message.type !== 'text' && message.type !== 'image') {
+             lastUserMessageTime = 0; 
+             lastOtherMessageSender = ''; 
         }
-        
-        // Extracted parts for REGULAR messages:
-        const sender = fullMatch[1];
-        const messageText = fullMatch[2];
-        const timeString = fullMatch[3]; 
 
-        // 1. Determine alignment class, tracking variables, and grouping logic
+        // --- 1. Handle System/Announcement/PM Messages ---
+        if (message.type === 'system' || message.type === 'announcement') {
+            messageEl.classList.add('system-message');
+            messageEl.innerHTML = parseFormatting(message.content);
+            
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return;
+        }
+
+        if (message.type === 'pm_to' || message.type === 'pm_from') {
+             messageEl.classList.add('system-message', 'private-message');
+             let prefix = message.type === 'pm_to' ? `PM to ${message.target}` : `PM from ${message.target}`;
+             
+             // Content format: <u><strong>[Prefix]</strong>: Raw message content</u>
+             const pmContent = `<u><strong>[${prefix}]</strong>: ${message.content}</u>`; 
+             messageEl.innerHTML = parseFormatting(pmContent); 
+             
+             messagesDiv.appendChild(messageEl);
+             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+             return;
+        }
+
+
+        // --- 2. Handle REGULAR Messages (Text & Image) ---
+
+        // Extracted parts for REGULAR messages:
+        const sender = message.sender;
+        const messageText = message.content;
+        const timeString = message.time; 
+
         const isUserMessage = (sender === currentUsername);
         let showTime = true; 
         let showUsername = true; 
@@ -285,22 +301,20 @@
             currentTimeInMinutes = hours * 60 + minutes;
         }
 
-
-        // 1a. Set base alignment/username visibility
+        // 2b. Set base alignment/username visibility
         if (isUserMessage) {
             messageEl.classList.add('user-message');
-            showUsername = false; // Never show username on self-messages
+            showUsername = false; 
         } else {
             messageEl.classList.add('other-message');
         }
 
 
-        // 1b. Unified Grouping Logic (Applies to Both User and Other Messages)
+        // 2c. Unified Grouping Logic
         let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
         let lastTime = lastUserMessageTime;
         let currentSender = sender;
 
-        // Check if this message should be grouped with the previous one
         const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
 
         if (shouldGroup) {
@@ -321,26 +335,25 @@
             // =======================================================================
 
         } else {
-            // If not grouped, reset the opposing sender's tracker to break future grouping blocks
             if (isUserMessage) {
                 lastOtherMessageSender = '';
             } else {
-                lastUserMessageTime = 0; // Reset other user's time tracker
+                lastUserMessageTime = 0; 
             }
         }
 
-        // 1c. Update Tracking Variables (After Grouping Check)
+        // 2d. Update Tracking Variables (After Grouping Check)
         if (isUserMessage) {
             lastUserMessageTime = currentTimeInMinutes;
         } else {
             lastOtherMessageSender = currentSender;
-            lastUserMessageTime = currentTimeInMinutes; // Use the same time tracker for all users
+            lastUserMessageTime = currentTimeInMinutes; 
         }
 
 
-        // --- 2. Assemble the Message Structure ---
+        // --- 3. Assemble the Message Structure ---
         
-        // 2a. Username (ONLY for other users, above the bubble, when showUsername is true)
+        // 3a. Username 
         if (showUsername && !isUserMessage) {
             const usernameDiv = document.createElement('div');
             usernameDiv.classList.add('message-username');
@@ -348,19 +361,28 @@
             messageEl.appendChild(usernameDiv);
         }
 
-        // 2b. Content Wrapper (Bubble + Time)
+        // 3b. Content Wrapper (Bubble + Content + Time)
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
         const bubbleContent = document.createElement('span');
         bubbleContent.classList.add('bubble-content');
         
-        let contentHtml = parseFormatting(messageText); 
+        let contentHtml = '';
+
+        if (message.type === 'text') {
+            // Text Message: Parse formatting
+            contentHtml = parseFormatting(messageText); 
+        } else if (message.type === 'image') {
+            // Image Message: Create image tag
+            contentHtml = `<div class="image-container"><img src="${messageText}" alt="Image uploaded by ${sender}"></div>`;
+            bubbleContent.classList.add('image-bubble-content'); // Add class for styling
+        }
 
         bubbleContent.innerHTML = contentHtml;
         contentWrapper.appendChild(bubbleContent); 
         
-        // 2c. Time Content (Renders only for the last message because previous times were removed)
+        // 3c. Time Content 
         if (showTime) {
             const timeSpan = document.createElement('span');
             timeSpan.classList.add('message-time');
@@ -368,22 +390,22 @@
             contentWrapper.appendChild(timeSpan); 
         }
 
-        // 3. Assemble the final message element
+        // 4. Assemble the final message element
         messageEl.appendChild(contentWrapper);
         
         messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
+
     // --- 5. Receiving Messages (History and Live) ---
-    
+    // history and chat-message now emit/receive message OBJECTS
+
     socket.on('history', (history) => {
-        // Reset trackers before starting the loop
         lastUserMessageTime = 0; 
         lastOtherMessageSender = ''; 
         messagesDiv.innerHTML = ''; 
 
-        // Loop through history messages sequentially
         history.forEach(msg => {
             displayMessage(msg);
         });
@@ -391,8 +413,8 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight; 
     });
 
-    socket.on('chat-message', (formattedMessage) => {
-        displayMessage(formattedMessage);
+    socket.on('chat-message', (messageObject) => { 
+        displayMessage(messageObject);
     });
 
     socket.on('clear-chat', () => {
@@ -413,12 +435,9 @@
     // --- 7. Launch Custom Window Logic (UPDATED) ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
-            // Get the current URL root (removing any existing query params)
             const currentUrl = window.location.href.split('?')[0]; 
-            // Add the new popup flag to the URL
             const newUrl = `${currentUrl}?mode=popup`; 
             
-            // Open a new window with a width of 200px and a height of 700px
             window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
         });
     }
@@ -428,15 +447,13 @@
     // --- UI Control ---
     function updateVcControls(inCall) {
         vcBtnJoin.style.display = inCall ? 'none' : 'block';
-        vcBtnMute.style.display = inCall ? 'block' : 'block'; // Always visible when not joined to enable pre-mute
+        vcBtnMute.style.display = inCall ? 'block' : 'block'; 
         vcBtnLeave.style.display = inCall ? 'block' : 'none';
         
-        // Ensure mute button reflects state
         if (inCall) {
             vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
             vcBtnMute.classList.toggle('active', isMuted);
         } else {
-            // Display only a generic Mute button when not in call (as a preference)
             vcBtnMute.textContent = 'Mute';
             vcBtnMute.classList.remove('active');
         }
@@ -449,21 +466,14 @@
             return;
         }
         try {
-            // 1. Get user's microphone stream
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            
-            // 2. Apply initial mute state
             localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
 
-            // 3. Signal to the server that we are joining
             socket.emit('vc-join');
             updateVcControls(true);
-
-            // 4. Creation of connections with peers is handled by the 'vc-user-joined' event from the server.
             
         } catch (err) {
             console.error('Failed to get local audio stream (User denied access or no device):', err);
-            // Fallback UI or error message
             updateVcControls(false); 
         }
     });
@@ -474,25 +484,21 @@
         if (localStream) {
             localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
         }
-        updateVcControls(localStream !== null); // Update button text/class
+        updateVcControls(localStream !== null); 
     });
 
     // --- VC Leave ---
     vcBtnLeave.addEventListener('click', () => {
         socket.emit('vc-leave');
         
-        // 1. Close all peer connections
         Object.values(peerConnections).forEach(pc => pc.close());
         
-        // 2. Stop local audio tracks
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
         }
         
-        // 3. Clean up
         localStream = null;
         Object.keys(peerConnections).forEach(key => delete peerConnections[key]);
-        // Remove all dynamically created remote audio elements
         document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
 
         updateVcControls(false);
@@ -500,34 +506,29 @@
 
     // --- Peer Connection Handling ---
 
-    // Utility to create a new RTCPeerConnection
     function createPeerConnection(remoteSocketId) {
         const pc = new RTCPeerConnection({
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' } // Standard STUN server
+                { urls: 'stun:stun.l.google.com:19302' } 
             ]
         });
 
         pc.onicecandidate = ({ candidate }) => {
-            // 1. Send ICE candidates to the remote peer via the server
             if (candidate) {
                 socket.emit('webrtc-signal', remoteSocketId, { 'ice-candidate': candidate });
             }
         };
 
         pc.ontrack = ({ streams: [stream] }) => {
-            // 2. When a remote stream is received, play it (audio only)
             const audioEl = document.createElement('audio');
             audioEl.srcObject = stream;
             audioEl.autoplay = true;
             audioEl.id = `audio-${remoteSocketId}`;
             
-            // Hidden audio elements can be appended anywhere, e.g., to the body
             document.body.appendChild(audioEl); 
             console.log(`Playing audio from peer ${remoteSocketId}`);
         };
 
-        // 3. Add local tracks to the connection
         if (localStream) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
@@ -539,13 +540,11 @@
 
     // --- Socket.IO WebRTC Signaling Handlers ---
 
-    // A new user has joined (Initiate a call to them)
     socket.on('vc-user-joined', async (newUserId) => {
-        if (!localStream) return; // Only process if we are currently in a call
+        if (!localStream) return; 
 
         const pc = createPeerConnection(newUserId);
         
-        // 1. Create and send an Offer (Pioneer role)
         try {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -556,7 +555,6 @@
         }
     });
 
-    // A user has left (Clean up their connection)
     socket.on('vc-user-left', (leavingUserId) => {
         if (peerConnections[leavingUserId]) {
             peerConnections[leavingUserId].close();
@@ -567,20 +565,17 @@
         console.log(`Removed connection and audio for peer ${leavingUserId}`);
     });
 
-    // Receive WebRTC signals (Offers, Answers, ICE Candidates)
     socket.on('webrtc-signal', async (fromId, signal) => {
         let pc = peerConnections[fromId];
         
         if (signal.offer) {
-            // Received an Offer (Responder role)
-            if (!localStream) return; // Must be in call to respond
+            if (!localStream) return; 
 
-            if (!pc) pc = createPeerConnection(fromId); // Create PC if it doesn't exist
+            if (!pc) pc = createPeerConnection(fromId); 
 
             try {
                 await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
                 
-                // 1. Create and send an Answer
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 
@@ -590,7 +585,6 @@
             }
             
         } else if (signal.answer) {
-            // Received an Answer (Pioneer role)
             if (pc && pc.signalingState !== 'stable') {
                  try {
                     await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
@@ -599,13 +593,10 @@
                 }
             }
         } else if (signal['ice-candidate']) {
-            // Received an ICE Candidate
             if (pc) {
                 try {
                     await pc.addIceCandidate(new RTCIceCandidate(signal['ice-candidate']));
                 } catch (e) {
-                    // Ignore error if candidate is invalid or connection is closed
-                    // console.error('Error adding received ICE candidate:', e); 
                 }
             }
         }
@@ -622,7 +613,7 @@
         });
     });
 
-    updateVcControls(false); // Initialize controls state
+    updateVcControls(false); 
     
 </script>
 
