@@ -1,513 +1,532 @@
-/* --- Dark Mode Variables --- */
-:root {
-    /* Main Backgrounds */
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-input: #3c3c3c;
+<!DOCTYPE html>
 
-    /* Chat Bubbles */
-    --color-bubble-self: #007acc; /* Blue for own messages */
-    --color-bubble-other: #3c3c3c; /* Dark grey for others' messages */
-    --color-bubble-pm: #4b3a5b; /* Dark purple/blue for PM background */
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Chat App</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+<div id="main-wrapper">
 
-    /* Text and Elements */
-    --color-text: #f0f0f0;   
-    --color-muted: #aaaaaa;  
-    --color-system: #ff8c00; 
-    --color-pm-accent: #c197ff; /* Light purple accent for PM border/text */
+    <div id="chat-container">
+        <div id="username-area">
+            <button id="avatar-upload-btn" title="Set Avatar (Click to Upload)">
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
+            </button>
+            <h3>username:</h3>
+            <input type="text" id="username-input" placeholder="whatr we callin ya">
+            <button id="set-username-btn">Save</button>
+        </div>
 
-    /* Accent Colors (Buttons) */
-    --color-accent-blue: #007acc;
-    --color-accent-green: #4caf50;
-    --color-accent-yellow: #ffc107;
-    --color-vc-red: #dc3545; /* Added for VC controls */
-    --color-preview-bg: #4a4a4a; /* Added for Image Preview background */
+        <div id="online-users-area">
+            <h4>whos online:</h4>
+            <ul id="online-users-list">
+                </ul>
+        </div>
+        
+        <div id="messages">
+            </div>
 
-    /* Online User List */
-    --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
-}
+        <div id="message-input-area">
+            <div id="image-preview-area" style="display:none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn">X</button>
+            </div>
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
+                📁
+            </button>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+    
+    <div id="right-panel">
+        <h4 class="panel-title">other stuff</h4>
+        <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+        <p class="panel-hint">for a dedicated status/chat window.</p>
 
-/* --- GLOBAL LAYOUT & DYNAMIC HEIGHT FIX --- */
-html, body {
-    height: 100%;
-    min-height: 100vh;
-    font-family: sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: var(--bg-primary);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
+        <h4 class="panel-title">voice chat</h4>
+        <button id="vc-btn-join" class="panel-btn">Join Call</button>
+        <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+        <ul id="vc-user-list">
+            </ul>
+        </div>
+    
+</div>
 
-#main-wrapper {
-    display: flex;
-    gap: 10px; 
-    width: 950px; 
-    max-width: 950px; 
-    height: 700px; 
-    min-width: 200px; 
-}
+<script>
+    // --- 0. Popup Mode Check ---
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('mode') === 'popup') {
+        const mainWrapper = document.getElementById('main-wrapper');
+        const rightPanel = document.getElementById('right-panel');
+        const chatContainer = document.getElementById('chat-container');
+        
+        const messageInputArea = document.getElementById('message-input-area');
+        const fileUploadBtn = document.getElementById('file-upload-btn');
+        const sendButton = document.getElementById('send-button');
 
-#chat-container {
-    flex-grow: 1;
-    max-width: 1200px;
-    height: 100%; 
-    min-width: 100px; 
+        if (mainWrapper) {
+            mainWrapper.style.gap = '0';
+            mainWrapper.style.maxWidth = '150px'; 
+        }
+        if (rightPanel) {
+            rightPanel.style.display = 'none';
+        }
+        if (chatContainer) {
+            chatContainer.style.maxWidth = '100%';
+        }
 
-    background: var(--bg-secondary); 
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); 
-    display: flex;
-    flex-direction: column; 
-    overflow: hidden;
-    color: var(--color-text); 
-}
+        if (messageInputArea) {
+            messageInputArea.style.flexDirection = 'column';
+            messageInputArea.style.gap = '5px';
+        }
+        if (fileUploadBtn) {
+            fileUploadBtn.style.width = '100%';
+            fileUploadBtn.style.alignSelf = 'stretch';
+        }
+        if (sendButton) {
+            sendButton.style.width = '100%';
+            sendButton.style.alignSelf = 'stretch';
+        }
+    }
+    // ------------------------------------
 
-/* --- Right Side Panel Styling --- */
-#right-panel {
-    width: 250px; 
-    min-width: 200px;
-    height: 100%;
-    padding: 15px;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
+    const socket = io();
 
-.panel-title {
-    margin-top: 0;
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--bg-input);
-    color: var(--color-system);
-}
+    // --- DOM Elements ---
+    const messagesDiv = document.getElementById('messages');
+    const usernameInput = document.getElementById('username-input');
+    const setUsernameBtn = document.getElementById('set-username-btn');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const onlineUsersList = document.getElementById('online-users-list');
+    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    
+    // AVATAR ELEMENTS
+    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
+    const currentAvatarPreview = document.getElementById('current-avatar-preview');
 
-.panel-btn {
-    padding: 10px 15px;
-    background: var(--color-accent-blue);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background 0.2s;
-}
-
-.panel-btn:hover {
-    background: #005f99;
-}
-
-.panel-hint {
-    font-size: 0.75em;
-    color: var(--color-muted);
-    margin: 0;
-}
-/* ------------------------------------- */
-
-/* --- Top/Bottom UI (Standard Layout) --- */
-
-/* UPDATED: Avatar Button Styles added */
-#username-area { 
-    padding: 10px; 
-    border-bottom: 1px solid var(--bg-input); 
-    background: var(--bg-secondary); 
-    display: flex; 
-    align-items: center; 
-    gap: 10px; 
-}
-
-/* --- NEW AVATAR INPUT STYLES --- */
-#avatar-upload-btn {
-    padding: 0;
-    width: 38px; 
-    height: 38px;
-    border: 2px solid var(--color-accent-blue);
-    border-radius: 50%;
-    background: none;
-    cursor: pointer;
-    overflow: hidden;
-    flex-shrink: 0;
-}
-#avatar-upload-btn:hover {
-    opacity: 0.8;
-}
-
-#current-avatar-preview {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border: none; 
-    border-radius: 50%;
-    display: block;
-}
-/* --- END AVATAR INPUT STYLES --- */
+    // VC ELEMENTS (NEW)
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcUserList = document.getElementById('vc-user-list');
 
 
-#username-area h3 { margin: 0; font-size: 1em; }
-#username-input { flex-grow: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: var(--bg-input); color: var(--color-text); }
-#set-username-btn { padding: 8px 15px; background: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
+    let currentUsername = '';
+    let currentAvatarBase64 = ''; 
+    let lastMessageSender = ''; 
+    let lastMessageTime = 0; 
+    let isInVC = false; // <<< NEW: State variable for VC
 
 
-#online-users-area { padding: 10px; border-bottom: 1px solid var(--bg-input); background: var(--bg-secondary); }
-#online-users-area h4 { margin-top: 0; margin-bottom: 5px; font-size: 0.9em; color: var(--color-muted); }
+    // --- 1. Utility Function to Handle Formatting ---
+    function parseFormatting(text) {
+        let formattedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
 
-/* --- Online User List and VC List --- */
-#online-users-list { 
-    list-style-type: none; 
-    padding: 0; 
-    margin: 0; 
-    display: flex; 
-    flex-wrap: wrap; 
-    gap: 10px; 
-    font-size: 0.85em; 
-}
-#online-users-list li { 
-    padding: 2px 6px; 
-    background-color: var(--color-online-bg); 
-    border-radius: 3px; 
-    color: var(--color-online-text); 
-    font-weight: bold; 
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-#vc-user-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    font-size: 0.85em;
-    max-height: 100px;
-    overflow-y: auto;
-}
+        // Crossout: ~~text~~
+        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        
+        // Bold: **text**
+        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Underline: __text__
+        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
+        
+        // Slanted (Italics): *text*
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // UNSANITIZE only the newly added HTML tags for rendering
+        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
+        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
+        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
 
-#vc-user-list li {
-    padding: 3px 0;
-    color: var(--color-accent-green); 
-    border-bottom: 1px dotted var(--bg-input);
-    display: flex; 
-    align-items: center;
-    gap: 5px;
-}
+        return formattedText;
+    }
 
-
-#messages {
-    flex-grow: 1;
-    height: auto;
-    padding: 15px;
-    overflow-y: auto;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--bg-input);
-    position: relative; 
-}
-
-/* --- AVATAR STYLES (NEW) --- */
-.avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0; 
-    background: var(--color-accent-blue);
-    border: 1px solid var(--color-text);
-}
-
-.list-avatar {
-    width: 20px;
-    height: 20px;
-    border-width: 0;
-}
-
-.avatar-spacer {
-    /* Used for grouped messages to maintain alignment when avatar is hidden */
-    width: 30px;
-    height: 30px;
-    flex-shrink: 0; 
-    background: transparent !important;
-    border: none !important;
-    border-radius: 50%;
-}
+    // --- 2. Avatar Selection and Conversion ---
+    
+    avatarUploadBtn.addEventListener('click', () => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    currentAvatarBase64 = reader.result;
+                    currentAvatarPreview.src = currentAvatarBase64; 
+                    
+                    if (currentUsername) {
+                        setUsername(currentUsername); 
+                    }
+                    localStorage.setItem('chatAvatar', currentAvatarBase64);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        fileInput.click();
+    });
 
 
-/* --- CHAT BUBBLE & MESSAGE STYLES (REVISED FOR AVATARS) --- */
+    // --- 3. Username Handling ---
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const storedUsername = localStorage.getItem('chatUsername');
+        const storedAvatar = localStorage.getItem('chatAvatar');
 
-.message {
-    display: flex; /* CRITICAL: For horizontal alignment of Avatar and Content */
-    align-items: flex-start; /* Aligns avatar and content-area to the top */
-    margin: 8px 0;
-    padding: 0 5px;
-    gap: 8px; /* Space between avatar and message content */
-}
+        if (storedAvatar) {
+            currentAvatarBase64 = storedAvatar;
+            currentAvatarPreview.src = storedAvatar;
+        } else {
+            currentAvatarPreview.src = 'placeholder-avatar.png';
+        }
 
-/* New wrapper to handle username (if present) and content bubble stack */
-.message-content-area {
-    display: flex;
-    flex-direction: column;
-    max-width: 75%;
-    flex-grow: 1; 
-}
+        if (storedUsername) {
+            usernameInput.value = storedUsername;
+            setUsername(storedUsername);
+        }
+    });
+
+    setUsernameBtn.addEventListener('click', () => {
+        const username = usernameInput.value.trim();
+        if (username) {
+            localStorage.setItem('chatUsername', username);
+            if (currentAvatarBase64) {
+                 localStorage.setItem('chatAvatar', currentAvatarBase64);
+            }
+            setUsername(username);
+        } else {
+            console.warn('Please enter a username.');
+        }
+    });
+    
+    function setUsername(username) {
+        currentUsername = username;
+        // Send both username and avatar
+        socket.emit('set-username', { 
+            username: currentUsername, 
+            avatar: currentAvatarBase64 || 'placeholder-avatar.png'
+        }); 
+        usernameInput.disabled = true;
+        setUsernameBtn.disabled = true;
+        usernameInput.placeholder = 'Username set!';
+        messageInput.focus();
+    }
+
+    // --- 4. Message Sending ---
+
+    function sendMessage() {
+        let msg = messageInput.value.trim();
+        if (!msg || !currentUsername) return; 
+
+        socket.emit('chat-message', msg);
+        messageInput.value = '';
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // --- 5. Message Display Helper Function (Grouping Logic) ---
+    function displayMessage(messageObject) {
+        
+        if (typeof messageObject === 'string' || messageObject.avatar === null) {
+            var formattedMessage = messageObject.text || messageObject; 
+            var messageAvatar = null;
+            var sender = null;
+        } else {
+            var formattedMessage = messageObject.text;
+            var messageAvatar = messageObject.avatar;
+            var sender = messageObject.sender;
+        }
+
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message');
+
+        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+
+        // --- Handle System Messages/Announcements ---
+        if (!fullMatch) {
+            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+            
+            // Reset trackers on system message
+            lastMessageTime = 0; 
+            lastMessageSender = ''; 
+
+            if (systemMatch) {
+                messageEl.classList.add('system-message');
+                const systemText = systemMatch[2];
+                
+                // Private Message Check 
+                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
+                    messageEl.classList.add('private-message');
+                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
+                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
+
+                    messagesDiv.appendChild(messageEl);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    return; 
+                }
+                
+                // Standard System Message / Announcement
+                messageEl.innerHTML = parseFormatting(systemText);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+            }
+            
+            messageEl.classList.add('system-message');
+            messageEl.innerHTML = parseFormatting(formattedMessage);
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return;
+        }
+        
+        // Extracted parts for REGULAR messages:
+        const extractedSender = fullMatch[1];
+        const messageText = fullMatch[2];
+        const timeString = fullMatch[3]; 
+
+        const finalSender = sender || extractedSender;
+        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; 
+
+        const isUserMessage = (finalSender === currentUsername);
+        let showAvatar = true;
+        let showUsername = true; 
+
+        // --- Calculate Time in Minutes for Grouping ---
+        let currentTimeInMinutes = 0;
+        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+        if (timeParts) {
+            let hours = parseInt(timeParts[1]);
+            const minutes = parseInt(timeParts[2]);
+            const isPM = timeParts[3] === 'PM';
+            
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            currentTimeInMinutes = hours * 60 + minutes;
+        }
+
+        // 1a. Set base alignment
+        if (isUserMessage) {
+            messageEl.classList.add('user-message');
+            showUsername = false; 
+        } else {
+            messageEl.classList.add('other-message');
+        }
+
+        // 1b. Unified Grouping Logic
+        const shouldGroup = (lastMessageSender === finalSender) && (currentTimeInMinutes - lastMessageTime) < 1;
+
+        if (shouldGroup) {
+            showAvatar = false; 
+            showUsername = false; 
+            messageEl.classList.add('grouped-message');
+
+            const previousMessageEl = messagesDiv.lastChild;
+            if (previousMessageEl && !previousMessageEl.classList.contains('system-message')) {
+                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                if (prevContentWrapper) {
+                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove();
+                    }
+                }
+            }
+        } 
+
+        lastMessageSender = finalSender;
+        lastMessageTime = currentTimeInMinutes;
+        
+
+        // --- 2. Assemble the Message Structure ---
+        
+        // 2a. Avatar (Left side for other users, or spacer)
+        if (!isUserMessage) {
+            if (showAvatar) {
+                const avatarImg = document.createElement('img');
+                avatarImg.classList.add('avatar');
+                avatarImg.src = finalAvatar;
+                messageEl.appendChild(avatarImg);
+            } else {
+                const spacer = document.createElement('div');
+                spacer.classList.add('avatar-spacer');
+                messageEl.appendChild(spacer);
+            }
+        }
+        
+        // 2b. Content Area Wrapper
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+        
+        // 2c. Username
+        if (showUsername && !isUserMessage) {
+            const usernameDiv = document.createElement('div');
+            usernameDiv.classList.add('message-username');
+            usernameDiv.innerHTML = `<strong>${finalSender}</strong><span class="username-separator">:</span>`;
+            contentArea.appendChild(usernameDiv);
+        }
+
+        // 2d. Content Wrapper (Bubble + Time)
+        const contentWrapper = document.createElement('div');
+        contentWrapper.classList.add('message-content-wrapper');
+        
+        const bubbleContent = document.createElement('span');
+        bubbleContent.classList.add('bubble-content');
+        
+        let contentHtml = parseFormatting(messageText); 
+
+        bubbleContent.innerHTML = contentHtml;
+        contentWrapper.appendChild(bubbleContent); 
+        
+        // 2e. Time Content
+        const timeSpan = document.createElement('span');
+        timeSpan.classList.add('message-time');
+        timeSpan.textContent = timeString; 
+        contentWrapper.appendChild(timeSpan); 
+        
+        // 3. Assemble the final message element
+        contentArea.appendChild(contentWrapper);
+
+        if (isUserMessage) {
+            messageEl.appendChild(contentArea);
+        } else {
+            messageEl.appendChild(contentArea);
+        }
+        
+        messagesDiv.appendChild(messageEl);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // --- 6. Voice Chat Logic (NEW) ---
+    
+    vcBtnJoin.addEventListener('click', () => {
+        if (!currentUsername) {
+            alert("Please set a username first to join VC.");
+            return;
+        }
+        
+        if (!isInVC) {
+            // JOINING
+            isInVC = true;
+            vcBtnJoin.textContent = 'Leave Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)'; // Change color for 'Leave'
+            vcBtnMute.style.display = 'block'; // Show mute button
+            vcBtnMute.textContent = 'Mute';
+            vcBtnMute.classList.remove('active');
+            socket.emit('vc-join', true);
+            
+        } else {
+            // LEAVING
+            isInVC = false;
+            vcBtnJoin.textContent = 'Join Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-accent-blue)'; // Reset color for 'Join'
+            vcBtnMute.style.display = 'none'; // Hide mute button
+            socket.emit('vc-join', false);
+        }
+    });
+
+    vcBtnMute.addEventListener('click', () => {
+        const isMuted = vcBtnMute.classList.toggle('active');
+        vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
+        socket.emit('vc-mute-toggle', isMuted);
+    });
+
+    // VC User List Receiver
+    socket.on('vc-user-list-update', (vcUsers) => {
+        vcUserList.innerHTML = '';
+        vcUsers.forEach(userData => {
+            const li = document.createElement('li');
+            
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
+            li.appendChild(listAvatar);
+
+            li.appendChild(document.createTextNode(userData.username));
+            
+            // Add Mute status if muted
+            if (userData.isMuted) {
+                const muteStatus = document.createElement('span');
+                muteStatus.textContent = ' 🔇';
+                muteStatus.style.color = 'var(--color-vc-red)';
+                li.appendChild(muteStatus);
+            }
+            
+            // Visually highlight yourself in the VC list
+            if (userData.username === currentUsername) {
+                li.style.fontWeight = 'bold';
+                li.style.color = 'var(--color-text)'; 
+            } else {
+                li.style.fontWeight = 'normal';
+                li.style.color = 'var(--color-accent-green)'; 
+            }
+            
+            vcUserList.appendChild(li);
+        });
+    });
 
 
-/* Grouping: Reduces margin for consecutive messages */
-.grouped-message {
-    margin-top: 2px;
-    margin-bottom: 2px;
-}
+    // --- 7. Receiving Messages (History and Live) ---
+    socket.on('history', (history) => {
+        lastMessageTime = 0; 
+        lastMessageSender = ''; 
+        messagesDiv.innerHTML = ''; 
+        history.forEach(msg => {
+            displayMessage(msg); 
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+    });
 
-/* Username above the bubble (only for other users) */
-.message-username {
-    font-size: 0.8em;
-    font-weight: bold;
-    color: var(--color-muted);
-    margin-bottom: 3px;
-    padding: 0 5px;
-    width: fit-content;
-    text-align: left;
-    align-self: flex-start; 
-}
-.message-username strong {
-    color: var(--color-text);
-    font-weight: 600;
-}
-.message-username .username-separator {
-    margin-right: 5px;
-    font-weight: normal;
-    color: var(--color-muted);
-}
+    socket.on('chat-message', (messageObject) => {
+        displayMessage(messageObject);
+    });
 
+    socket.on('clear-chat', () => {
+        messagesDiv.innerHTML = '';
+    });
 
-/* Wrapper for the Bubble and the Time */
-.message-content-wrapper {
-    display: flex;
-    flex-direction: column; 
-    max-width: 100%; 
-    min-height: 20px;
-}
+    // --- 8. Online User List Update ---
+    socket.on('user-list-update', (users) => {
+        onlineUsersList.innerHTML = '';
+        users.forEach(userData => {
+            const li = document.createElement('li');
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
+            li.appendChild(listAvatar);
+            li.appendChild(document.createTextNode(userData.username));
+            onlineUsersList.appendChild(li);
+        });
+    });
 
-.bubble-content {
-    padding: 10px 15px;
-    border-radius: 18px;
-    line-height: 1.4;
-    font-size: 0.95em;
-    word-break: break-word;
-    white-space: pre-wrap;
-    text-align: left;
-}
-
-/* --- Time Styling (Underneath the bubble) --- */
-.message-time {
-    font-size: 0.7em;
-    color: var(--color-muted);
-    margin-top: 2px;
-    margin-bottom: 0;
-    padding: 0 3px;
-    opacity: 0.8;
-}
-
-/* 2. Messages from OTHER users (Left-Aligned) */
-.other-message .message-content-area {
-    align-items: flex-start;
-}
-.other-message .message-content-wrapper {
-    align-items: flex-start;
-}
-.other-message .bubble-content {
-    background: var(--color-bubble-other);
-    color: var(--color-text);
-    border-bottom-left-radius: 4px;
-}
-
-/* 3. Messages from the CURRENT user (Far Right-Aligned) */
-.user-message {
-    justify-content: flex-end; /* Pushes the message to the right side of the main wrapper */
-}
-.user-message .message-content-area {
-    align-items: flex-end;
-}
-.user-message .message-content-wrapper {
-    align-items: flex-end;
-}
-.user-message .bubble-content {
-    background: var(--color-bubble-self);
-    color: white;
-    border-bottom-right-radius: 4px;
-}
-.user-message .message-content-wrapper .message-time {
-    opacity: 1;
-}
-
-/* 4. System/Announcement Messages */
-.system-message {
-    display: block;
-    text-align: center;
-    color: var(--color-system);
-    font-style: italic;
-    font-weight: 500;
-    margin: 10px auto;
-    max-width: 80%;
-    padding: 0;
-}
-.system-message * {
-    background: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    color: var(--color-system) !important;
-    display: contents;
-    text-align: center;
-}
-
-/* 5. Private Messages */
-.private-message {
-    text-align: left;
-    margin: 10px auto;
-    padding: 8px 15px;
-    border-radius: 8px;
-    background-color: var(--color-bubble-pm); 
-    color: var(--color-text);
-    border-left: 4px solid var(--color-pm-accent); 
-    font-style: normal !important;
-    max-width: 90%;
-    width: fit-content;
-    font-weight: bold; 
-}
-.private-message * {
-    background: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    color: inherit !important;
-    display: contents;
-    text-align: inherit;
-    font-style: inherit;
-    font-weight: inherit;
-}
-.private-message strong {
-    color: var(--color-pm-accent);
-}
-.private-message u {
-    text-decoration-color: var(--color-pm-accent);
-}
-
-/* --- Image Specific Styling --- */
-.image-bubble-content {
-    padding: 5px !important; 
-    max-width: 300px;
-    height: auto;
-    background: none !important; 
-}
-
-.image-container {
-    max-width: 100%;
-    max-height: 400px;
-    overflow: hidden;
-    border-radius: 12px;
-    padding: 5px; 
-}
-
-.user-message .image-container {
-    background: var(--color-bubble-self);
-}
-.other-message .image-container {
-    background: var(--color-bubble-other);
-}
-
-.image-container img {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    border-radius: 8px; 
-}
-
-.image-caption {
-    padding: 5px 10px;
-    margin-bottom: 5px; 
-    font-size: 0.9em;
-    word-break: break-word;
-    white-space: pre-wrap;
-    background: transparent !important;
-}
+    // --- 9. Launch Custom Window Logic ---
+    if (launchCustomWindowBtn) {
+         launchCustomWindowBtn.addEventListener('click', () => {
+            const currentUrl = window.location.href.split('?')[0]; 
+            const newUrl = `${currentUrl}?mode=popup`; 
+            window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
+        });
+    }
+    
+</script>
 
 
-/* --- Input Area & Formatting Styles --- */
-
-#message-input-area {
-    display: flex;
-    padding: 10px;
-    gap: 10px;
-    background: var(--bg-input);
-    border-top: 1px solid #555;
-    align-items: flex-end; 
-}
-
-/* NEW: Image Preview Area */
-#image-preview-area {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    padding: 5px;
-    background: var(--color-preview-bg);
-    border-radius: 4px;
-    gap: 5px;
-    flex-basis: 150px; 
-    flex-shrink: 0;
-}
-#image-preview-area img {
-    max-width: 140px;
-    max-height: 140px;
-    border-radius: 3px;
-    object-fit: contain;
-}
-#remove-image-btn {
-    background: var(--color-vc-red);
-    color: white;
-    border: none;
-    border-radius: 3px;
-    padding: 2px 5px;
-    font-size: 0.7em;
-    cursor: pointer;
-    line-height: 1;
-}
-
-#message-input {
-    flex-grow: 1;
-    padding: 10px;
-    border: 1px solid #555;
-    border-radius: 4px;
-    resize: none;
-    max-height: 80px;
-    box-sizing: border-box;
-    background: var(--bg-secondary);
-    color: var(--color-text);
-}
-
-#send-button, #file-upload-btn {
-    padding: 10px 15px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    align-self: flex-end;
-    color: white;
-}
-
-#send-button { background: var(--color-accent-green); }
-#file-upload-btn { background: var(--color-accent-yellow); color: var(--bg-primary); font-size: 1.2em; }
-#file-upload-btn[title*="Not implemented"] { opacity: 0.7; cursor: not-allowed; }
-
-
-/* NEW: VC Mute button active state (Muted is Red) */
-#vc-btn-mute.active {
-    background-color: var(--color-vc-red);
-}
-
-
-/* Text Formatting */
-u { text-decoration-color: white; text-decoration-thickness: 1.5px; }
-del { color: var(--color-muted); }
+</body>
+</html>
