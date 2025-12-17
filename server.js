@@ -6,124 +6,86 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// --- State Management ---
-const users = {}; 
-// vcUsers: { id: { username: string, avatar: string, isMuted: boolean, id: string } }
-const vcUsers = {}; 
-const messageHistory = []; 
-const MAX_HISTORY = 50; 
-
-// --- Configuration ---
-const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
-
 app.use(express.static(__dirname));
 
-// --- Utility Functions ---
+// --- State Management ---
+const users = {}; 
+// vcUsers tracks who is currently in voice: { socketId: { username, isMuted } }
+const vcUsers = {}; 
+const messageHistory = []; 
 
+// --- Configuration ---
+const MAX_HISTORY = 50; 
+
+// --- Helper Functions ---
 function formatMessage(sender, text) {
-    const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    if (sender === 'System' || sender === 'Announcement') {
-        return `**${sender}** ${text} [${time}]`;
-    }
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     return `**${sender}**: ${text} [${time}]`;
 }
 
 function broadcastUserList() {
-    const onlineUsers = Object.values(users);
-    io.emit('user-list-update', onlineUsers);
+    io.emit('user-list-update', Object.values(users));
 }
 
 function broadcastVCUserList() {
-    const onlineVCUsers = Object.values(vcUsers);
-    io.emit('vc-user-list-update', onlineVCUsers);
-}
-
-function addToHistory(message) {
-    messageHistory.push(message);
-    if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift();
-    }
+    io.emit('vc-user-list-update', Object.values(vcUsers));
 }
 
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
 
-    // --- 1. User Join / Set Username ---
+    // 1. Join Chat
     socket.on('set-username', (data) => {
-        const { username, avatar } = data;
-        users[socket.id] = { 
-            id: socket.id, 
-            username: username, 
-            avatar: avatar 
-        };
+        users[socket.id] = { id: socket.id, username: data.username, avatar: data.avatar };
         
-        const joinMsg = formatMessage('System', `User '${username}' joined the chat.`);
+        const joinMsg = formatMessage('System', `User '${data.username}' joined.`);
+        messageHistory.push(joinMsg);
+        if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
+        
         socket.emit('history', messageHistory); 
-        socket.broadcast.emit('chat-message', { text: joinMsg, avatar: null });
-        addToHistory(joinMsg);
-        
+        socket.broadcast.emit('chat-message', { text: joinMsg });
         broadcastUserList();
     });
 
-    // --- 2. Chat Messages ---
-    socket.on('send-message', (messageText) => {
+    // 2. Text Chat
+    socket.on('send-message', (text) => {
         const user = users[socket.id];
         if (user) {
-            // Admin Commands
-            if (user.username === ADMIN_USERNAME && messageText.startsWith('/')) {
-                if (messageText === '/clear') {
-                    messageHistory.length = 0; 
-                    io.emit('clear-chat');
-                    const sysMsg = formatMessage('System', 'Chat history cleared by Admin.');
-                    io.emit('chat-message', { text: sysMsg, avatar: null });
-                    return;
-                }
-            }
-
-            const formattedMsg = formatMessage(user.username, messageText);
-            const msgObject = { text: formattedMsg, avatar: user.avatar };
-            io.emit('chat-message', msgObject);
-            addToHistory(formattedMsg);
+            const formatted = formatMessage(user.username, text);
+            io.emit('chat-message', { text: formatted, avatar: user.avatar });
+            messageHistory.push(formatted);
+            if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
         }
     });
 
-    // --- 3. Voice Chat Logic (UPDATED) ---
+    // --- 3. VOICE CHAT LOGIC ---
 
     socket.on('join-vc', () => {
-        const userData = users[socket.id];
-        if (userData) {
-            vcUsers[socket.id] = { 
-                ...userData, 
-                isMuted: false 
-            };
+        const user = users[socket.id];
+        if (user) {
+            // Add to VC List
+            vcUsers[socket.id] = { ...user, isMuted: false };
             
-            // 1. Update the UI list for everyone
+            // Notify UI
             broadcastVCUserList();
-
-            // 2. Notify others to initiate a WebRTC call to this new user
+            
+            // Notify other clients to call this user
             socket.broadcast.emit('vc-user-joined', { id: socket.id });
-
-            const sysMsg = formatMessage('System', `**${userData.username}** joined Voice Chat.`);
-            io.emit('chat-message', { text: sysMsg, avatar: null });
-            addToHistory(sysMsg);
+            
+            // Chat announcement
+            io.emit('chat-message', { text: formatMessage('System', `**${user.username}** joined Voice Chat.`) });
         }
     });
 
     socket.on('leave-vc', () => {
-        const userData = users[socket.id];
         if (vcUsers[socket.id]) {
+            const name = vcUsers[socket.id].username;
             delete vcUsers[socket.id];
             
-            // 1. Update UI list
             broadcastVCUserList();
-            
-            // 2. Notify others to cleanup the connection
             socket.broadcast.emit('vc-user-left', { id: socket.id });
-
-            const leaveMsg = formatMessage('System', `**${userData.username}** left the Voice Chat.`);
-            io.emit('chat-message', { text: leaveMsg, avatar: null });
-            addToHistory(leaveMsg);
+            
+            io.emit('chat-message', { text: formatMessage('System', `**${name}** left Voice Chat.`) });
         }
     });
 
@@ -134,49 +96,42 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 4. WebRTC Signaling (NEW) ---
-    // These events allow clients to exchange connection data via the server
-
+    // --- 4. WebRTC Signaling (The "Cables" of the internet) ---
+    // These events allow two browsers to find each other without sending audio through the server
+    
     socket.on('voice-offer', (data) => {
-        // data: { to: targetSocketId, offer: rtcOffer }
         io.to(data.to).emit('voice-offer', { from: socket.id, offer: data.offer });
     });
 
     socket.on('voice-answer', (data) => {
-        // data: { to: targetSocketId, answer: rtcAnswer }
         io.to(data.to).emit('voice-answer', { from: socket.id, answer: data.answer });
     });
 
     socket.on('voice-candidate', (data) => {
-        // data: { to: targetSocketId, candidate: rtcCandidate }
         io.to(data.to).emit('voice-candidate', { from: socket.id, candidate: data.candidate });
     });
 
-    // --- 5. Handle Disconnect ---
+    // 5. Disconnect
     socket.on('disconnect', () => {
-        const userData = users[socket.id];
-        
-        if (userData) {
+        if (users[socket.id]) {
+            const name = users[socket.id].username;
             delete users[socket.id];
             
-            // Remove from VC list on disconnect
+            // Clean up Voice Chat
             if (vcUsers[socket.id]) {
                 delete vcUsers[socket.id];
-                broadcastVCUserList(); 
-                // Notify others to clean up WebRTC
+                broadcastVCUserList();
                 socket.broadcast.emit('vc-user-left', { id: socket.id });
             }
-            
-            const leaveMsg = formatMessage('System', `User '${userData.username}' left the chat.`);
-            io.emit('chat-message', { text: leaveMsg, avatar: null }); 
-            addToHistory(leaveMsg);
-            
+
             broadcastUserList();
+            const msg = formatMessage('System', `User '${name}' left.`);
+            io.emit('chat-message', { text: msg });
         }
     });
 });
 
-// Start the server
+// Render provides the PORT env variable
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
