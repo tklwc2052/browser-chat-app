@@ -3,283 +3,240 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Render Chat App</title>
-<link rel="stylesheet" href="style.css"> 
+<title>Simple Chat App</title>
+<link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="chat-container">
         <div id="username-area">
-            <h3>Username:</h3>
-            <input type="text" id="username-input" placeholder="Enter name...">
-            <button id="set-username-btn">Join</button>
+            <button id="avatar-upload-btn"><img id="current-avatar-preview" src="placeholder-avatar.png"></button>
+            <h3>username:</h3>
+            <input type="text" id="username-input" placeholder="whatr we callin ya">
+            <button id="set-username-btn">Save</button>
         </div>
-
         <div id="online-users-area">
-            <h4>Online:</h4>
+            <h4>whos online:</h4>
             <ul id="online-users-list"></ul>
         </div>
-        
         <div id="messages"></div>
-
         <div id="message-input-area">
-            <textarea id="message-input" placeholder="Type a message..." rows="1"></textarea>
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
             <button id="send-button">Send</button>
         </div>
     </div>
-
-    <div id="vc-container">
-        <div id="vc-header">
-            <h3>Voice Chat</h3>
-            <div id="vc-controls">
-                <button id="join-vc-btn" class="vc-btn join">Join Voice</button>
-                <button id="leave-vc-btn" class="vc-btn leave" disabled>Leave</button>
-                <button id="mute-btn" class="vc-btn mute" disabled>Mute</button>
-            </div>
-        </div>
-        <ul id="vc-users-list"></ul>
+    
+    <div id="right-panel">
+        <h4 class="panel-title">voice chat</h4>
+        <button id="vc-btn-join" class="panel-btn">Join Call</button>
+        <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+        <ul id="vc-user-list"></ul>
+        <div id="audio-grid" style="display:none;"></div>
     </div>
-
 </div>
 
 <script>
-    const socket = io(); // Connects automatically on Render
+    const socket = io();
+    const myPeer = new Peer(undefined, {
+        host: '/',
+        port: 443, // Render uses 443 for HTTPS
+        path: '/peerjs' // PeerJS cloud default fallback, or we can use the cloud
+    }); 
+    
+    // NOTE: If the PeerJS server above fails on Render, switch to the free public cloud:
+    // const myPeer = new Peer(); 
 
-    // --- UI Elements ---
+    const peers = {}; // Keep track of active calls
+    let myLocalStream;
+    let isInVC = false;
+
+    // --- DOM Elements ---
+    const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
-    const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const onlineUsersList = document.getElementById('online-users-list');
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcUserList = document.getElementById('vc-user-list');
+    const audioGrid = document.getElementById('audio-grid');
     
-    // VC Elements
-    const vcUsersList = document.getElementById('vc-users-list');
-    const joinVCBtn = document.getElementById('join-vc-btn');
-    const leaveVCBtn = document.getElementById('leave-vc-btn');
-    const muteBtn = document.getElementById('mute-btn');
+    let currentUsername = localStorage.getItem('chatUsername') || '';
+    let currentAvatar = localStorage.getItem('chatAvatar') || '';
 
-    let myUsername = '';
-    
-    // --- Voice Chat State ---
-    let localStream = null;
-    let isMuted = false;
-    const peers = {}; // Stores connections: { socketId: RTCPeerConnection }
-    
-    // STUN Servers allow clients to find each other through NATs/Firewalls.
-    const iceConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-        ]
-    };
+    // --- Setup Username ---
+    if (currentUsername) {
+        usernameInput.value = currentUsername;
+        document.getElementById('current-avatar-preview').src = currentAvatar || 'placeholder-avatar.png';
+        socket.emit('set-username', { username: currentUsername, avatar: currentAvatar });
+        usernameInput.disabled = true; setUsernameBtn.disabled = true;
+    }
 
-    // --- 1. Basic Chat Logic ---
     setUsernameBtn.addEventListener('click', () => {
-        if (usernameInput.value.trim()) {
-            myUsername = usernameInput.value.trim();
-            socket.emit('set-username', { username: myUsername, avatar: null });
-            usernameInput.disabled = true;
-            setUsernameBtn.disabled = true;
+        currentUsername = usernameInput.value.trim();
+        if (currentUsername) {
+            localStorage.setItem('chatUsername', currentUsername);
+            socket.emit('set-username', { username: currentUsername, avatar: currentAvatar });
+            usernameInput.disabled = true; setUsernameBtn.disabled = true;
         }
     });
 
+    // --- Chat Logic ---
     sendButton.addEventListener('click', () => {
-        if (messageInput.value.trim() && myUsername) {
-            socket.emit('send-message', messageInput.value.trim());
-            messageInput.value = '';
-        }
+        const msg = messageInput.value.trim();
+        if(msg) { socket.emit('chat-message', msg); messageInput.value = ''; }
     });
-
+    
     socket.on('chat-message', (msg) => {
         const div = document.createElement('div');
-        div.classList.add('message');
-        div.innerHTML = msg.text; // Server sends pre-formatted HTML
+        div.className = msg.sender === currentUsername ? 'message user-message' : 'message other-message';
+        // Simplified display for brevity
+        div.innerHTML = `<span class="bubble-content" style="background:${msg.sender===currentUsername?'#007acc':'#3c3c3c'}; padding:8px; border-radius:8px;">
+            ${msg.sender !== currentUsername ? '<b>'+msg.sender+': </b>' : ''}${msg.text}
+        </span>`;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
-    socket.on('history', (history) => {
-        messagesDiv.innerHTML = '';
-        history.forEach(msg => {
-            const div = document.createElement('div');
-            div.classList.add('message');
-            div.innerHTML = msg;
-            messagesDiv.appendChild(div);
-        });
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // --- INSTANT VOICE CHAT LOGIC (WebRTC) ---
+
+    // 1. PeerJS Open (We got a Peer ID)
+    myPeer.on('open', id => {
+        console.log('My Peer ID is: ' + id);
     });
 
-    socket.on('user-list-update', (users) => {
-        onlineUsersList.innerHTML = '';
-        users.forEach(u => {
+    // 2. Button Handler
+    vcBtnJoin.addEventListener('click', () => {
+        if (!currentUsername) return alert("Set username first!");
+        
+        if (!isInVC) {
+            joinVoiceChat();
+        } else {
+            leaveVoiceChat();
+        }
+    });
+
+    function joinVoiceChat() {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(stream => {
+                myLocalStream = stream;
+                isInVC = true;
+                
+                // UI Updates
+                vcBtnJoin.textContent = 'Leave Call';
+                vcBtnJoin.style.backgroundColor = '#dc3545';
+                vcBtnMute.style.display = 'block';
+
+                // Tell Server we joined with our Peer ID
+                socket.emit('join-vc', myPeer.id);
+
+                // Answer calls from others
+                myPeer.on('call', call => {
+                    call.answer(stream); // Send them our stream
+                    const audio = document.createElement('audio');
+                    
+                    call.on('stream', userAudioStream => {
+                        addAudioStream(audio, userAudioStream);
+                    });
+                });
+
+                // Listen for new users connecting
+                socket.on('user-connected', ({ peerId, socketId }) => {
+                    // Call the new user
+                    connectToNewUser(peerId, stream);
+                });
+            })
+            .catch(err => {
+                console.error("Mic Error:", err);
+                alert("Could not access microphone.");
+            });
+    }
+
+    function connectToNewUser(peerId, stream) {
+        // Call them
+        const call = myPeer.call(peerId, stream);
+        const audio = document.createElement('audio');
+        
+        call.on('stream', userAudioStream => {
+            addAudioStream(audio, userAudioStream);
+        });
+        
+        call.on('close', () => {
+            audio.remove();
+        });
+
+        peers[peerId] = call;
+    }
+
+    function addAudioStream(audio, stream) {
+        audio.srcObject = stream;
+        audio.addEventListener('loadedmetadata', () => {
+            audio.play();
+        });
+        audioGrid.append(audio);
+    }
+
+    function leaveVoiceChat() {
+        isInVC = false;
+        socket.emit('leave-vc');
+        
+        // Kill local mic
+        if (myLocalStream) {
+            myLocalStream.getTracks().forEach(track => track.stop());
+            myLocalStream = null;
+        }
+
+        // Close all peer connections
+        Object.keys(peers).forEach(key => {
+            if (peers[key]) peers[key].close();
+        });
+
+        // UI Reset
+        vcBtnJoin.textContent = 'Join Call';
+        vcBtnJoin.style.backgroundColor = '#007acc';
+        vcBtnMute.style.display = 'none';
+        audioGrid.innerHTML = ''; // Clear audio elements
+    }
+
+    // Handle user disconnecting
+    socket.on('user-disconnected', peerId => {
+        if (peers[peerId]) peers[peerId].close();
+    });
+
+    // Mute Logic
+    vcBtnMute.addEventListener('click', () => {
+        if (myLocalStream) {
+            const track = myLocalStream.getAudioTracks()[0];
+            track.enabled = !track.enabled;
+            vcBtnMute.textContent = track.enabled ? 'Mute' : 'Unmute';
+            vcBtnMute.classList.toggle('active', !track.enabled);
+            socket.emit('vc-mute-toggle', !track.enabled);
+        }
+    });
+
+    // --- Lists ---
+    socket.on('vc-user-list-update', list => {
+        vcUserList.innerHTML = '';
+        list.forEach(u => {
+            const li = document.createElement('li');
+            li.innerHTML = `${u.username} ${u.isMuted ? '🔇' : ''}`;
+            li.style.color = '#4caf50';
+            vcUserList.appendChild(li);
+        });
+    });
+
+    socket.on('user-list-update', list => {
+        const ul = document.getElementById('online-users-list');
+        ul.innerHTML = '';
+        list.forEach(u => {
             const li = document.createElement('li');
             li.textContent = u.username;
-            onlineUsersList.appendChild(li);
+            ul.appendChild(li);
         });
     });
-
-    socket.on('vc-user-list-update', (vcUsers) => {
-        vcUsersList.innerHTML = '';
-        vcUsers.forEach(u => {
-            const li = document.createElement('li');
-            li.textContent = `${u.isMuted ? '🔇' : '🔊'} ${u.username}`;
-            vcUsersList.appendChild(li);
-        });
-    });
-
-    // --- 2. Voice Chat Logic (WebRTC) ---
-
-    // JOIN VOICE
-    joinVCBtn.addEventListener('click', async () => {
-        if (!myUsername) { alert("Please join chat first!"); return; }
-
-        try {
-            // Request Microphone Access
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            
-            // Update UI
-            joinVCBtn.disabled = true;
-            leaveVCBtn.disabled = false;
-            muteBtn.disabled = false;
-
-            // Notify Server
-            socket.emit('join-vc');
-
-        } catch (err) {
-            console.error(err);
-            alert("Microphone access denied or not available.");
-        }
-    });
-
-    // LEAVE VOICE
-    leaveVCBtn.addEventListener('click', () => {
-        // Stop Mic
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
-
-        // Close Connections
-        Object.keys(peers).forEach(socketId => {
-            peers[socketId].close();
-            delete peers[socketId];
-            removeAudioElement(socketId);
-        });
-
-        // Update UI
-        joinVCBtn.disabled = false;
-        leaveVCBtn.disabled = true;
-        muteBtn.disabled = true;
-        muteBtn.textContent = "Mute";
-        isMuted = false;
-
-        socket.emit('leave-vc');
-    });
-
-    // MUTE TOGGLE
-    muteBtn.addEventListener('click', () => {
-        if (localStream) {
-            isMuted = !isMuted;
-            localStream.getAudioTracks()[0].enabled = !isMuted;
-            muteBtn.textContent = isMuted ? "Unmute" : "Mute";
-            socket.emit('vc-mute-toggle', isMuted);
-        }
-    });
-
-    // --- 3. WebRTC Signaling Handling ---
-
-    // A new user joined. We (existing users) initiate the call.
-    socket.on('vc-user-joined', async (data) => {
-        if (!localStream) return; // We aren't in VC, ignore.
-
-        console.log(`User ${data.id} joined. Calling...`);
-        const pc = createPeerConnection(data.id);
-        
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        socket.emit('voice-offer', { to: data.id, offer: offer });
-    });
-
-    // Someone left. Cleanup.
-    socket.on('vc-user-left', (data) => {
-        if (peers[data.id]) {
-            peers[data.id].close();
-            delete peers[data.id];
-            removeAudioElement(data.id);
-        }
-    });
-
-    // Receive Offer (from an existing user)
-    socket.on('voice-offer', async ({ from, offer }) => {
-        if (!localStream) return; // Safety check
-
-        const pc = createPeerConnection(from);
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        
-        socket.emit('voice-answer', { to: from, answer: answer });
-    });
-
-    // Receive Answer
-    socket.on('voice-answer', async ({ from, answer }) => {
-        const pc = peers[from];
-        if (pc) {
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-    });
-
-    // Receive ICE Candidate
-    socket.on('voice-candidate', async ({ from, candidate }) => {
-        const pc = peers[from];
-        if (pc) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-    });
-
-    // --- 4. WebRTC Helper Functions ---
-
-    function createPeerConnection(socketId) {
-        const pc = new RTCPeerConnection(iceConfig);
-        peers[socketId] = pc;
-
-        // 1. Add Local Audio Tracks
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-        // 2. Handle ICE Candidates
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('voice-candidate', { to: socketId, candidate: event.candidate });
-            }
-        };
-
-        // 3. Handle Incoming Stream (Remote Audio)
-        pc.ontrack = (event) => {
-            console.log("Audio stream received from", socketId);
-            const [remoteStream] = event.streams;
-            
-            let audioEl = document.getElementById(`audio-${socketId}`);
-            if (!audioEl) {
-                audioEl = document.createElement('audio');
-                audioEl.id = `audio-${socketId}`;
-                audioEl.autoplay = true;
-                document.body.appendChild(audioEl);
-            }
-            audioEl.srcObject = remoteStream;
-        };
-
-        return pc;
-    }
-
-    function removeAudioElement(socketId) {
-        const el = document.getElementById(`audio-${socketId}`);
-        if (el) el.remove();
-    }
 
 </script>
 </body>
