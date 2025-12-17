@@ -186,6 +186,26 @@ html, body {
     overflow-y: auto;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--bg-input);
+    /* NEW: Position relative for the drop zone overlay */
+    position: relative; 
+}
+
+/* --- NEW: Drag and Drop Overlay Styling --- */
+#drop-zone-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 122, 204, 0.7); /* Accent color with transparency */
+    color: white;
+    font-size: 1.5em;
+    font-weight: bold;
+    display: none; /* Hidden by default */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    pointer-events: none; /* Allows click events to pass through when hidden */
 }
 
 /* --- CHAT BUBBLE & MESSAGE STYLES --- */
