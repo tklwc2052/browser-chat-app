@@ -25,7 +25,8 @@
         </div>
         
         <div id="messages">
-            </div>
+            <div id="drop-zone-overlay" style="display: none;">Drop image here to send</div>
+        </div>
 
         <div id="message-input-area">
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
@@ -111,6 +112,7 @@
     // NEW Media Elements
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const imageUploadInput = document.getElementById('image-upload-input');
+    const dropZoneOverlay = document.getElementById('drop-zone-overlay'); // NEW: Drop Zone Overlay
 
     // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
@@ -140,13 +142,15 @@
         formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        
+        formattedText = formattedText.replace(/\*(.*?)\b/g, '<em>$1</em>'); // Fix: Added \b to * to prevent partial word matching
+
         // UNSANITIZE the newly added HTML tags for rendering
         formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
         formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
         formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
         formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
+        
+        // This is necessary because the server creates an object, so we only handle image HTML on the client
         formattedText = formattedText.replace(/&lt;div class="image-container"&gt;/g, '<div class="image-container">').replace(/&lt;\/div&gt;/g, '</div>');
         formattedText = formattedText.replace(/&lt;img src="(.*?)" alt="(.*?)"&gt;/g, (match, src, alt) => {
             // Re-sanitize Data URLs only to prevent XSS if possible, but keep the structure
@@ -206,23 +210,25 @@
         }
     });
 
-    // --- NEW: 3b. Image Upload Handling ---
+    // --- NEW: 3b. Image Upload & Drag/Drop Logic ---
 
-    fileUploadBtn.addEventListener('click', () => {
-        imageUploadInput.click();
-    });
+    // Max file size for Base64 Data URLs (500 KB)
+    const MAX_FILE_SIZE = 500 * 1024; 
 
-    imageUploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file || !file.type.startsWith('image/')) {
-            console.warn('Please select an image file.');
-            imageUploadInput.value = '';
+    // Reusable function to handle sending the image
+    function processAndSendFile(file) {
+        if (!currentUsername) {
+            alert('Please set a username before sharing an image.');
+            return;
+        }
+        
+        if (!file.type.startsWith('image/')) {
+            alert('Only image files are supported.');
             return;
         }
 
-        if (file.size > 500 * 1024) { // Limit size to 500KB (Recommended for Data URLs)
-             alert('Image file size exceeds the 500KB limit for embedded chat images. Please choose a smaller image.');
-             imageUploadInput.value = ''; 
+        if (file.size > MAX_FILE_SIZE) { 
+             alert(`Image file size (${(file.size / 1024).toFixed(0)} KB) exceeds the ${MAX_FILE_SIZE / 1024} KB limit for embedded chat images. Please choose a smaller image.`);
              return;
         }
 
@@ -236,11 +242,47 @@
                 mimeType: file.type,
                 content: dataUrl // The Base64 encoded image data
             });
-            
-            imageUploadInput.value = ''; // Clear the input for next upload
         };
         reader.readAsDataURL(file);
+    }
+
+    // 3b.1. Click-to-Upload
+    fileUploadBtn.addEventListener('click', () => {
+        imageUploadInput.click();
     });
+
+    imageUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            processAndSendFile(file);
+        }
+        imageUploadInput.value = ''; // Clear the input for next upload
+    });
+    
+    // 3b.2. Drag and Drop Implementation
+    messagesDiv.addEventListener('dragover', (e) => {
+        e.preventDefault(); 
+        dropZoneOverlay.style.display = 'flex'; // Show overlay
+    });
+
+    messagesDiv.addEventListener('dragleave', (e) => {
+        // Only hide if the mouse moves out of the message area, not just over a child element
+        if (e.target === messagesDiv || !messagesDiv.contains(e.relatedTarget)) {
+            dropZoneOverlay.style.display = 'none';
+        }
+    });
+
+    messagesDiv.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZoneOverlay.style.display = 'none'; // Hide overlay
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            // Process the first dropped file
+            processAndSendFile(files[0]);
+        }
+    });
+    
     
     // --- 4. Message Display Helper Function (Now accepts a message OBJECT) ---
     function displayMessage(message) { // NEW: Accepts object {id, sender, content, type, time, target}
