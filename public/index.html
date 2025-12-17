@@ -80,7 +80,6 @@
             chatContainer.style.maxWidth = '100%';
         }
 
-        // Input layout changes for the small popup window
         if (messageInputArea) {
             messageInputArea.style.flexDirection = 'column';
             messageInputArea.style.gap = '5px';
@@ -111,7 +110,7 @@
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
 
-    // VC ELEMENTS
+    // VC ELEMENTS (NEW)
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcUserList = document.getElementById('vc-user-list');
@@ -121,7 +120,7 @@
     let currentAvatarBase64 = ''; 
     let lastMessageSender = ''; 
     let lastMessageTime = 0; 
-    let isInVC = false; // State variable for VC
+    let isInVC = false; // <<< NEW: State variable for VC
 
 
     // --- 1. Utility Function to Handle Formatting ---
@@ -449,6 +448,7 @@
         socket.emit('vc-mute-toggle', isMuted);
     });
 
+    // VC User List Receiver
     socket.on('vc-user-list-update', (vcUsers) => {
         vcUserList.innerHTML = '';
         vcUsers.forEach(userData => {
