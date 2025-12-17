@@ -50,7 +50,7 @@
 
         <h4 class="panel-title">voice chat</h4>
         <button id="vc-btn-join" class="panel-btn">Join Call</button>
-        <button id="vc-btn-mute" class="panel-btn">Mute</button>
+        <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
         <ul id="vc-user-list">
             </ul>
         </div>
@@ -58,14 +58,13 @@
 </div>
 
 <script>
-    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
+    // --- 0. Popup Mode Check ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
         
-        // Selectors for Input Area elements
         const messageInputArea = document.getElementById('message-input-area');
         const fileUploadBtn = document.getElementById('file-upload-btn');
         const sendButton = document.getElementById('send-button');
@@ -81,7 +80,7 @@
             chatContainer.style.maxWidth = '100%';
         }
 
-        // --- NEW INPUT LAYOUT FOR POPUP MODE ---
+        // Input layout changes for the small popup window
         if (messageInputArea) {
             messageInputArea.style.flexDirection = 'column';
             messageInputArea.style.gap = '5px';
@@ -94,7 +93,6 @@
             sendButton.style.width = '100%';
             sendButton.style.alignSelf = 'stretch';
         }
-        // --- END NEW INPUT LAYOUT ---
     }
     // ------------------------------------
 
@@ -109,15 +107,22 @@
     const onlineUsersList = document.getElementById('online-users-list');
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     
-    // NEW AVATAR ELEMENTS
+    // AVATAR ELEMENTS
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
 
+    // VC ELEMENTS
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcUserList = document.getElementById('vc-user-list');
+
 
     let currentUsername = '';
-    let currentAvatarBase64 = ''; // Store the Base64 string here
-    let lastMessageSender = ''; // Unified sender tracker
-    let lastMessageTime = 0; // Unified time tracker
+    let currentAvatarBase64 = ''; 
+    let lastMessageSender = ''; 
+    let lastMessageTime = 0; 
+    let isInVC = false; // State variable for VC
+
 
     // --- 1. Utility Function to Handle Formatting ---
     function parseFormatting(text) {
@@ -126,16 +131,16 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // Crossout: ~~text~~ with <del>text</del>
+        // Crossout: ~~text~~
         formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
         
-        // Bold: **text** with <strong>text</strong>
+        // Bold: **text**
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         
-        // Underline: __text__ with <u>text</u>
+        // Underline: __text__
         formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
         
-        // Slanted (Italics): *text* with <em>text</em>
+        // Slanted (Italics): *text*
         formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         
         // UNSANITIZE only the newly added HTML tags for rendering
@@ -150,7 +155,6 @@
     // --- 2. Avatar Selection and Conversion ---
     
     avatarUploadBtn.addEventListener('click', () => {
-        // Create an invisible file input element
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
@@ -160,11 +164,9 @@
             if (file) {
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    // reader.result is the Base64 Data URL
                     currentAvatarBase64 = reader.result;
-                    currentAvatarPreview.src = currentAvatarBase64; // Update UI preview
+                    currentAvatarPreview.src = currentAvatarBase64; 
                     
-                    // If username is already set, resend profile data to server
                     if (currentUsername) {
                         setUsername(currentUsername); 
                     }
@@ -174,7 +176,7 @@
             }
         });
         
-        fileInput.click(); // Programmatically click the hidden input
+        fileInput.click();
     });
 
 
@@ -186,9 +188,8 @@
 
         if (storedAvatar) {
             currentAvatarBase64 = storedAvatar;
-            currentAvatarPreview.src = currentAvatarBase64;
+            currentAvatarPreview.src = storedAvatar;
         } else {
-             // Set default avatar image placeholder if none is stored
             currentAvatarPreview.src = 'placeholder-avatar.png';
         }
 
@@ -213,7 +214,7 @@
     
     function setUsername(username) {
         currentUsername = username;
-        // UPDATED: Send both username and avatar
+        // Send both username and avatar
         socket.emit('set-username', { 
             username: currentUsername, 
             avatar: currentAvatarBase64 || 'placeholder-avatar.png'
@@ -244,16 +245,13 @@
     });
     
     // --- 5. Message Display Helper Function (Grouping Logic) ---
-    // UPDATED: Accepts message object { text, avatar, sender }
     function displayMessage(messageObject) {
         
-        // Determine if it's a simple history string or a system message object
         if (typeof messageObject === 'string' || messageObject.avatar === null) {
-            var formattedMessage = messageObject.text || messageObject; // messageObject is just the text string from history
+            var formattedMessage = messageObject.text || messageObject; 
             var messageAvatar = null;
             var sender = null;
         } else {
-            // Regular chat message object
             var formattedMessage = messageObject.text;
             var messageAvatar = messageObject.avatar;
             var sender = messageObject.sender;
@@ -262,15 +260,13 @@
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
         const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
         // --- Handle System Messages/Announcements ---
         if (!fullMatch) {
-            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
             const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
             
-            // CRITICAL: Reset trackers on system message
+            // Reset trackers on system message
             lastMessageTime = 0; 
             lastMessageSender = ''; 
 
@@ -296,7 +292,6 @@
                 return;
             }
             
-            // Fallback for unparseable system messages/errors
             messageEl.classList.add('system-message');
             messageEl.innerHTML = parseFormatting(formattedMessage);
             messagesDiv.appendChild(messageEl);
@@ -309,12 +304,9 @@
         const messageText = fullMatch[2];
         const timeString = fullMatch[3]; 
 
-        // Use the sender and avatar from the message object, or fallback to extracted text
         const finalSender = sender || extractedSender;
-        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; // Use a default if avatar is missing
+        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; 
 
-
-        // 1. Determine alignment class, tracking variables, and grouping logic
         const isUserMessage = (finalSender === currentUsername);
         let showAvatar = true;
         let showUsername = true; 
@@ -332,18 +324,15 @@
             currentTimeInMinutes = hours * 60 + minutes;
         }
 
-
         // 1a. Set base alignment
         if (isUserMessage) {
             messageEl.classList.add('user-message');
-            showUsername = false; // Never show username on self-messages
+            showUsername = false; 
         } else {
             messageEl.classList.add('other-message');
         }
 
-
         // 1b. Unified Grouping Logic
-        // Group if the sender is the same AND less than 1 minute has passed
         const shouldGroup = (lastMessageSender === finalSender) && (currentTimeInMinutes - lastMessageTime) < 1;
 
         if (shouldGroup) {
@@ -351,39 +340,32 @@
             showUsername = false; 
             messageEl.classList.add('grouped-message');
 
-            // CRITICAL RETROACTIVE FIX (Removes time from the previous message)
             const previousMessageEl = messagesDiv.lastChild;
-            if (previousMessageEl) {
-                // Ensure we don't accidentally remove time from a system message
-                if (!previousMessageEl.classList.contains('system-message')) {
-                     const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-                    if (prevContentWrapper) {
-                        const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
-                        if (prevTimeSpan) {
-                            prevTimeSpan.remove(); // DELETE TIME from the previous message
-                        }
+            if (previousMessageEl && !previousMessageEl.classList.contains('system-message')) {
+                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                if (prevContentWrapper) {
+                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove();
                     }
                 }
             }
         } 
 
-        // 1c. Update Tracking Variables (After Grouping Check)
         lastMessageSender = finalSender;
         lastMessageTime = currentTimeInMinutes;
         
 
         // --- 2. Assemble the Message Structure ---
         
-        // 2a. Avatar (Always add either the image or a spacer)
+        // 2a. Avatar (Left side for other users, or spacer)
         if (!isUserMessage) {
-            // Other User Messages: Avatar (Left) / Content (Right)
             if (showAvatar) {
                 const avatarImg = document.createElement('img');
                 avatarImg.classList.add('avatar');
                 avatarImg.src = finalAvatar;
                 messageEl.appendChild(avatarImg);
             } else {
-                // Spacer for grouped messages
                 const spacer = document.createElement('div');
                 spacer.classList.add('avatar-spacer');
                 messageEl.appendChild(spacer);
@@ -394,7 +376,7 @@
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         
-        // 2c. Username (Only for other users, when showUsername is true)
+        // 2c. Username
         if (showUsername && !isUserMessage) {
             const usernameDiv = document.createElement('div');
             usernameDiv.classList.add('message-username');
@@ -414,21 +396,18 @@
         bubbleContent.innerHTML = contentHtml;
         contentWrapper.appendChild(bubbleContent); 
         
-        // 2e. Time Content (Renders only for the last message in a group)
+        // 2e. Time Content
         const timeSpan = document.createElement('span');
         timeSpan.classList.add('message-time');
         timeSpan.textContent = timeString; 
         contentWrapper.appendChild(timeSpan); 
         
-
         // 3. Assemble the final message element
         contentArea.appendChild(contentWrapper);
 
         if (isUserMessage) {
-            // User Messages: Content (Left) / Avatar (Right)
             messageEl.appendChild(contentArea);
         } else {
-            // Other Messages: Avatar (Left) / Content (Right) - Avatar already added in 2a
             messageEl.appendChild(contentArea);
         }
         
@@ -436,25 +415,85 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- 6. Receiving Messages (History and Live) ---
+    // --- 6. Voice Chat Logic (NEW) ---
     
-    // History messages are simple strings from the server log
+    vcBtnJoin.addEventListener('click', () => {
+        if (!currentUsername) {
+            alert("Please set a username first to join VC.");
+            return;
+        }
+        
+        if (!isInVC) {
+            // JOINING
+            isInVC = true;
+            vcBtnJoin.textContent = 'Leave Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)'; // Change color for 'Leave'
+            vcBtnMute.style.display = 'block'; // Show mute button
+            vcBtnMute.textContent = 'Mute';
+            vcBtnMute.classList.remove('active');
+            socket.emit('vc-join', true);
+            
+        } else {
+            // LEAVING
+            isInVC = false;
+            vcBtnJoin.textContent = 'Join Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-accent-blue)'; // Reset color for 'Join'
+            vcBtnMute.style.display = 'none'; // Hide mute button
+            socket.emit('vc-join', false);
+        }
+    });
+
+    vcBtnMute.addEventListener('click', () => {
+        const isMuted = vcBtnMute.classList.toggle('active');
+        vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
+        socket.emit('vc-mute-toggle', isMuted);
+    });
+
+    socket.on('vc-user-list-update', (vcUsers) => {
+        vcUserList.innerHTML = '';
+        vcUsers.forEach(userData => {
+            const li = document.createElement('li');
+            
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
+            li.appendChild(listAvatar);
+
+            li.appendChild(document.createTextNode(userData.username));
+            
+            // Add Mute status if muted
+            if (userData.isMuted) {
+                const muteStatus = document.createElement('span');
+                muteStatus.textContent = ' 🔇';
+                muteStatus.style.color = 'var(--color-vc-red)';
+                li.appendChild(muteStatus);
+            }
+            
+            // Visually highlight yourself in the VC list
+            if (userData.username === currentUsername) {
+                li.style.fontWeight = 'bold';
+                li.style.color = 'var(--color-text)'; 
+            } else {
+                li.style.fontWeight = 'normal';
+                li.style.color = 'var(--color-accent-green)'; 
+            }
+            
+            vcUserList.appendChild(li);
+        });
+    });
+
+
+    // --- 7. Receiving Messages (History and Live) ---
     socket.on('history', (history) => {
-        // Reset trackers before starting the loop
         lastMessageTime = 0; 
         lastMessageSender = ''; 
         messagesDiv.innerHTML = ''; 
-
-        // Loop through history messages sequentially
         history.forEach(msg => {
-            // Pass the string directly. displayMessage handles parsing the sender/time from the string.
             displayMessage(msg); 
         });
-        
         messagesDiv.scrollTop = messagesDiv.scrollHeight; 
     });
 
-    // Live messages are objects { text, avatar, sender }
     socket.on('chat-message', (messageObject) => {
         displayMessage(messageObject);
     });
@@ -463,31 +502,25 @@
         messagesDiv.innerHTML = '';
     });
 
-    // --- 7. Online User List Update ---
-    
-    // User list is an array of objects { username, avatar }
+    // --- 8. Online User List Update ---
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(userData => {
             const li = document.createElement('li');
-            
-            // Add list avatar
             const listAvatar = document.createElement('img');
             listAvatar.classList.add('avatar', 'list-avatar');
-            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; // Use stored avatar
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
             li.appendChild(listAvatar);
-
             li.appendChild(document.createTextNode(userData.username));
             onlineUsersList.appendChild(li);
         });
     });
 
-    // --- 8. Launch Custom Window Logic ---
+    // --- 9. Launch Custom Window Logic ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             const currentUrl = window.location.href.split('?')[0]; 
             const newUrl = `${currentUrl}?mode=popup`; 
-            
             window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
         });
     }
