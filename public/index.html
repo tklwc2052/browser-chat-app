@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,52 +7,96 @@
 <title>Simple Chat App</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="chat-container">
         <div id="username-area">
-            <button id="avatar-upload-btn"><img id="current-avatar-preview" src="placeholder-avatar.png"></button>
+            <button id="avatar-upload-btn" title="Set Avatar (Click to Upload)">
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
+            </button>
             <h3>username:</h3>
             <input type="text" id="username-input" placeholder="whatr we callin ya">
             <button id="set-username-btn">Save</button>
         </div>
+
         <div id="online-users-area">
             <h4>whos online:</h4>
-            <ul id="online-users-list"></ul>
+            <ul id="online-users-list">
+                </ul>
         </div>
-        <div id="messages"></div>
+        
+        <div id="messages">
+            </div>
+
         <div id="message-input-area">
+            <div id="image-preview-area" style="display:none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn">X</button>
+            </div>
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
+                📁
+            </button>
             <button id="send-button">Send</button>
         </div>
     </div>
     
     <div id="right-panel">
+        <h4 class="panel-title">other stuff</h4>
+        <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+        <p class="panel-hint">for a dedicated status/chat window.</p>
+
         <h4 class="panel-title">voice chat</h4>
         <button id="vc-btn-join" class="panel-btn">Join Call</button>
         <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
-        <ul id="vc-user-list"></ul>
-        <div id="audio-grid" style="display:none;"></div>
-    </div>
+        <ul id="vc-user-list">
+            </ul>
+        </div>
+    
 </div>
 
 <script>
-    const socket = io();
-    const myPeer = new Peer(undefined, {
-        host: '/',
-        port: 443, // Render uses 443 for HTTPS
-        path: '/peerjs' // PeerJS cloud default fallback, or we can use the cloud
-    }); 
-    
-    // NOTE: If the PeerJS server above fails on Render, switch to the free public cloud:
-    // const myPeer = new Peer(); 
+    // --- 0. Popup Mode Check ---
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('mode') === 'popup') {
+        const mainWrapper = document.getElementById('main-wrapper');
+        const rightPanel = document.getElementById('right-panel');
+        const chatContainer = document.getElementById('chat-container');
+        
+        const messageInputArea = document.getElementById('message-input-area');
+        const fileUploadBtn = document.getElementById('file-upload-btn');
+        const sendButton = document.getElementById('send-button');
 
-    const peers = {}; // Keep track of active calls
-    let myLocalStream;
-    let isInVC = false;
+        if (mainWrapper) {
+            mainWrapper.style.gap = '0';
+            mainWrapper.style.maxWidth = '150px'; 
+        }
+        if (rightPanel) {
+            rightPanel.style.display = 'none';
+        }
+        if (chatContainer) {
+            chatContainer.style.maxWidth = '100%';
+        }
+
+        // Input layout changes for the small popup window
+        if (messageInputArea) {
+            messageInputArea.style.flexDirection = 'column';
+            messageInputArea.style.gap = '5px';
+        }
+        if (fileUploadBtn) {
+            fileUploadBtn.style.width = '100%';
+            fileUploadBtn.style.alignSelf = 'stretch';
+        }
+        if (sendButton) {
+            sendButton.style.width = '100%';
+            sendButton.style.alignSelf = 'stretch';
+        }
+    }
+    // ------------------------------------
+
+    const socket = io();
 
     // --- DOM Elements ---
     const messagesDiv = document.getElementById('messages');
@@ -59,185 +104,429 @@
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
+    const onlineUsersList = document.getElementById('online-users-list');
+    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    
+    // AVATAR ELEMENTS
+    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
+    const currentAvatarPreview = document.getElementById('current-avatar-preview');
+
+    // VC ELEMENTS
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcUserList = document.getElementById('vc-user-list');
-    const audioGrid = document.getElementById('audio-grid');
-    
-    let currentUsername = localStorage.getItem('chatUsername') || '';
-    let currentAvatar = localStorage.getItem('chatAvatar') || '';
 
-    // --- Setup Username ---
-    if (currentUsername) {
-        usernameInput.value = currentUsername;
-        document.getElementById('current-avatar-preview').src = currentAvatar || 'placeholder-avatar.png';
-        socket.emit('set-username', { username: currentUsername, avatar: currentAvatar });
-        usernameInput.disabled = true; setUsernameBtn.disabled = true;
+
+    let currentUsername = '';
+    let currentAvatarBase64 = ''; 
+    let lastMessageSender = ''; 
+    let lastMessageTime = 0; 
+    let isInVC = false; // State variable for VC
+
+
+    // --- 1. Utility Function to Handle Formatting ---
+    function parseFormatting(text) {
+        let formattedText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // Crossout: ~~text~~
+        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        
+        // Bold: **text**
+        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Underline: __text__
+        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
+        
+        // Slanted (Italics): *text*
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // UNSANITIZE only the newly added HTML tags for rendering
+        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
+        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
+        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
+
+        return formattedText;
     }
+
+    // --- 2. Avatar Selection and Conversion ---
+    
+    avatarUploadBtn.addEventListener('click', () => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    currentAvatarBase64 = reader.result;
+                    currentAvatarPreview.src = currentAvatarBase64; 
+                    
+                    if (currentUsername) {
+                        setUsername(currentUsername); 
+                    }
+                    localStorage.setItem('chatAvatar', currentAvatarBase64);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        fileInput.click();
+    });
+
+
+    // --- 3. Username Handling ---
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const storedUsername = localStorage.getItem('chatUsername');
+        const storedAvatar = localStorage.getItem('chatAvatar');
+
+        if (storedAvatar) {
+            currentAvatarBase64 = storedAvatar;
+            currentAvatarPreview.src = storedAvatar;
+        } else {
+            currentAvatarPreview.src = 'placeholder-avatar.png';
+        }
+
+        if (storedUsername) {
+            usernameInput.value = storedUsername;
+            setUsername(storedUsername);
+        }
+    });
 
     setUsernameBtn.addEventListener('click', () => {
-        currentUsername = usernameInput.value.trim();
-        if (currentUsername) {
-            localStorage.setItem('chatUsername', currentUsername);
-            socket.emit('set-username', { username: currentUsername, avatar: currentAvatar });
-            usernameInput.disabled = true; setUsernameBtn.disabled = true;
+        const username = usernameInput.value.trim();
+        if (username) {
+            localStorage.setItem('chatUsername', username);
+            if (currentAvatarBase64) {
+                 localStorage.setItem('chatAvatar', currentAvatarBase64);
+            }
+            setUsername(username);
+        } else {
+            console.warn('Please enter a username.');
         }
-    });
-
-    // --- Chat Logic ---
-    sendButton.addEventListener('click', () => {
-        const msg = messageInput.value.trim();
-        if(msg) { socket.emit('chat-message', msg); messageInput.value = ''; }
     });
     
-    socket.on('chat-message', (msg) => {
-        const div = document.createElement('div');
-        div.className = msg.sender === currentUsername ? 'message user-message' : 'message other-message';
-        // Simplified display for brevity
-        div.innerHTML = `<span class="bubble-content" style="background:${msg.sender===currentUsername?'#007acc':'#3c3c3c'}; padding:8px; border-radius:8px;">
-            ${msg.sender !== currentUsername ? '<b>'+msg.sender+': </b>' : ''}${msg.text}
-        </span>`;
-        messagesDiv.appendChild(div);
+    function setUsername(username) {
+        currentUsername = username;
+        // Send both username and avatar
+        socket.emit('set-username', { 
+            username: currentUsername, 
+            avatar: currentAvatarBase64 || 'placeholder-avatar.png'
+        }); 
+        usernameInput.disabled = true;
+        setUsernameBtn.disabled = true;
+        usernameInput.placeholder = 'Username set!';
+        messageInput.focus();
+    }
+
+    // --- 4. Message Sending ---
+
+    function sendMessage() {
+        let msg = messageInput.value.trim();
+        if (!msg || !currentUsername) return; 
+
+        socket.emit('chat-message', msg);
+        messageInput.value = '';
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // --- 5. Message Display Helper Function (Grouping Logic) ---
+    function displayMessage(messageObject) {
+        
+        if (typeof messageObject === 'string' || messageObject.avatar === null) {
+            var formattedMessage = messageObject.text || messageObject; 
+            var messageAvatar = null;
+            var sender = null;
+        } else {
+            var formattedMessage = messageObject.text;
+            var messageAvatar = messageObject.avatar;
+            var sender = messageObject.sender;
+        }
+
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message');
+
+        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+
+        // --- Handle System Messages/Announcements ---
+        if (!fullMatch) {
+            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+            
+            // Reset trackers on system message
+            lastMessageTime = 0; 
+            lastMessageSender = ''; 
+
+            if (systemMatch) {
+                messageEl.classList.add('system-message');
+                const systemText = systemMatch[2];
+                
+                // Private Message Check 
+                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
+                    messageEl.classList.add('private-message');
+                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
+                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
+
+                    messagesDiv.appendChild(messageEl);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    return; 
+                }
+                
+                // Standard System Message / Announcement
+                messageEl.innerHTML = parseFormatting(systemText);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+            }
+            
+            messageEl.classList.add('system-message');
+            messageEl.innerHTML = parseFormatting(formattedMessage);
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return;
+        }
+        
+        // Extracted parts for REGULAR messages:
+        const extractedSender = fullMatch[1];
+        const messageText = fullMatch[2];
+        const timeString = fullMatch[3]; 
+
+        const finalSender = sender || extractedSender;
+        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; 
+
+        const isUserMessage = (finalSender === currentUsername);
+        let showAvatar = true;
+        let showUsername = true; 
+
+        // --- Calculate Time in Minutes for Grouping ---
+        let currentTimeInMinutes = 0;
+        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+        if (timeParts) {
+            let hours = parseInt(timeParts[1]);
+            const minutes = parseInt(timeParts[2]);
+            const isPM = timeParts[3] === 'PM';
+            
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            currentTimeInMinutes = hours * 60 + minutes;
+        }
+
+        // 1a. Set base alignment
+        if (isUserMessage) {
+            messageEl.classList.add('user-message');
+            showUsername = false; 
+        } else {
+            messageEl.classList.add('other-message');
+        }
+
+        // 1b. Unified Grouping Logic
+        const shouldGroup = (lastMessageSender === finalSender) && (currentTimeInMinutes - lastMessageTime) < 1;
+
+        if (shouldGroup) {
+            showAvatar = false; 
+            showUsername = false; 
+            messageEl.classList.add('grouped-message');
+
+            const previousMessageEl = messagesDiv.lastChild;
+            if (previousMessageEl && !previousMessageEl.classList.contains('system-message')) {
+                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                if (prevContentWrapper) {
+                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                    if (prevTimeSpan) {
+                        prevTimeSpan.remove();
+                    }
+                }
+            }
+        } 
+
+        lastMessageSender = finalSender;
+        lastMessageTime = currentTimeInMinutes;
+        
+
+        // --- 2. Assemble the Message Structure ---
+        
+        // 2a. Avatar (Left side for other users, or spacer)
+        if (!isUserMessage) {
+            if (showAvatar) {
+                const avatarImg = document.createElement('img');
+                avatarImg.classList.add('avatar');
+                avatarImg.src = finalAvatar;
+                messageEl.appendChild(avatarImg);
+            } else {
+                const spacer = document.createElement('div');
+                spacer.classList.add('avatar-spacer');
+                messageEl.appendChild(spacer);
+            }
+        }
+        
+        // 2b. Content Area Wrapper
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+        
+        // 2c. Username
+        if (showUsername && !isUserMessage) {
+            const usernameDiv = document.createElement('div');
+            usernameDiv.classList.add('message-username');
+            usernameDiv.innerHTML = `<strong>${finalSender}</strong><span class="username-separator">:</span>`;
+            contentArea.appendChild(usernameDiv);
+        }
+
+        // 2d. Content Wrapper (Bubble + Time)
+        const contentWrapper = document.createElement('div');
+        contentWrapper.classList.add('message-content-wrapper');
+        
+        const bubbleContent = document.createElement('span');
+        bubbleContent.classList.add('bubble-content');
+        
+        let contentHtml = parseFormatting(messageText); 
+
+        bubbleContent.innerHTML = contentHtml;
+        contentWrapper.appendChild(bubbleContent); 
+        
+        // 2e. Time Content
+        const timeSpan = document.createElement('span');
+        timeSpan.classList.add('message-time');
+        timeSpan.textContent = timeString; 
+        contentWrapper.appendChild(timeSpan); 
+        
+        // 3. Assemble the final message element
+        contentArea.appendChild(contentWrapper);
+
+        if (isUserMessage) {
+            messageEl.appendChild(contentArea);
+        } else {
+            messageEl.appendChild(contentArea);
+        }
+        
+        messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
+    }
 
-    // --- INSTANT VOICE CHAT LOGIC (WebRTC) ---
-
-    // 1. PeerJS Open (We got a Peer ID)
-    myPeer.on('open', id => {
-        console.log('My Peer ID is: ' + id);
-    });
-
-    // 2. Button Handler
+    // --- 6. Voice Chat Logic (NEW) ---
+    
     vcBtnJoin.addEventListener('click', () => {
-        if (!currentUsername) return alert("Set username first!");
+        if (!currentUsername) {
+            alert("Please set a username first to join VC.");
+            return;
+        }
         
         if (!isInVC) {
-            joinVoiceChat();
+            // JOINING
+            isInVC = true;
+            vcBtnJoin.textContent = 'Leave Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)'; // Change color for 'Leave'
+            vcBtnMute.style.display = 'block'; // Show mute button
+            vcBtnMute.textContent = 'Mute';
+            vcBtnMute.classList.remove('active');
+            socket.emit('vc-join', true);
+            
         } else {
-            leaveVoiceChat();
+            // LEAVING
+            isInVC = false;
+            vcBtnJoin.textContent = 'Join Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-accent-blue)'; // Reset color for 'Join'
+            vcBtnMute.style.display = 'none'; // Hide mute button
+            socket.emit('vc-join', false);
         }
     });
 
-    function joinVoiceChat() {
-        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-            .then(stream => {
-                myLocalStream = stream;
-                isInVC = true;
-                
-                // UI Updates
-                vcBtnJoin.textContent = 'Leave Call';
-                vcBtnJoin.style.backgroundColor = '#dc3545';
-                vcBtnMute.style.display = 'block';
-
-                // Tell Server we joined with our Peer ID
-                socket.emit('join-vc', myPeer.id);
-
-                // Answer calls from others
-                myPeer.on('call', call => {
-                    call.answer(stream); // Send them our stream
-                    const audio = document.createElement('audio');
-                    
-                    call.on('stream', userAudioStream => {
-                        addAudioStream(audio, userAudioStream);
-                    });
-                });
-
-                // Listen for new users connecting
-                socket.on('user-connected', ({ peerId, socketId }) => {
-                    // Call the new user
-                    connectToNewUser(peerId, stream);
-                });
-            })
-            .catch(err => {
-                console.error("Mic Error:", err);
-                alert("Could not access microphone.");
-            });
-    }
-
-    function connectToNewUser(peerId, stream) {
-        // Call them
-        const call = myPeer.call(peerId, stream);
-        const audio = document.createElement('audio');
-        
-        call.on('stream', userAudioStream => {
-            addAudioStream(audio, userAudioStream);
-        });
-        
-        call.on('close', () => {
-            audio.remove();
-        });
-
-        peers[peerId] = call;
-    }
-
-    function addAudioStream(audio, stream) {
-        audio.srcObject = stream;
-        audio.addEventListener('loadedmetadata', () => {
-            audio.play();
-        });
-        audioGrid.append(audio);
-    }
-
-    function leaveVoiceChat() {
-        isInVC = false;
-        socket.emit('leave-vc');
-        
-        // Kill local mic
-        if (myLocalStream) {
-            myLocalStream.getTracks().forEach(track => track.stop());
-            myLocalStream = null;
-        }
-
-        // Close all peer connections
-        Object.keys(peers).forEach(key => {
-            if (peers[key]) peers[key].close();
-        });
-
-        // UI Reset
-        vcBtnJoin.textContent = 'Join Call';
-        vcBtnJoin.style.backgroundColor = '#007acc';
-        vcBtnMute.style.display = 'none';
-        audioGrid.innerHTML = ''; // Clear audio elements
-    }
-
-    // Handle user disconnecting
-    socket.on('user-disconnected', peerId => {
-        if (peers[peerId]) peers[peerId].close();
-    });
-
-    // Mute Logic
     vcBtnMute.addEventListener('click', () => {
-        if (myLocalStream) {
-            const track = myLocalStream.getAudioTracks()[0];
-            track.enabled = !track.enabled;
-            vcBtnMute.textContent = track.enabled ? 'Mute' : 'Unmute';
-            vcBtnMute.classList.toggle('active', !track.enabled);
-            socket.emit('vc-mute-toggle', !track.enabled);
-        }
+        const isMuted = vcBtnMute.classList.toggle('active');
+        vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
+        socket.emit('vc-mute-toggle', isMuted);
     });
 
-    // --- Lists ---
-    socket.on('vc-user-list-update', list => {
+    socket.on('vc-user-list-update', (vcUsers) => {
         vcUserList.innerHTML = '';
-        list.forEach(u => {
+        vcUsers.forEach(userData => {
             const li = document.createElement('li');
-            li.innerHTML = `${u.username} ${u.isMuted ? '🔇' : ''}`;
-            li.style.color = '#4caf50';
+            
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
+            li.appendChild(listAvatar);
+
+            li.appendChild(document.createTextNode(userData.username));
+            
+            // Add Mute status if muted
+            if (userData.isMuted) {
+                const muteStatus = document.createElement('span');
+                muteStatus.textContent = ' 🔇';
+                muteStatus.style.color = 'var(--color-vc-red)';
+                li.appendChild(muteStatus);
+            }
+            
+            // Visually highlight yourself in the VC list
+            if (userData.username === currentUsername) {
+                li.style.fontWeight = 'bold';
+                li.style.color = 'var(--color-text)'; 
+            } else {
+                li.style.fontWeight = 'normal';
+                li.style.color = 'var(--color-accent-green)'; 
+            }
+            
             vcUserList.appendChild(li);
         });
     });
 
-    socket.on('user-list-update', list => {
-        const ul = document.getElementById('online-users-list');
-        ul.innerHTML = '';
-        list.forEach(u => {
+
+    // --- 7. Receiving Messages (History and Live) ---
+    socket.on('history', (history) => {
+        lastMessageTime = 0; 
+        lastMessageSender = ''; 
+        messagesDiv.innerHTML = ''; 
+        history.forEach(msg => {
+            displayMessage(msg); 
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+    });
+
+    socket.on('chat-message', (messageObject) => {
+        displayMessage(messageObject);
+    });
+
+    socket.on('clear-chat', () => {
+        messagesDiv.innerHTML = '';
+    });
+
+    // --- 8. Online User List Update ---
+    socket.on('user-list-update', (users) => {
+        onlineUsersList.innerHTML = '';
+        users.forEach(userData => {
             const li = document.createElement('li');
-            li.textContent = u.username;
-            ul.appendChild(li);
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
+            li.appendChild(listAvatar);
+            li.appendChild(document.createTextNode(userData.username));
+            onlineUsersList.appendChild(li);
         });
     });
 
+    // --- 9. Launch Custom Window Logic ---
+    if (launchCustomWindowBtn) {
+         launchCustomWindowBtn.addEventListener('click', () => {
+            const currentUrl = window.location.href.split('?')[0]; 
+            const newUrl = `${currentUrl}?mode=popup`; 
+            window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
+        });
+    }
+    
 </script>
+
+
 </body>
 </html>
