@@ -10,6 +10,7 @@ const io = socketIo(server);
 const users = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
+const vcParticipants = {}; // NEW: Tracks users currently in voice chat (socket.id: username)
 
 // --- Configuration ---
 const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
@@ -43,6 +44,15 @@ function broadcastUserList() {
 }
 
 /**
+ * Sends the current list of voice chat participants to all connected clients.
+ */
+function broadcastVcUserList() {
+    // Only send the usernames
+    io.emit('vc-user-list-update', Object.values(vcParticipants));
+}
+
+
+/**
  * Adds a message to history and truncates it if necessary.
  * @param {string} msg - The formatted message string.
  */
@@ -60,8 +70,9 @@ app.use(express.static('public'));
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Send the message history to the newly connected user
+    // Send the message history and current VC list to the newly connected user
     socket.emit('history', messageHistory);
+    broadcastVcUserList(); // Ensure new users see who is in VC immediately
 
     // --- 1. Set Username ---
     socket.on('set-username', (username) => {
@@ -126,8 +137,7 @@ io.on('connection', (socket) => {
                         socket.emit('chat-message', sentMsg);
 
                         // 2. Send to Receiver (Actual PM, visible to receiver only)
-                        // FIX: Change 'System' to 'Announcement' so the client's systemMatch regex works correctly for PM styling.
-                        const receivedMsg = formatMessage('Announcement', `**[PM from ${sender}]**: **${privateMessage}**`);
+                        const receivedMsg = formatMessage('System', `**[PM from ${sender}]**: **${privateMessage}**`);
                         io.to(recipientId).emit('chat-message', receivedMsg);
                         
                         return; // PM handled, exit command processing
@@ -141,66 +151,4 @@ io.on('connection', (socket) => {
                     case 'server':
                         if (args) {
                             // Format: **Announcement**: **[Your message]** [Time]
-                            const serverMsg = formatMessage('Announcement', `: **${args}**`);
-                            io.emit('chat-message', serverMsg);
-                            addToHistory(serverMsg);
-                            return; 
-                        } else {
-                            response = `Usage: /server [message]. Broadcasts a server-wide announcement.`;
-                        }
-                        break;
-
-                    case 'clear':
-                        io.emit('clear-chat'); 
-                        messageHistory.length = 0; 
-                        const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
-                        io.emit('chat-message', clearConfirmationMsg);
-                        addToHistory(clearConfirmationMsg);
-                        return; 
-                    
-                    default:
-                        response = `Unknown Admin Command: /${command}. Available: /server, /clear.`;
-                }
-            } else {
-                // Non-admin trying to use any command (or a command other than /msg)
-                response = `Unknown command: /${command}. Only the /msg command is generally available.`;
-            }
-
-            // If a response was generated (e.g., error, usage message)
-            if (response) {
-                const commandResponse = formatMessage('System', response);
-                socket.emit('chat-message', commandResponse);
-            }
-
-        } else if (msg.trim()) {
-            // Not a command, broadcast the message
-            const formattedMsg = formatMessage(sender, msg);
-            io.emit('chat-message', formattedMsg);
-            addToHistory(formattedMsg);
-        }
-    });
-
-    // --- 3. Handle Disconnect ---
-    socket.on('disconnect', () => {
-        const username = users[socket.id];
-        
-        if (username) {
-            delete users[socket.id];
-            console.log(`User disconnected: ${username} (${socket.id})`);
-            
-            const leaveMsg = formatMessage('System', `User '${username}' left the chat.`);
-            io.emit('chat-message', leaveMsg);
-            addToHistory(leaveMsg);
-            
-            broadcastUserList();
-        } else {
-            console.log(`Anonymous user disconnected: ${socket.id}`);
-        }
-    });
-});
-
-// Start the server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+                            const serverMsg = formatMessage('Announcement', `: **${args
