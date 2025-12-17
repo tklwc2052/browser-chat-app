@@ -7,7 +7,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // --- State Management ---
-// UPDATED: users now stores an object { username: string, avatar: string (Base64 URL) }
+// users now stores an object { username: string, avatar: string (Base64 URL), id: string }
 const users = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
@@ -19,7 +19,6 @@ const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
 
 /**
  * Formats a message string with username and timestamp.
- * Example: **[User]**: Raw message content [04:30 PM]
  * @param {string} sender - The sender's name (or System/Announcement).
  * @param {string} text - The raw message content.
  * @returns {string} The formatted message string.
@@ -39,7 +38,7 @@ function formatMessage(sender, text) {
  * Sends the current list of online users to all connected clients.
  */
 function broadcastUserList() {
-    // UPDATED: Send the full user object (including avatar)
+    // Send the full user object (including avatar)
     const onlineUsers = Object.values(users);
     io.emit('user-list-update', onlineUsers);
 }
@@ -71,7 +70,8 @@ io.on('connection', (socket) => {
     socket.on('set-username', ({ username, avatar }) => {
         const oldUserData = users[socket.id] || {};
         const oldUsername = oldUserData.username;
-        const newAvatar = avatar || 'placeholder-avatar.png'; // Use a default if none provided
+        // Use a default Base64-friendly image if none provided
+        const newAvatar = avatar || 'placeholder-avatar.png'; 
 
         if (!username) {
             return;
@@ -86,7 +86,7 @@ io.on('connection', (socket) => {
 
         if (isDuplicate) {
             const errorMsg = formatMessage('System', `The username '${username}' is already taken. Please choose another.`);
-            socket.emit('chat-message', errorMsg);
+            socket.emit('chat-message', { text: errorMsg, avatar: null });
             return;
         }
 
@@ -102,7 +102,7 @@ io.on('connection', (socket) => {
         // Only broadcast join/change message if the username actually changed
         if (username !== oldUsername) {
             const joinMsg = formatMessage('System', `User '${username}' joined the chat.`);
-            io.emit('chat-message', joinMsg);
+            io.emit('chat-message', { text: joinMsg, avatar: null });
             addToHistory(joinMsg);
         }
         
@@ -119,8 +119,6 @@ io.on('connection', (socket) => {
 
         // Check if the message is a command
         if (msg.startsWith('/')) {
-            // ... (Command handling logic remains the same for now) ...
-            
             const parts = msg.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
             const args = parts.slice(1).join(' '); 
@@ -147,11 +145,11 @@ io.on('connection', (socket) => {
                         
                         // 1. Send to Sender (Confirmation, visible to sender only)
                         const sentMsg = formatMessage('System', `**[PM to ${targetUsername}]**: **${privateMessage}**`);
-                        socket.emit('chat-message', sentMsg);
+                        socket.emit('chat-message', { text: sentMsg, avatar: null });
 
                         // 2. Send to Receiver (Actual PM, visible to receiver only)
                         const receivedMsg = formatMessage('System', `**[PM from ${sender}]**: **${privateMessage}**`);
-                        io.to(recipientId).emit('chat-message', receivedMsg);
+                        io.to(recipientId).emit('chat-message', { text: receivedMsg, avatar: null });
                         
                         return; // PM handled, exit command processing
                     }
@@ -165,7 +163,7 @@ io.on('connection', (socket) => {
                         if (args) {
                             // Format: **Announcement**: **[Your message]** [Time]
                             const serverMsg = formatMessage('Announcement', `: **${args}**`);
-                            io.emit('chat-message', serverMsg);
+                            io.emit('chat-message', { text: serverMsg, avatar: null });
                             addToHistory(serverMsg);
                             return; 
                         } else {
@@ -177,7 +175,7 @@ io.on('connection', (socket) => {
                         io.emit('clear-chat'); 
                         messageHistory.length = 0; 
                         const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
-                        io.emit('chat-message', clearConfirmationMsg);
+                        io.emit('chat-message', { text: clearConfirmationMsg, avatar: null });
                         addToHistory(clearConfirmationMsg);
                         return; 
                     
@@ -192,12 +190,12 @@ io.on('connection', (socket) => {
             // If a response was generated (e.g., error, usage message)
             if (response) {
                 const commandResponse = formatMessage('System', response);
-                socket.emit('chat-message', commandResponse);
+                socket.emit('chat-message', { text: commandResponse, avatar: null });
             }
 
         } else if (msg.trim()) {
             // Not a command, broadcast the message
-            // We now send an object containing the formatted string and the avatar URL
+            // Send an object containing the formatted string and the avatar URL
             const formattedMsg = formatMessage(sender, msg);
             io.emit('chat-message', {
                 text: formattedMsg,
