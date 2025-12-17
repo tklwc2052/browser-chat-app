@@ -21,6 +21,7 @@
     --color-accent-green: #4caf50;
     --color-accent-yellow: #ffc107;
     --color-vc-red: #dc3545; /* Color for the "Leave Call" button. */
+    --color-preview-bg: #4a4a4a; /* NEW: Background for the image preview */
 
     /* Online User List */
     --color-online-bg: #2a3847; 
@@ -43,23 +44,19 @@ html, body {
 /* NEW: Wrapper for Chat Container + Right Panel */
 #main-wrapper {
     display: flex;
-    gap: 10px; /* Space between the chat and the panel */
+    gap: 10px; 
     
-    /* WIDTH: Fixed at 950px */
     width: 950px; 
     max-width: 950px; 
     
-    /* HEIGHT FIX: Changed to 700px */
     height: 700px; 
     min-width: 200px; 
-
 }
 
 #chat-container {
-    /* CHAT CONTAINER is now flexible, taking up most of the space */
     flex-grow: 1;
     max-width: 1200px;
-    height: 100%; /* Fill the height of the main wrapper */
+    height: 100%; 
     min-width: 100px; 
 
     background: var(--bg-secondary); 
@@ -71,9 +68,9 @@ html, body {
     color: var(--color-text); 
 }
 
-/* --- Right Side Panel Styling --- */
+/* --- Right Side Panel Styling (Unchanged) --- */
 #right-panel {
-    width: 250px; /* Fixed width for the panel */
+    width: 250px; 
     min-width: 200px;
     height: 100%;
     padding: 15px;
@@ -113,7 +110,7 @@ html, body {
     margin: 0;
 }
 
-/* --- Voice Chat Styling --- */
+/* --- Voice Chat Styling (Unchanged) --- */
 #vc-area {
     padding: 10px;
     border: 1px solid var(--bg-input);
@@ -186,31 +183,29 @@ html, body {
     overflow-y: auto;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--bg-input);
-    /* NEW: Position relative for the drop zone overlay */
     position: relative; 
 }
 
-/* --- NEW: Drag and Drop Overlay Styling --- */
+/* --- Drag and Drop Overlay Styling (Unchanged) --- */
 #drop-zone-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 122, 204, 0.7); /* Accent color with transparency */
+    background: rgba(0, 122, 204, 0.7); 
     color: white;
     font-size: 1.5em;
     font-weight: bold;
-    display: none; /* Hidden by default */
+    display: none; 
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    pointer-events: none; /* Allows click events to pass through when hidden */
+    pointer-events: none; 
 }
 
-/* --- CHAT BUBBLE & MESSAGE STYLES --- */
+/* --- CHAT BUBBLE & MESSAGE STYLES (Unchanged) --- */
 
-/* 1. Message Wrapper: Full width container (Flex column stacking Name, then Content Wrapper) */
 .message {
     display: flex;
     flex-direction: column; 
@@ -218,13 +213,11 @@ html, body {
     padding: 0 5px;
 }
 
-/* Grouping: Reduces margin for consecutive messages */
 .grouped-message {
     margin-top: 2px;
     margin-bottom: 2px;
 }
 
-/* New style for the external username (other-message only) */
 .message-username {
     font-size: 0.8em;
     font-weight: bold;
@@ -244,7 +237,6 @@ html, body {
     color: var(--color-muted);
 }
 
-/* New Wrapper: This controls the stacking of the bubble and the time */
 .message-content-wrapper {
     display: flex;
     flex-direction: column; 
@@ -252,7 +244,6 @@ html, body {
     min-height: 20px;
 }
 
-/* Inner content: The actual colored bubble */
 .bubble-content {
     padding: 10px 15px;
     border-radius: 18px;
@@ -263,7 +254,6 @@ html, body {
     text-align: left;
 }
 
-/* --- Time Styling (Underneath the bubble) --- */
 .message-time {
     font-size: 0.7em;
     color: var(--color-muted);
@@ -273,46 +263,36 @@ html, body {
     opacity: 0.8;
 }
 
-/* CRITICAL FINAL TIMESTAMP VISIBILITY FIX */
 .user-message .message-content-wrapper .message-time {
     align-self: flex-end;
     width: fit-content;
     opacity: 1 !important;
 }
 
-/* 2. Messages from OTHER users (Left-Aligned) */
-.other-message {
-    align-items: flex-start;
-}
-.other-message .message-content-wrapper {
-    align-items: flex-start;
-}
+.other-message { align-items: flex-start; }
+.other-message .message-content-wrapper { align-items: flex-start; }
 .other-message .bubble-content {
     background: var(--color-bubble-other);
     color: var(--color-text);
     border-bottom-left-radius: 4px;
 }
 
-/* 3. Messages from the CURRENT user (Far Right-Aligned) */
-.user-message {
-    align-items: flex-end;
-}
-.user-message .message-content-wrapper {
-    align-items: flex-end;
-}
+.user-message { align-items: flex-end; }
+.user-message .message-content-wrapper { align-items: flex-end; }
 .user-message .bubble-content {
     background: var(--color-bubble-self);
     color: white;
     border-bottom-right-radius: 4px;
 }
 
-/* --- NEW: Image Specific Styling --- */
+/* --- NEW: Image Specific Styling (Updated for captions) --- */
+
 .image-bubble-content {
-    /* Remove text padding for images (we use padding on the container instead) */
+    /* Set base padding for image bubbles */
     padding: 5px !important; 
     max-width: 300px;
     height: auto;
-    background: none !important; /* Ensure the bubble background doesn't interfere */
+    background: none !important; 
 }
 
 .image-container {
@@ -320,9 +300,9 @@ html, body {
     max-height: 400px;
     overflow: hidden;
     border-radius: 12px;
-    /* Add color back to the container for the visual effect */
     padding: 5px; 
 }
+
 .user-message .image-container {
     background: var(--color-bubble-self);
 }
@@ -337,11 +317,21 @@ html, body {
     width: auto;
     height: auto;
     object-fit: contain;
-    border-radius: 8px; /* Slightly smaller radius for image inside container */
+    border-radius: 8px; 
 }
 
+/* NEW: Caption Styling (for image_with_caption type) */
+.image-caption {
+    padding: 5px 10px;
+    margin-bottom: 5px; /* Space between caption and image */
+    font-size: 0.9em;
+    word-break: break-word;
+    white-space: pre-wrap;
+    /* Use transparent background so it looks like it's inside the main container color */
+    background: transparent !important;
+}
 
-/* 4. System/Announcement Messages (Centered, No Bubble) */
+/* --- System/Announcement/PM Messages (Unchanged) --- */
 .system-message {
     display: block;
     text-align: center;
@@ -362,9 +352,7 @@ html, body {
     text-align: center;
 }
 
-/* 5. Private Messages (Based on System, but distinct) */
 .private-message {
-    /* Override system-message centered alignment and color */
     text-align: left;
     margin: 10px auto;
     padding: 8px 15px;
@@ -377,7 +365,6 @@ html, body {
     width: fit-content;
     font-weight: bold; 
 }
-/* Ensure inner content inherits PM color/style */
 .private-message * {
     background: none !important;
     border-radius: 0 !important;
@@ -390,16 +377,14 @@ html, body {
     font-weight: inherit;
 }
 .private-message strong {
-    /* Color the "PM from/to" tag */
     color: var(--color-pm-accent);
 }
 .private-message u {
-    /* Ensure the underline color matches the text or accent */
     text-decoration-color: var(--color-pm-accent);
 }
 
 
-/* --- Input Area & Formatting Styles --- */
+/* --- Input Area & Staging/Preview Styles --- */
 
 #message-input-area {
     display: flex;
@@ -407,10 +392,50 @@ html, body {
     gap: 10px;
     background: var(--bg-input);
     border-top: 1px solid #555;
+    align-items: flex-end; /* Align all items to the bottom */
 }
 
+/* NEW: Image Preview Area */
+#image-preview-area {
+    display: flex;
+    position: relative;
+    flex-direction: column;
+    align-self: stretch; /* Stretch to fill the height */
+    width: 80px; /* Small fixed width for preview */
+    height: 80px;
+    min-height: 30px;
+    max-height: 80px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--color-accent-blue);
+    background-color: var(--color-preview-bg);
+    margin-right: -5px; /* Tucks it slightly closer to the input box */
+}
+
+#image-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#remove-image-btn {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    padding: 0 4px;
+    line-height: 1;
+    font-size: 0.7em;
+    background: var(--color-vc-red);
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 0 0 0 4px; /* Curve the bottom-left corner */
+    z-index: 10;
+}
+
+
 #message-input {
-    flex-grow: 1;
+    flex-grow: 1; /* Default to take up most space */
     padding: 10px;
     border: 1px solid #555;
     border-radius: 4px;
@@ -419,6 +444,7 @@ html, body {
     box-sizing: border-box;
     background: var(--bg-secondary);
     color: var(--color-text);
+    transition: flex-grow 0.3s; /* Smooth transition when image is staged */
 }
 
 #send-button, #file-upload-btn {
