@@ -14,6 +14,11 @@
     <div id="chat-container">
         <div id="username-area">
             <h3>username:</h3>
+            
+            <input type="file" id="avatar-upload-input" accept="image/*" style="display: none;">
+            <button id="avatar-upload-btn" title="Upload Profile Picture">
+                <img id="current-avatar-preview" class="avatar" src="https://via.placeholder.com/30/007acc/ffffff?text=U" alt="Profile Picture">
+            </button>
             <input type="text" id="username-input" placeholder="whatr we callin ya">
             <button id="set-username-btn">Save</button>
         </div>
@@ -114,13 +119,18 @@
     const onlineUsersList = document.getElementById('online-users-list');
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     
-    // NEW Media Elements
+    // Media Elements
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const imageUploadInput = document.getElementById('image-upload-input');
     const dropZoneOverlay = document.getElementById('drop-zone-overlay'); 
     const imagePreviewArea = document.getElementById('image-preview-area');
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
+    
+    // NEW Avatar Elements
+    const avatarUploadInput = document.getElementById('avatar-upload-input');
+    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
+    const currentAvatarPreview = document.getElementById('current-avatar-preview');
 
     // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
@@ -130,10 +140,13 @@
 
 
     let currentUsername = '';
+    // Use a default avatar URL constant
+    const DEFAULT_AVATAR_PLACEHOLDER = 'https://via.placeholder.com/30/007acc/ffffff?text=U';
+    // This will hold the Base64 string if a custom avatar is set
+    let currentAvatarDataUrl = DEFAULT_AVATAR_PLACEHOLDER; 
     let lastUserMessageTime = 0; 
     let lastOtherMessageSender = ''; 
     
-    // NEW: Variable to hold staged image data until user sends
     let stagedImage = null; 
     
     // VC State
@@ -142,7 +155,7 @@
     let isMuted = false;
 
 
-    // --- 1. Utility Function to Handle Formatting ---
+    // --- 1. Utility Function to Handle Formatting (Unchanged) ---
     function parseFormatting(text) {
         if (!text) return '';
         let formattedText = text
@@ -165,7 +178,6 @@
         // This is necessary because the server creates an object, so we only handle image HTML on the client
         formattedText = formattedText.replace(/&lt;div class="image-container"&gt;/g, '<div class="image-container">').replace(/&lt;\/div&gt;/g, '</div>');
         formattedText = formattedText.replace(/&lt;img src="(.*?)" alt="(.*?)"&gt;/g, (match, src, alt) => {
-            // Re-sanitize Data URLs only to prevent XSS if possible, but keep the structure
             return `<img src="${src}" alt="${alt}">`;
         });
 
@@ -173,36 +185,90 @@
         return formattedText;
     }
 
-    // --- 2. Username Handling (Unchanged) ---
+    // --- 2. Username & Avatar Handling (UPDATED) ---
     
     document.addEventListener('DOMContentLoaded', () => {
         const storedUsername = localStorage.getItem('chatUsername');
+        const storedAvatar = localStorage.getItem('chatAvatar');
+        
+        if (storedAvatar) {
+            currentAvatarDataUrl = storedAvatar;
+            currentAvatarPreview.src = storedAvatar;
+        } else {
+             currentAvatarPreview.src = DEFAULT_AVATAR_PLACEHOLDER;
+        }
+
         if (storedUsername) {
             usernameInput.value = storedUsername;
-            setUsername(storedUsername);
+            // Use the stored avatar when setting the username
+            setUsername(storedUsername, storedAvatar);
         }
     });
 
+    // 2a. Handle Avatar Selection
+    avatarUploadBtn.addEventListener('click', () => {
+        avatarUploadInput.click();
+    });
+
+    avatarUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Only image files are supported for avatars.');
+                return;
+            }
+            
+            // Limit avatar size to 50KB for performance
+            const MAX_AVATAR_SIZE = 50 * 1024;
+            if (file.size > MAX_AVATAR_SIZE) {
+                alert(`Avatar size (${(file.size / 1024).toFixed(0)} KB) exceeds the ${MAX_AVATAR_SIZE / 1024} KB limit.`);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (readerEvent) => {
+                const dataUrl = readerEvent.target.result;
+                
+                // Store the Base64 URL locally
+                currentAvatarDataUrl = dataUrl;
+                localStorage.setItem('chatAvatar', dataUrl);
+                
+                // Update the preview
+                currentAvatarPreview.src = dataUrl;
+            };
+            reader.readAsDataURL(file);
+        }
+        avatarUploadInput.value = ''; // Clear input for re-upload
+    });
+
+
+    // 2b. Handle Username/Save Button
     setUsernameBtn.addEventListener('click', () => {
         const username = usernameInput.value.trim();
         if (username) {
             localStorage.setItem('chatUsername', username);
-            setUsername(username);
+            setUsername(username, currentAvatarDataUrl); // Send avatar data
         } else {
             console.warn('Please enter a username.');
         }
     });
     
-    function setUsername(username) {
+    function setUsername(username, avatarUrl) {
         currentUsername = username;
-        socket.emit('set-username', currentUsername); 
+        // Send both username and avatar data to the server
+        socket.emit('set-username', {
+            username: currentUsername,
+            avatarDataUrl: avatarUrl
+        }); 
+        
         usernameInput.disabled = true;
         setUsernameBtn.disabled = true;
+        avatarUploadBtn.disabled = true; // Disable changes once set
         usernameInput.placeholder = 'Username set!';
         messageInput.focus();
     }
 
-    // --- 3. Message Sending (UPDATED to handle staged images) ---
+    // --- 3. Message Sending (Unchanged) ---
 
     function clearStagedImage() {
         stagedImage = null;
@@ -221,19 +287,16 @@
         if ((!hasText && !hasImage) || !currentUsername) return; 
 
         if (hasImage) {
-            // Send the staged image with the message text as the caption
             socket.emit('send-media', {
                 type: 'image',
-                content: stagedImage, // The Base64 image data
-                text: text           // The message text (caption)
+                content: stagedImage, 
+                text: text           
             });
             
-            // Clear the staged image and message input after sending
             clearStagedImage();
             messageInput.value = '';
 
         } else if (hasText) {
-            // Only text message
             socket.emit('chat-message', text); 
             messageInput.value = '';
         }
@@ -248,11 +311,10 @@
         }
     });
 
-    // --- 3b. Image Upload & Drag/Drop Logic (UPDATED to stage image) ---
+    // --- 3b. Image Upload & Drag/Drop Logic (Unchanged) ---
 
     const MAX_FILE_SIZE = 500 * 1024; 
 
-    // Function to handle the file processing and staging
     function processAndStageFile(file) {
         if (!currentUsername) {
             alert('Please set a username before sharing an image.');
@@ -273,19 +335,16 @@
         reader.onload = (readerEvent) => {
             const dataUrl = readerEvent.target.result;
             
-            // STAGE the image data instead of sending immediately
             stagedImage = dataUrl;
             
-            // Show the preview
             imagePreview.src = dataUrl;
             imagePreviewArea.style.display = 'flex';
-            messageInput.style.flexGrow = '0'; // Adjust input layout
+            messageInput.style.flexGrow = '0';
             messageInput.focus();
         };
         reader.readAsDataURL(file);
     }
 
-    // 3b.1. Click-to-Upload
     fileUploadBtn.addEventListener('click', () => {
         imageUploadInput.click();
     });
@@ -298,7 +357,6 @@
         imageUploadInput.value = ''; 
     });
     
-    // 3b.2. Drag and Drop Implementation
     messagesDiv.addEventListener('dragover', (e) => {
         e.preventDefault(); 
         dropZoneOverlay.style.display = 'flex'; 
@@ -316,13 +374,12 @@
         
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            // Stage the first dropped file
             processAndStageFile(files[0]);
         }
     });
     
     
-    // --- 4. Message Display Helper Function (UPDATED for image_with_caption) ---
+    // --- 4. Message Display Helper Function (Unchanged) ---
     function displayMessage(message) { 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
@@ -333,29 +390,28 @@
              lastOtherMessageSender = ''; 
         }
 
-        // --- 1. Handle System/Announcement/PM Messages (Unchanged) ---
-        if (message.type === 'system' || message.type === 'announcement') {
+        // --- 1. Handle System/Announcement/PM Messages (No Avatar) ---
+        if (message.type === 'system' || message.type === 'announcement' || message.type.startsWith('pm_')) {
             messageEl.classList.add('system-message');
-            messageEl.innerHTML = parseFormatting(message.content);
+            if (message.type.startsWith('pm_')) {
+                messageEl.classList.add('private-message');
+                let prefix = message.type === 'pm_to' ? `PM to ${message.target}` : `PM from ${message.target}`;
+                const pmContent = `<u><strong>[${prefix}]</strong>: ${message.content}</u>`; 
+                messageEl.innerHTML = parseFormatting(pmContent); 
+            } else {
+                 messageEl.innerHTML = parseFormatting(message.content);
+            }
+            
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return;
-        }
-
-        if (message.type === 'pm_to' || message.type === 'pm_from') {
-             messageEl.classList.add('system-message', 'private-message');
-             let prefix = message.type === 'pm_to' ? `PM to ${message.target}` : `PM from ${message.target}`;
-             const pmContent = `<u><strong>[${prefix}]</strong>: ${message.content}</u>`; 
-             messageEl.innerHTML = parseFormatting(pmContent); 
-             messagesDiv.appendChild(messageEl);
-             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-             return;
         }
 
 
         // --- 2. Handle REGULAR Messages (Text, Image, Image+Caption) ---
 
         const sender = message.sender;
+        const senderAvatar = message.senderAvatar; 
         const timeString = message.time; 
         const isUserMessage = (sender === currentUsername);
         let showTime = true; 
@@ -374,6 +430,7 @@
             currentTimeInMinutes = hours * 60 + minutes;
         }
 
+        // 2b. Set base alignment/username visibility
         if (isUserMessage) {
             messageEl.classList.add('user-message');
             showUsername = false; 
@@ -412,16 +469,38 @@
 
 
         // --- 3. Assemble the Message Structure ---
+
+        // 3a. Avatar (Left side for others, no avatar for user message)
+        if (!isUserMessage) {
+            const avatarImg = document.createElement('img');
+            avatarImg.classList.add('avatar');
+            avatarImg.src = senderAvatar;
+            avatarImg.alt = sender;
+            
+            // Only show avatar on first message of a group
+            if (showUsername) { 
+                messageEl.appendChild(avatarImg);
+            } else {
+                // For grouped messages, use an invisible space holder to maintain alignment
+                const avatarSpacer = document.createElement('div');
+                avatarSpacer.classList.add('avatar', 'avatar-spacer');
+                messageEl.appendChild(avatarSpacer);
+            }
+        }
         
-        // 3a. Username 
+        // 3b. Content Area Wrapper
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+        
+        // 3c. Username 
         if (showUsername && !isUserMessage) {
             const usernameDiv = document.createElement('div');
             usernameDiv.classList.add('message-username');
             usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
-            messageEl.appendChild(usernameDiv);
+            contentArea.appendChild(usernameDiv);
         }
 
-        // 3b. Content Wrapper (Bubble + Content + Time)
+        // 3d. Content Wrapper (Bubble + Content + Time)
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
@@ -431,29 +510,21 @@
         let contentHtml = '';
 
         if (message.type === 'text') {
-            // TEXT: Simple text message
             contentHtml = parseFormatting(message.content); 
 
         } else if (message.type === 'image' || message.type === 'image_with_caption') {
-            // IMAGE or IMAGE+CAPTION
             
             let imageContentHtml = `<img src="${message.content}" alt="Image uploaded by ${sender}">`;
             let captionHtml = '';
 
             if (message.type === 'image_with_caption' && message.caption) {
-                // Wrap the caption text (which is just plain text at this point)
                 captionHtml = `<div class="image-caption">${parseFormatting(message.caption)}</div>`;
-                // Add the caption to the HTML right before the image
                 contentHtml = captionHtml + imageContentHtml; 
-                
-                // Add special class for combined message styling
                 bubbleContent.classList.add('caption-bubble-content');
             } else {
-                // Just an image (no caption)
                 contentHtml = imageContentHtml; 
             }
             
-            // Always wrap the image inside the image-container class
             contentHtml = `<div class="image-container">${contentHtml}</div>`;
             bubbleContent.classList.add('image-bubble-content');
         }
@@ -461,7 +532,7 @@
         bubbleContent.innerHTML = contentHtml;
         contentWrapper.appendChild(bubbleContent); 
         
-        // 3c. Time Content 
+        // 3e. Time Content 
         if (showTime) {
             const timeSpan = document.createElement('span');
             timeSpan.classList.add('message-time');
@@ -470,7 +541,8 @@
         }
 
         // 4. Assemble the final message element
-        messageEl.appendChild(contentWrapper);
+        contentArea.appendChild(contentWrapper);
+        messageEl.appendChild(contentArea);
         
         messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -501,11 +573,21 @@
 
     // --- 6. Online User List Update (Unchanged) ---
     
-    socket.on('user-list-update', (users) => {
+    socket.on('user-list-update', (users) => { 
         onlineUsersList.innerHTML = '';
-        users.forEach(user => {
+        users.forEach(userData => {
             const li = document.createElement('li');
-            li.textContent = user;
+            
+            const avatar = document.createElement('img');
+            avatar.classList.add('avatar', 'list-avatar'); 
+            avatar.src = userData.avatarURL;
+            avatar.alt = userData.username;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = userData.username;
+            
+            li.appendChild(avatar);
+            li.appendChild(nameSpan);
             onlineUsersList.appendChild(li);
         });
     });
@@ -671,11 +753,22 @@
         }
     });
 
-    socket.on('vc-user-list-update', (users) => {
+    socket.on('vc-user-list-update', (users) => { 
         vcUserList.innerHTML = '';
-        users.forEach(user => {
+        users.forEach(userData => {
             const li = document.createElement('li');
-            li.textContent = `🟢 ${user}`; 
+            
+            const avatar = document.createElement('img');
+            avatar.classList.add('avatar', 'list-avatar');
+            avatar.src = userData.avatarURL;
+            avatar.alt = userData.username;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = `🟢 ${userData.username}`; 
+            
+            li.appendChild(avatar);
+            li.appendChild(nameSpan);
+
             vcUserList.appendChild(li);
         });
     });
