@@ -6,11 +6,8 @@ const app = express();
 const server = http.createServer(app);
 
 // --- CRITICAL FIX FOR RENDER/PRODUCTION DEPLOYMENT ---
-// The CORS configuration allows the Socket.IO client (running in the browser)
-// to connect to the server without being blocked by cross-origin policies.
 const io = socketIo(server, {
     cors: {
-        // Allows connection from *any* origin (Replace '*' with your specific Render URL for better security, e.g., 'https://your-app-name.onrender.com')
         origin: "*", 
         methods: ["GET", "POST"]
     }
@@ -18,39 +15,44 @@ const io = socketIo(server, {
 
 
 // --- State Management ---
+// Users now store objects: { username, avatarURL }
 const users = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
-const vcParticipants = {}; 
+const vcParticipants = {}; // Stores { socketId: { username, avatarURL } }
 
 const ADMIN_USERNAME = 'kl_';
+// Default placeholder avatar (Blue background, white text 'U')
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/30/007acc/ffffff?text=U'; 
+
 
 // --- Utility Functions ---
 
 /**
  * Creates a structured message object for broadcast and history.
  * @param {string} sender - The sender's name.
+ * @param {string} senderAvatar - The sender's avatar URL.
  * @param {string} content - The message text or Data URL.
  * @param {string} type - 'text', 'image', 'image_with_caption', 'system', 'announcement', 'pm_to', 'pm_from'.
  * @param {string} target - For 'pm' type, the recipient's username.
  * @param {string} caption - The optional caption text for image messages.
  * @returns {object} The structured message object.
  */
-function createMessage(sender, content, type = 'text', target = null, caption = null) {
+function createMessage(sender, senderAvatar, content, type = 'text', target = null, caption = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     
-    // Create a unique-enough ID for this session (for history/grouping)
     const id = `${Date.now()}-${Math.floor(Math.random() * 99999)}`; 
 
     const message = {
         id: id,
         sender: sender,
+        senderAvatar: senderAvatar,
         content: content,
         type: type,
         time: time,
         target: target,
-        caption: caption // NEW: Includes caption for image messages
+        caption: caption
     };
     return message;
 }
@@ -59,15 +61,16 @@ function createMessage(sender, content, type = 'text', target = null, caption = 
  * Sends the current list of online users to all connected clients.
  */
 function broadcastUserList() {
-    const onlineUsernames = Object.values(users);
-    io.emit('user-list-update', onlineUsernames);
+    // Send objects: { username, avatarURL }
+    const onlineUsersData = Object.values(users);
+    io.emit('user-list-update', onlineUsersData);
 }
 
 /**
  * Sends the current list of voice chat participants to all connected clients.
  */
 function broadcastVcUserList() {
-    // Only send the usernames
+    // Send objects: { username, avatarURL }
     io.emit('vc-user-list-update', Object.values(vcParticipants));
 }
 
@@ -93,37 +96,48 @@ io.on('connection', (socket) => {
     // Send the structured message history
     socket.emit('history', messageHistory);
     broadcastVcUserList(); 
+    broadcastUserList();
 
-    // --- 1. Set Username ---
-    socket.on('set-username', (username) => {
-        const oldUsername = users[socket.id];
+    // --- 1. Set Username (UPDATED) ---
+    // Now receives an object { username, avatarDataUrl }
+    socket.on('set-username', (data) => {
+        const username = data.username;
+        const customAvatar = data.avatarDataUrl; // Base64 URL from client
+        
+        const oldUserData = users[socket.id];
 
-        if (!username || username === oldUsername) {
+        if (!username || (oldUserData && username === oldUserData.username && customAvatar === oldUserData.avatarURL)) {
             return;
         }
 
         const usernameLower = username.toLowerCase();
-        const isDuplicate = Object.values(users).some(name => name.toLowerCase() === usernameLower);
+        const isDuplicate = Object.values(users).some(userData => userData.username.toLowerCase() === usernameLower);
 
         if (isDuplicate) {
-            const errorMsg = createMessage('System', `The username '${username}' is already taken. Please choose another.`, 'system');
+            const errorMsg = createMessage('System', null, `The username '${username}' is already taken. Please choose another.`, 'system');
             socket.emit('chat-message', errorMsg);
             return;
         }
+        
+        // Use custom avatar if provided and valid, otherwise fall back to default
+        const avatarURL = customAvatar && customAvatar.startsWith('data:image/') ? customAvatar : DEFAULT_AVATAR_URL; 
+        const newUserData = { username: username, avatarURL: avatarURL };
 
-        users[socket.id] = username;
+        users[socket.id] = newUserData;
         console.log(`Username set for ${socket.id}: ${username}`);
         
-        const joinMsg = createMessage('System', `User '${username}' joined the chat.`, 'system');
+        const joinMsg = createMessage('System', null, `User '${username}' joined the chat.`, 'system');
         io.emit('chat-message', joinMsg);
         addToHistory(joinMsg);
         
         broadcastUserList();
     });
 
-    // --- 2. Handle Chat Messages (Now accepts raw text) ---
+    // --- 2. Handle Chat Messages ---
     socket.on('chat-message', (rawText) => {
-        const sender = users[socket.id] || 'Anonymous';
+        const userData = users[socket.id] || { username: 'Anonymous', avatarURL: DEFAULT_AVATAR_URL };
+        const sender = userData.username;
+        const senderAvatar = userData.avatarURL;
         const senderId = socket.id;
         const msg = rawText.trim();
 
@@ -143,7 +157,7 @@ io.on('connection', (socket) => {
                 if (!targetUsername || !privateMessage) {
                     response = `Usage: /msg <username> <message>. This message is private and not logged.`;
                 } else {
-                    const recipientId = Object.keys(users).find(id => users[id].toLowerCase() === targetUsername.toLowerCase());
+                    const recipientId = Object.keys(users).find(id => users[id].username.toLowerCase() === targetUsername.toLowerCase());
 
                     if (!recipientId) {
                         response = `User '${targetUsername}' not found or not online.`;
@@ -151,11 +165,11 @@ io.on('connection', (socket) => {
                         response = `You cannot send a private message to yourself.`;
                     } else {
                         // 1. Send to Sender (Confirmation)
-                        const sentMsg = createMessage(sender, privateMessage, 'pm_to', targetUsername);
+                        const sentMsg = createMessage(sender, senderAvatar, privateMessage, 'pm_to', targetUsername);
                         socket.emit('chat-message', sentMsg);
 
                         // 2. Send to Receiver (Actual PM)
-                        const receivedMsg = createMessage(targetUsername, privateMessage, 'pm_from', sender);
+                        const receivedMsg = createMessage(targetUsername, users[recipientId].avatarURL, privateMessage, 'pm_from', sender);
                         io.to(recipientId).emit('chat-message', receivedMsg);
                         
                         return; 
@@ -168,7 +182,7 @@ io.on('connection', (socket) => {
                 switch (command) {
                     case 'server':
                         if (args) {
-                            const serverMsg = createMessage('Announcement', args, 'announcement');
+                            const serverMsg = createMessage('Announcement', null, args, 'announcement');
                             io.emit('chat-message', serverMsg);
                             addToHistory(serverMsg);
                             return; 
@@ -180,7 +194,7 @@ io.on('connection', (socket) => {
                     case 'clear':
                         io.emit('clear-chat'); 
                         messageHistory.length = 0; 
-                        const clearConfirmationMsg = createMessage('System', `Chat history cleared by admin (${sender}).`, 'system');
+                        const clearConfirmationMsg = createMessage('System', null, `Chat history cleared by admin (${sender}).`, 'system');
                         io.emit('chat-message', clearConfirmationMsg);
                         addToHistory(clearConfirmationMsg);
                         return; 
@@ -193,30 +207,30 @@ io.on('connection', (socket) => {
             }
 
             if (response) {
-                const commandResponse = createMessage('System', response, 'system');
+                const commandResponse = createMessage('System', null, response, 'system');
                 socket.emit('chat-message', commandResponse);
             }
 
         } else if (msg) {
             // Not a command, broadcast the text message
-            const formattedMsg = createMessage(sender, msg, 'text');
+            const formattedMsg = createMessage(sender, senderAvatar, msg, 'text');
             io.emit('chat-message', formattedMsg);
             addToHistory(formattedMsg);
         }
     });
 
-    // --- NEW: 2b. Handle Incoming Media Messages ---
+    // --- 2b. Handle Incoming Media Messages ---
     socket.on('send-media', (mediaObject) => {
-        const sender = users[socket.id] || 'Anonymous';
+        const userData = users[socket.id] || { username: 'Anonymous', avatarURL: DEFAULT_AVATAR_URL };
+        const sender = userData.username;
+        const senderAvatar = userData.avatarURL;
         
-        // mediaObject.content is the Data URL string, mediaObject.text is the caption
         if (mediaObject && mediaObject.type === 'image' && mediaObject.content) {
             
-            // Determine message type based on whether a caption exists
             const type = mediaObject.text && mediaObject.text.trim() ? 'image_with_caption' : 'image';
             const caption = type === 'image_with_caption' ? mediaObject.text.trim() : null;
 
-            const imageMsg = createMessage(sender, mediaObject.content, type, null, caption); 
+            const imageMsg = createMessage(sender, senderAvatar, mediaObject.content, type, null, caption); 
             
             io.emit('chat-message', imageMsg);
             addToHistory(imageMsg);
@@ -226,26 +240,26 @@ io.on('connection', (socket) => {
     // --- 3. Handle Voice Chat Join/Leave ---
 
     socket.on('vc-join', () => {
-        const username = users[socket.id];
-        if (username && !vcParticipants[socket.id]) {
-            vcParticipants[socket.id] = username;
+        const userData = users[socket.id];
+        if (userData && !vcParticipants[socket.id]) {
+            vcParticipants[socket.id] = userData;
             
-            const joinMsg = createMessage('System', `User '${username}' joined the voice chat.`, 'system');
+            const joinMsg = createMessage('System', null, `User '${userData.username}' joined the voice chat.`, 'system');
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
             
             broadcastVcUserList();
             
-            socket.broadcast.emit('vc-user-joined', socket.id, username);
+            socket.broadcast.emit('vc-user-joined', socket.id, userData.username);
         }
     });
 
     socket.on('vc-leave', () => {
-        const username = users[socket.id];
-        if (username && vcParticipants[socket.id]) {
+        const userData = vcParticipants[socket.id];
+        if (userData) {
             delete vcParticipants[socket.id];
 
-            const leaveMsg = createMessage('System', `User '${username}' left the voice chat.`, 'system');
+            const leaveMsg = createMessage('System', null, `User '${userData.username}' left the voice chat.`, 'system');
             io.emit('chat-message', leaveMsg);
             addToHistory(leaveMsg);
             
@@ -255,7 +269,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 4. WebRTC Signaling ---
+    // --- 4. WebRTC Signaling (Unchanged) ---
     socket.on('webrtc-signal', (toId, signal) => {
         io.to(toId).emit('webrtc-signal', socket.id, signal);
     });
@@ -263,7 +277,7 @@ io.on('connection', (socket) => {
 
     // --- 5. Handle Disconnect ---
     socket.on('disconnect', () => {
-        const username = users[socket.id];
+        const userData = users[socket.id];
         
         // VC Cleanup
         if (vcParticipants[socket.id]) {
@@ -272,11 +286,11 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('vc-user-left', socket.id); 
         }
 
-        if (username) {
+        if (userData) {
             delete users[socket.id];
-            console.log(`User disconnected: ${username} (${socket.id})`);
+            console.log(`User disconnected: ${userData.username} (${socket.id})`);
             
-            const leaveMsg = createMessage('System', `User '${username}' left the chat.`, 'system');
+            const leaveMsg = createMessage('System', null, `User '${userData.username}' left the chat.`, 'system');
             io.emit('chat-message', leaveMsg);
             addToHistory(leaveMsg);
             
