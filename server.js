@@ -7,70 +7,47 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // --- State Management ---
-// users: { id: { username: string, avatar: string, id: string } }
 const users = {}; 
-// vcUsers: { id: { username: string, avatar: string, isMuted: boolean, id: string } }
 const vcUsers = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 
-// --- Configuration ---
-const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
+const ADMIN_USERNAME = 'kl_'; 
 
 // --- Utility Functions ---
-
-/**
- * Formats a message string with username and timestamp.
- */
 function formatMessage(sender, text) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
     if (sender === 'System' || sender === 'Announcement') {
         return `**${sender}** ${text} [${time}]`;
     }
     return `**${sender}**: ${text} [${time}]`;
 }
 
-/**
- * Sends the current list of online users (for the main list) to all connected clients.
- */
 function broadcastUserList() {
-    const onlineUsers = Object.values(users);
-    io.emit('user-list-update', onlineUsers);
+    io.emit('user-list-update', Object.values(users));
 }
 
-/**
- * Sends the current list of users in the voice chat (for the VC panel) to all connected clients.
- */
 function broadcastVCUserList() {
-    const onlineVCUsers = Object.values(vcUsers);
-    io.emit('vc-user-list-update', onlineVCUsers);
+    io.emit('vc-user-list-update', Object.values(vcUsers));
 }
 
-/**
- * Adds a message to history and truncates it if necessary.
- */
 function addToHistory(msg) {
     messageHistory.push(msg);
-    if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift(); 
-    }
+    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
 }
 
-// --- Serve Static Files ---
 app.use(express.static('public'));
 
-// --- Socket.IO Connection Handler ---
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Send the initial state
+    // Send initial state
     socket.emit('history', messageHistory);
     broadcastUserList();
     broadcastVCUserList(); 
 
-    // --- 1. Set Username & Avatar (Profile Update) ---
+    // --- 1. Set Username ---
     socket.on('set-username', ({ username, avatar }) => {
         const oldUserData = users[socket.id] || {};
         const oldUsername = oldUserData.username;
@@ -79,25 +56,18 @@ io.on('connection', (socket) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
-        
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
 
         if (isDuplicate) {
-            const errorMsg = formatMessage('System', `The username '${username}' is already taken. Please choose another.`);
+            const errorMsg = formatMessage('System', `The username '${username}' is already taken.`);
             socket.emit('chat-message', { text: errorMsg, avatar: null });
             return;
         }
 
-        // Store the user data
-        users[socket.id] = { 
-            username: username, 
-            avatar: newAvatar, 
-            id: socket.id 
-        };
+        users[socket.id] = { username, avatar: newAvatar, id: socket.id };
 
-        // If the user is currently in VC, update their VC profile data
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].username = username;
             vcUsers[socket.id].avatar = newAvatar;
@@ -113,12 +83,10 @@ io.on('connection', (socket) => {
         broadcastUserList();
     });
 
-    // --- 2. Handle Chat Messages (Includes Command Logic) ---
+    // --- 2. Chat Messages ---
     socket.on('chat-message', (msg) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
-        const senderAvatar = userData.avatar;
-        const senderId = socket.id;
 
         if (typeof msg === 'string' && msg.startsWith('/')) {
             const parts = msg.trim().slice(1).split(/\s+/); 
@@ -127,162 +95,101 @@ io.on('connection', (socket) => {
             
             let response = '';
 
-            // --- GENERAL COMMANDS (/msg) ---
             if (command === 'msg') {
                 const targetUsername = parts[1];
                 const privateMessage = parts.slice(2).join(' ').trim();
                 
                 if (!targetUsername || !privateMessage) {
-                    response = `Usage: /msg <username> <message>. This message is private and not logged.`;
+                    response = `Usage: /msg <username> <message>`;
                 } else {
                     const recipientId = Object.keys(users).find(id => users[id].username.toLowerCase() === targetUsername.toLowerCase());
-
-                    if (!recipientId) {
-                        response = `User '${targetUsername}' not found or not online.`;
-                    } else if (recipientId === senderId) {
-                        response = `You cannot send a private message to yourself.`;
-                    } else {
+                    if (!recipientId) response = `User '${targetUsername}' not found.`;
+                    else {
                         const sentMsg = formatMessage('System', `**[PM to ${targetUsername}]**: **${privateMessage}**`);
                         socket.emit('chat-message', { text: sentMsg, avatar: null });
-
                         const receivedMsg = formatMessage('System', `**[PM from ${sender}]**: **${privateMessage}**`);
                         io.to(recipientId).emit('chat-message', { text: receivedMsg, avatar: null });
-                        
                         return;
                     }
                 }
-            } 
-            
-            // --- ADMIN COMMANDS (kl_ only) ---
-            else if (sender === ADMIN_USERNAME) {
-                switch (command) {
-                    case 'server':
-                        if (args) {
-                            const serverMsg = formatMessage('Announcement', `: **${args}**`);
-                            io.emit('chat-message', { text: serverMsg, avatar: null });
-                            addToHistory(serverMsg);
-                            return; 
-                        } else {
-                            response = `Usage: /server [message]. Broadcasts a server-wide announcement.`;
-                        }
-                        break;
-
-                    case 'clear':
-                        io.emit('clear-chat'); 
-                        messageHistory.length = 0; 
-                        const clearConfirmationMsg = formatMessage('System', `Chat history cleared by admin (${sender}).`);
-                        io.emit('chat-message', { text: clearConfirmationMsg, avatar: null });
-                        addToHistory(clearConfirmationMsg);
-                        return; 
-                    
-                    default:
-                        response = `Unknown Admin Command: /${command}. Available: /server, /clear.`;
+            } else if (sender === ADMIN_USERNAME) {
+                if (command === 'server' && args) {
+                    const serverMsg = formatMessage('Announcement', `: **${args}**`);
+                    io.emit('chat-message', { text: serverMsg, avatar: null });
+                    addToHistory(serverMsg);
+                    return; 
+                } else if (command === 'clear') {
+                    io.emit('clear-chat'); 
+                    messageHistory.length = 0; 
+                    const clearMsg = formatMessage('System', `Chat history cleared.`);
+                    io.emit('chat-message', { text: clearMsg, avatar: null });
+                    addToHistory(clearMsg);
+                    return; 
                 }
             } else {
-                response = `Unknown command: /${command}. Only the /msg command is generally available.`;
+                response = `Unknown command: /${command}`;
             }
 
-            if (response) {
-                const commandResponse = formatMessage('System', response);
-                socket.emit('chat-message', { text: commandResponse, avatar: null });
-            }
+            if (response) socket.emit('chat-message', { text: formatMessage('System', response), avatar: null });
 
-        } else if (msg && (typeof msg === 'string' ? msg.trim() : true)) {
+        } else if (msg && msg.trim()) {
             const formattedMsg = formatMessage(sender, msg);
-            io.emit('chat-message', {
-                text: formattedMsg,
-                avatar: senderAvatar,
-                sender: sender
-            });
+            io.emit('chat-message', { text: formattedMsg, avatar: userData.avatar, sender: sender });
             addToHistory(formattedMsg);
         }
     });
 
-    // --- 3. Voice Chat Handlers (WebRTC Signaling) ---
-
+    // --- 3. Voice Chat & Signaling ---
     socket.on('vc-join', (isJoining) => {
         const userData = users[socket.id];
         if (!userData) return;
 
         if (isJoining) {
-            // 1. Add user to VC list
             vcUsers[socket.id] = { 
                 username: userData.username, 
                 avatar: userData.avatar, 
                 isMuted: false, 
                 id: socket.id
             };
-            
-            // 2. Notify others for UI update
-            const joinMsg = formatMessage('System', `**${userData.username}** joined the Voice Chat.`);
+            const joinMsg = formatMessage('System', `**${userData.username}** joined Voice Chat.`);
             io.emit('chat-message', { text: joinMsg, avatar: null });
             addToHistory(joinMsg);
-            
-            // 3. IMPORTANT: Tell existing VC users that someone joined so they can initiate a P2P connection
-            // We broadcast to everyone, and clients filter if they are in VC
             socket.broadcast.emit('vc-user-joined', socket.id);
-
         } else {
-            // Remove user from VC list
             if (vcUsers[socket.id]) {
                 delete vcUsers[socket.id];
-                const leaveMsg = formatMessage('System', `**${userData.username}** left the Voice Chat.`);
+                const leaveMsg = formatMessage('System', `**${userData.username}** left Voice Chat.`);
                 io.emit('chat-message', { text: leaveMsg, avatar: null });
                 addToHistory(leaveMsg);
-                
-                // Notify others to destroy the P2P connection
                 socket.broadcast.emit('vc-user-left', socket.id);
             }
         }
-        
         broadcastVCUserList();
     });
 
-    // Handler to toggle mute status (Visual & Logic)
     socket.on('vc-mute-toggle', (isMuted) => {
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].isMuted = isMuted;
-            broadcastVCUserList(); // Update all clients with new visual status
+            broadcastVCUserList();
         }
     });
 
-    // --- NEW: WebRTC Signal Routing ---
-    // This allows clients to exchange connection data (Offers, Answers, ICE Candidates)
     socket.on('signal', (data) => {
-        const { target, signal } = data;
-        // Forward the signal to the specific target user
-        io.to(target).emit('signal', {
-            sender: socket.id,
-            signal: signal
-        });
+        io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
     });
 
-    // --- 4. Handle Disconnect ---
     socket.on('disconnect', () => {
-        const userData = users[socket.id];
-        
-        if (userData) {
+        if (users[socket.id]) {
             delete users[socket.id];
-            
-            // Remove from VC list on disconnect
             if (vcUsers[socket.id]) {
                 delete vcUsers[socket.id];
                 broadcastVCUserList(); 
-                // Notify WebRTC clients to remove peer connection
                 socket.broadcast.emit('vc-user-left', socket.id);
             }
-            
-            const leaveMsg = formatMessage('System', `User '${userData.username}' left the chat.`);
-            io.emit('chat-message', { text: leaveMsg, avatar: null }); 
-            addToHistory(leaveMsg);
-            
             broadcastUserList();
         }
     });
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
