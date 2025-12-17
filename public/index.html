@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -13,7 +12,7 @@
 
     <div id="chat-container">
         <div id="username-area">
-            <button id="avatar-upload-btn" title="Set Avatar (Click to Upload)">
+            <button id="avatar-upload-btn" title="Set Avatar">
                 <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
             </button>
             <h3>username:</h3>
@@ -23,12 +22,10 @@
 
         <div id="online-users-area">
             <h4>whos online:</h4>
-            <ul id="online-users-list">
-            </ul>
+            <ul id="online-users-list"></ul>
         </div>
         
-        <div id="messages">
-        </div>
+        <div id="messages"></div>
 
         <div id="message-input-area">
             <div id="image-preview-area" style="display:none;">
@@ -36,9 +33,7 @@
                 <button id="remove-image-btn">X</button>
             </div>
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented)">
-                📁
-            </button>
+            <button id="file-upload-btn">📁</button>
             <button id="send-button">Send</button>
         </div>
     </div>
@@ -46,35 +41,22 @@
     <div id="right-panel">
         <h4 class="panel-title">other stuff</h4>
         <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-        <p class="panel-hint">for a dedicated status/chat window.</p>
 
         <h4 class="panel-title">voice chat</h4>
         <button id="vc-btn-join" class="panel-btn">Join Call</button>
         <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
-        <ul id="vc-user-list">
-        </ul>
+        <ul id="vc-user-list"></ul>
         <div id="audio-container" style="display:none;"></div>
     </div>
     
 </div>
 
 <script>
-    // --- 0. Popup Mode Check ---
+    // --- Popup Logic ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
-        const mainWrapper = document.getElementById('main-wrapper');
-        const rightPanel = document.getElementById('right-panel');
-        const chatContainer = document.getElementById('chat-container');
-        const messageInputArea = document.getElementById('message-input-area');
-        const fileUploadBtn = document.getElementById('file-upload-btn');
-        const sendButton = document.getElementById('send-button');
-
-        if (mainWrapper) { mainWrapper.style.gap = '0'; mainWrapper.style.maxWidth = '150px'; }
-        if (rightPanel) { rightPanel.style.display = 'none'; }
-        if (chatContainer) { chatContainer.style.maxWidth = '100%'; }
-        if (messageInputArea) { messageInputArea.style.flexDirection = 'column'; messageInputArea.style.gap = '5px'; }
-        if (fileUploadBtn) { fileUploadBtn.style.width = '100%'; }
-        if (sendButton) { sendButton.style.width = '100%'; }
+        document.getElementById('right-panel').style.display = 'none';
+        document.getElementById('main-wrapper').style.maxWidth = '100%';
     }
 
     const socket = io();
@@ -94,43 +76,24 @@
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
 
-
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
     let lastMessageSender = ''; 
     let lastMessageTime = 0; 
     
-    // --- WebRTC State Variables ---
+    // --- WebRTC Variables ---
     let localStream = null;
     let peers = {}; 
     let isInVC = false;
-
-    // --- NEW: Audio Analysis Context (Global) ---
-    // Browsers limit number of contexts, so we create one and reuse it.
     let audioCtx; 
 
     const rtcConfig = {
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
+            { urls: 'stun:stun.l.google.com:19302' }
         ]
     };
 
-    // --- 1. Utility: Formatting ---
-    function parseFormatting(text) {
-        let formattedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
-        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
-        formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
-        formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
-        formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
-        return formattedText;
-    }
-
-    // --- 2. Avatar Selection ---
+    // --- 1. Avatar & Username ---
     avatarUploadBtn.addEventListener('click', () => {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
@@ -151,66 +114,54 @@
         fileInput.click();
     });
 
-    // --- 3. Username Handling ---
     document.addEventListener('DOMContentLoaded', () => {
         const storedUsername = localStorage.getItem('chatUsername');
         const storedAvatar = localStorage.getItem('chatAvatar');
-
-        if (storedAvatar) {
-            currentAvatarBase64 = storedAvatar;
-            currentAvatarPreview.src = storedAvatar;
-        } else {
-            currentAvatarPreview.src = 'placeholder-avatar.png';
-        }
-
-        if (storedUsername) {
-            usernameInput.value = storedUsername;
-            setUsername(storedUsername);
-        }
+        if (storedAvatar) { currentAvatarBase64 = storedAvatar; currentAvatarPreview.src = storedAvatar; }
+        if (storedUsername) { usernameInput.value = storedUsername; setUsername(storedUsername); }
     });
 
     setUsernameBtn.addEventListener('click', () => {
         const username = usernameInput.value.trim();
         if (username) {
             localStorage.setItem('chatUsername', username);
-            if (currentAvatarBase64) localStorage.setItem('chatAvatar', currentAvatarBase64);
             setUsername(username);
         }
     });
     
     function setUsername(username) {
         currentUsername = username;
-        socket.emit('set-username', { username: currentUsername, avatar: currentAvatarBase64 || 'placeholder-avatar.png' }); 
+        socket.emit('set-username', { username, avatar: currentAvatarBase64 || 'placeholder-avatar.png' }); 
         usernameInput.disabled = true;
         setUsernameBtn.disabled = true;
-        usernameInput.placeholder = 'Username set!';
-        messageInput.focus();
     }
 
-    // --- 4. Message Sending ---
+    // --- 2. Chat Logic ---
     function sendMessage() {
         let msg = messageInput.value.trim();
         if (!msg || !currentUsername) return; 
         socket.emit('chat-message', msg);
         messageInput.value = '';
     }
-
     sendButton.addEventListener('click', sendMessage);
-
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
+            e.preventDefault(); sendMessage();
         }
     });
     
-    // --- 5. Message Display ---
+    function parseFormatting(text) {
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/~~(.*?)~~/g, '<del>$1</del>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    }
+
     function displayMessage(messageObject) {
         let formattedMessage, messageAvatar, sender;
-        
-        if (typeof messageObject === 'string' || messageObject.avatar === null) {
+        if (typeof messageObject === 'string' || !messageObject.avatar) {
             formattedMessage = messageObject.text || messageObject; 
-            messageAvatar = null; sender = null;
+            messageAvatar = 'placeholder-avatar.png'; sender = null;
         } else {
             formattedMessage = messageObject.text;
             messageAvatar = messageObject.avatar; sender = messageObject.sender;
@@ -219,245 +170,167 @@
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+        // Check for System Message
+        const systemMatch = formattedMessage.match(/^\*\*(System|Announcement)\*\* (.*?) \[/);
+        const privateMatch = formattedMessage.match(/^\*\*System\*\* \*\*\[PM/);
 
-        // System/Announcement
-        if (!fullMatch) {
-            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-            lastMessageTime = 0; lastMessageSender = ''; 
-
-            if (systemMatch) {
-                messageEl.classList.add('system-message');
-                const systemText = systemMatch[2];
-                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
-                    messageEl.classList.add('private-message');
-                    messageEl.innerHTML = parseFormatting(`<u>${systemText.replace(/\*\*(.*?)\*\*/, '$1')}</u>`); 
-                    messagesDiv.appendChild(messageEl);
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    return; 
-                }
-                messageEl.innerHTML = parseFormatting(systemText);
-                messagesDiv.appendChild(messageEl);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                return;
-            }
-            messageEl.classList.add('system-message');
-            messageEl.innerHTML = parseFormatting(formattedMessage);
+        if (privateMatch) {
+            messageEl.classList.add('private-message');
+            messageEl.innerHTML = parseFormatting(formattedMessage.split(']**: ')[1].replace('**', ''));
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return;
         }
-        
-        const extractedSender = fullMatch[1];
+
+        if (systemMatch) {
+            messageEl.classList.add('system-message');
+            // Extract just the text content, ignore timestamp for system
+            let content = formattedMessage.substring(formattedMessage.indexOf('** ') + 3, formattedMessage.lastIndexOf('['));
+            messageEl.innerHTML = parseFormatting(content);
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return;
+        }
+
+        // Regular Message Parsing
+        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+        if (!fullMatch) return; 
+
+        const finalSender = sender || fullMatch[1];
         const messageText = fullMatch[2];
         const timeString = fullMatch[3]; 
-
-        const finalSender = sender || extractedSender;
-        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; 
         const isUserMessage = (finalSender === currentUsername);
+
+        if (isUserMessage) messageEl.classList.add('user-message');
+        else messageEl.classList.add('other-message');
+
+        // Grouping
         let showAvatar = true;
-        let showUsername = true; 
-
-        let currentTimeInMinutes = 0;
-        const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
-        if (timeParts) {
-            let hours = parseInt(timeParts[1]);
-            const minutes = parseInt(timeParts[2]);
-            const isPM = timeParts[3] === 'PM';
-            if (isPM && hours !== 12) hours += 12;
-            if (!isPM && hours === 12) hours = 0;
-            currentTimeInMinutes = hours * 60 + minutes;
-        }
-
-        if (isUserMessage) {
-            messageEl.classList.add('user-message');
-            showUsername = false; 
-        } else {
-            messageEl.classList.add('other-message');
-        }
-
-        if ((lastMessageSender === finalSender) && (currentTimeInMinutes - lastMessageTime) < 1) {
-            showAvatar = false; showUsername = false; 
+        if (lastMessageSender === finalSender) {
+            showAvatar = false;
             messageEl.classList.add('grouped-message');
-            const previousMessageEl = messagesDiv.lastChild;
-            if (previousMessageEl && !previousMessageEl.classList.contains('system-message')) {
-                const prevWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-                if (prevWrapper) {
-                    const prevTime = prevWrapper.querySelector('.message-time');
-                    if (prevTime) prevTime.remove();
-                }
-            }
-        } 
-
+        }
         lastMessageSender = finalSender;
-        lastMessageTime = currentTimeInMinutes;
-        
+
+        // Avatar
         if (!isUserMessage) {
             if (showAvatar) {
-                const avatarImg = document.createElement('img');
-                avatarImg.classList.add('avatar');
-                avatarImg.src = finalAvatar;
-                messageEl.appendChild(avatarImg);
+                const img = document.createElement('img');
+                img.classList.add('avatar'); img.src = messageAvatar;
+                messageEl.appendChild(img);
             } else {
                 const spacer = document.createElement('div');
                 spacer.classList.add('avatar-spacer');
                 messageEl.appendChild(spacer);
             }
         }
-        
+
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
-        
-        if (showUsername && !isUserMessage) {
-            const usernameDiv = document.createElement('div');
-            usernameDiv.classList.add('message-username');
-            usernameDiv.innerHTML = `<strong>${finalSender}</strong>:`;
-            contentArea.appendChild(usernameDiv);
+
+        if (showAvatar && !isUserMessage) {
+            const uDiv = document.createElement('div');
+            uDiv.classList.add('message-username');
+            uDiv.innerText = finalSender;
+            contentArea.appendChild(uDiv);
         }
 
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
+
+        const bubble = document.createElement('div');
+        bubble.classList.add('bubble-content');
+        bubble.innerHTML = parseFormatting(messageText);
         
-        const bubbleContent = document.createElement('span');
-        bubbleContent.classList.add('bubble-content');
-        bubbleContent.innerHTML = parseFormatting(messageText);
-        contentWrapper.appendChild(bubbleContent); 
-        
-        const timeSpan = document.createElement('span');
-        timeSpan.classList.add('message-time');
-        timeSpan.textContent = timeString; 
-        contentWrapper.appendChild(timeSpan); 
+        const time = document.createElement('div');
+        time.classList.add('message-time');
+        time.innerText = timeString;
+
+        contentWrapper.appendChild(bubble);
+        contentWrapper.appendChild(time);
         
         contentArea.appendChild(contentWrapper);
         messageEl.appendChild(contentArea);
-        
         messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-
     // ======================================================
-    // --- 6. VOICE CHAT LOGIC (WEBRTC + VISUALS) ---
+    // --- 3. VOICE CHAT CORE (The missing part!) ---
     // ======================================================
     
-    // --- Audio Visualization Helper ---
+    // Monitors volume and toggles the .speaking class
     function attachSpeakingDetector(stream, userId) {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        // Create an analyser node
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
         source.connect(analyser);
-
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        // Check volume periodically
         function checkVolume() {
-            // Stop loop if we left VC
             if (!isInVC) return;
-
             analyser.getByteFrequencyData(dataArray);
-            
-            // Calculate average volume
             let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i];
-            }
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
             const average = sum / dataArray.length;
 
-            // Threshold for "speaking" (adjustable)
-            const isSpeaking = average > 10; 
-
-            // Find the UI element for this user
-            // Note: Since ID is passed from server, we need to match it
+            // Update UI
             const userLi = document.getElementById(`vc-user-${userId}`);
-            
             if (userLi) {
-                if (isSpeaking) {
-                    userLi.classList.add('speaking');
-                } else {
-                    userLi.classList.remove('speaking');
-                }
+                if (average > 10) userLi.classList.add('speaking');
+                else userLi.classList.remove('speaking');
             }
-
-            // Loop smoothly
             requestAnimationFrame(checkVolume);
         }
-
         checkVolume();
     }
 
     async function startVC() {
         try {
-            // 1. Get Microphone Access
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             
-            // 2. Initialize Audio Context (needed for user gesture policies)
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-            // 3. Attach detector to MY OWN stream (so I see myself glow)
-            // We use a temporary ID 'local' first, but we need the socket ID.
-            // Fortunately, socket.id is available globally from the library.
+            // Light up my own avatar when I speak
             attachSpeakingDetector(localStream, socket.id);
 
-            // 4. Update UI
             isInVC = true;
             vcBtnJoin.textContent = 'Leave Call';
             vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)';
             vcBtnMute.style.display = 'block';
-            vcBtnMute.textContent = 'Mute';
-            vcBtnMute.classList.remove('active');
-            
-            // 5. Notify Server
             socket.emit('vc-join', true);
 
         } catch (err) {
-            console.error('Error accessing microphone:', err);
-            alert('Could not access microphone. Ensure permissions are granted.');
+            console.error(err);
+            alert('Microphone access denied.');
         }
     }
 
     function leaveVC() {
         socket.emit('vc-join', false);
-        
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
         }
-
-        Object.keys(peers).forEach(key => {
-            peers[key].close();
-            delete peers[key];
-        });
-        
-        audioContainer.innerHTML = '';
-        if(audioCtx) audioCtx.close(); 
-        audioCtx = null; // Reset context
-
+        Object.keys(peers).forEach(key => { peers[key].close(); delete peers[key]; });
         isInVC = false;
         vcBtnJoin.textContent = 'Join Call';
-        vcBtnJoin.style.backgroundColor = 'var(--color-accent-blue)';
+        vcBtnJoin.style.backgroundColor = '';
         vcBtnMute.style.display = 'none';
     }
 
-    // --- WebRTC Connection ---
+    // Create P2P Connection
     function createPeerConnection(targetId, initiator) {
         if (peers[targetId]) return;
-
         const peer = new RTCPeerConnection(rtcConfig);
         peers[targetId] = peer;
 
-        if (localStream) {
-            localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-        }
+        if (localStream) localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
 
-        // Receive Remote Stream
         peer.ontrack = (event) => {
-            // 1. Play Audio
             let audioEl = document.getElementById(`audio-${targetId}`);
             if (!audioEl) {
                 audioEl = document.createElement('audio');
@@ -466,49 +339,29 @@
                 audioContainer.appendChild(audioEl);
             }
             audioEl.srcObject = event.streams[0];
-
-            // 2. Attach Visual Detector to Remote Stream
             attachSpeakingDetector(event.streams[0], targetId);
         };
 
         peer.onicecandidate = (event) => {
             if (event.candidate) {
-                socket.emit('signal', {
-                    target: targetId,
-                    signal: { type: 'candidate', candidate: event.candidate }
-                });
+                socket.emit('signal', { target: targetId, signal: { type: 'candidate', candidate: event.candidate } });
             }
         };
 
         if (initiator) {
-            peer.createOffer()
-                .then(offer => peer.setLocalDescription(offer))
-                .then(() => {
-                    socket.emit('signal', {
-                        target: targetId,
-                        signal: { type: 'offer', sdp: peer.localDescription }
-                    });
-                })
-                .catch(err => console.error('Error creating offer:', err));
+            peer.createOffer().then(offer => peer.setLocalDescription(offer))
+                .then(() => socket.emit('signal', { target: targetId, signal: { type: 'offer', sdp: peer.localDescription } }));
         }
-        
         return peer;
     }
 
-    // --- Socket Listeners (VC) ---
-    socket.on('vc-user-joined', (newUserId) => {
-        if (isInVC) createPeerConnection(newUserId, true);
+    // VC Socket Listeners
+    socket.on('vc-user-joined', (id) => { if (isInVC) createPeerConnection(id, true); });
+    socket.on('vc-user-left', (id) => { 
+        if (peers[id]) { peers[id].close(); delete peers[id]; }
+        const el = document.getElementById(`audio-${id}`); if (el) el.remove();
     });
-
-    socket.on('vc-user-left', (userId) => {
-        if (peers[userId]) {
-            peers[userId].close();
-            delete peers[userId];
-        }
-        const audioEl = document.getElementById(`audio-${userId}`);
-        if (audioEl) audioEl.remove();
-    });
-
+    
     socket.on('signal', async ({ sender, signal }) => {
         if (!isInVC) return;
         let peer = peers[sender];
@@ -519,97 +372,60 @@
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
             socket.emit('signal', { target: sender, signal: { type: 'answer', sdp: answer } });
-        } 
-        else if (signal.type === 'answer') {
+        } else if (signal.type === 'answer') {
             await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-        } 
-        else if (signal.type === 'candidate') {
-            try { await peer.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch (e) {}
+        } else if (signal.type === 'candidate') {
+            try { await peer.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
         }
     });
 
     vcBtnJoin.addEventListener('click', () => {
-        if (!currentUsername) { alert("Please set a username first."); return; }
-        if (!isInVC) startVC();
-        else leaveVC();
+        if (!currentUsername) return alert("Set username first.");
+        isInVC ? leaveVC() : startVC();
     });
 
     vcBtnMute.addEventListener('click', () => {
         if (!localStream) return;
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled; 
-            const isMuted = !audioTrack.enabled;
-            vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
-            if (isMuted) vcBtnMute.classList.add('active');
-            else vcBtnMute.classList.remove('active');
-            socket.emit('vc-mute-toggle', isMuted);
-        }
+        const track = localStream.getAudioTracks()[0];
+        track.enabled = !track.enabled;
+        vcBtnMute.textContent = track.enabled ? 'Mute' : 'Unmute';
+        socket.emit('vc-mute-toggle', !track.enabled);
     });
 
-    // --- VC List Update (With IDs for targeting) ---
-    socket.on('vc-user-list-update', (vcUsers) => {
+    // VC List Update
+    socket.on('vc-user-list-update', (users) => {
         vcUserList.innerHTML = '';
-        vcUsers.forEach(userData => {
+        users.forEach(u => {
             const li = document.createElement('li');
-            
-            // IMPORTANT: Assign ID so we can find it for audio visualization
-            li.id = `vc-user-${userData.id}`;
-
-            const listAvatar = document.createElement('img');
-            listAvatar.classList.add('avatar', 'list-avatar');
-            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
-            li.appendChild(listAvatar);
-
-            li.appendChild(document.createTextNode(userData.username));
-            
-            if (userData.isMuted) {
-                const muteStatus = document.createElement('span');
-                muteStatus.textContent = ' 🔇';
-                muteStatus.style.color = 'var(--color-vc-red)';
-                li.appendChild(muteStatus);
-            }
-            
-            if (userData.username === currentUsername) {
-                li.style.fontWeight = 'bold';
-            }
-            
+            li.id = `vc-user-${u.id}`; // Crucial for green circle finding
+            const img = document.createElement('img');
+            img.classList.add('avatar', 'list-avatar');
+            img.src = u.avatar;
+            li.appendChild(img);
+            li.appendChild(document.createTextNode(u.username));
+            if (u.isMuted) li.innerHTML += ' <span style="color:var(--color-vc-red)">🔇</span>';
             vcUserList.appendChild(li);
         });
     });
 
-
-    // --- 7. General Updates ---
-    socket.on('history', (history) => {
-        lastMessageTime = 0; lastMessageSender = ''; 
-        messagesDiv.innerHTML = ''; 
-        history.forEach(msg => displayMessage(msg));
-        messagesDiv.scrollTop = messagesDiv.scrollHeight; 
-    });
-
-    socket.on('chat-message', (msg) => displayMessage(msg));
-    socket.on('clear-chat', () => messagesDiv.innerHTML = '');
-
+    // --- Standard Socket Listeners ---
+    socket.on('chat-message', displayMessage);
+    socket.on('history', (h) => { messagesDiv.innerHTML = ''; h.forEach(displayMessage); });
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
-        users.forEach(userData => {
+        users.forEach(u => {
             const li = document.createElement('li');
-            const listAvatar = document.createElement('img');
-            listAvatar.classList.add('avatar', 'list-avatar');
-            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; 
-            li.appendChild(listAvatar);
-            li.appendChild(document.createTextNode(userData.username));
+            const img = document.createElement('img');
+            img.classList.add('avatar', 'list-avatar'); img.src = u.avatar;
+            li.appendChild(img); li.appendChild(document.createTextNode(u.username));
             onlineUsersList.appendChild(li);
         });
     });
+    
+    if (launchCustomWindowBtn) launchCustomWindowBtn.addEventListener('click', () => {
+        window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
+    });
 
-    if (launchCustomWindowBtn) {
-         launchCustomWindowBtn.addEventListener('click', () => {
-            const currentUrl = window.location.href.split('?')[0]; 
-            const newUrl = `${currentUrl}?mode=popup`; 
-            window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
-        });
-    }
 </script>
 </body>
 </html>
