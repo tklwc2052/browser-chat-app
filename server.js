@@ -6,8 +6,11 @@ const app = express();
 const server = http.createServer(app);
 
 // --- CRITICAL FIX FOR RENDER/PRODUCTION DEPLOYMENT ---
+// The CORS configuration allows the Socket.IO client (running in the browser)
+// to connect to the server without being blocked by cross-origin policies.
 const io = socketIo(server, {
     cors: {
+        // Allows connection from *any* origin (Replace '*' with your specific Render URL for better security, e.g., 'https://your-app-name.onrender.com')
         origin: "*", 
         methods: ["GET", "POST"]
     }
@@ -28,11 +31,12 @@ const ADMIN_USERNAME = 'kl_';
  * Creates a structured message object for broadcast and history.
  * @param {string} sender - The sender's name.
  * @param {string} content - The message text or Data URL.
- * @param {string} type - 'text', 'image', 'system', 'announcement', 'pm_to', 'pm_from'.
+ * @param {string} type - 'text', 'image', 'image_with_caption', 'system', 'announcement', 'pm_to', 'pm_from'.
  * @param {string} target - For 'pm' type, the recipient's username.
+ * @param {string} caption - The optional caption text for image messages.
  * @returns {object} The structured message object.
  */
-function createMessage(sender, content, type = 'text', target = null) {
+function createMessage(sender, content, type = 'text', target = null, caption = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     
@@ -45,7 +49,8 @@ function createMessage(sender, content, type = 'text', target = null) {
         content: content,
         type: type,
         time: time,
-        target: target 
+        target: target,
+        caption: caption // NEW: Includes caption for image messages
     };
     return message;
 }
@@ -62,9 +67,10 @@ function broadcastUserList() {
  * Sends the current list of voice chat participants to all connected clients.
  */
 function broadcastVcUserList() {
-    const onlineUsernames = Object.values(users);
-    io.emit('user-list-update', onlineUsernames);
+    // Only send the usernames
+    io.emit('vc-user-list-update', Object.values(vcParticipants));
 }
+
 
 /**
  * Adds a message object to history and truncates it if necessary.
@@ -203,9 +209,14 @@ io.on('connection', (socket) => {
     socket.on('send-media', (mediaObject) => {
         const sender = users[socket.id] || 'Anonymous';
         
-        // mediaObject.content is the Data URL string
+        // mediaObject.content is the Data URL string, mediaObject.text is the caption
         if (mediaObject && mediaObject.type === 'image' && mediaObject.content) {
-            const imageMsg = createMessage(sender, mediaObject.content, 'image'); 
+            
+            // Determine message type based on whether a caption exists
+            const type = mediaObject.text && mediaObject.text.trim() ? 'image_with_caption' : 'image';
+            const caption = type === 'image_with_caption' ? mediaObject.text.trim() : null;
+
+            const imageMsg = createMessage(sender, mediaObject.content, type, null, caption); 
             
             io.emit('chat-message', imageMsg);
             addToHistory(imageMsg);
