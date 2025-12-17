@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Chat App</title>
-<link rel="stylesheet" href="new.css">
+<title>Render Chat App</title>
+<link rel="stylesheet" href="style.css"> 
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -12,28 +12,20 @@
 
     <div id="chat-container">
         <div id="username-area">
-            <button id="avatar-upload-btn" title="Set Avatar (Click to Upload)">
-                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
-            </button>
-            <h3>username:</h3>
-            <input type="text" id="username-input" placeholder="whatr we callin ya">
-            <button id="set-username-btn">Save</button>
+            <h3>Username:</h3>
+            <input type="text" id="username-input" placeholder="Enter name...">
+            <button id="set-username-btn">Join</button>
         </div>
 
         <div id="online-users-area">
-            <h4>whos online:</h4>
+            <h4>Online:</h4>
             <ul id="online-users-list"></ul>
         </div>
         
         <div id="messages"></div>
 
         <div id="message-input-area">
-            <div id="image-preview-area" style="display:none;">
-                <img id="image-preview" src="" alt="Image Preview">
-                <button id="remove-image-btn">X</button>
-            </div>
-            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <button id="file-upload-btn" title="File Upload (Not implemented)">📁</button>
+            <textarea id="message-input" placeholder="Type a message..." rows="1"></textarea>
             <button id="send-button">Send</button>
         </div>
     </div>
@@ -47,20 +39,15 @@
                 <button id="mute-btn" class="vc-btn mute" disabled>Mute</button>
             </div>
         </div>
-        <ul id="vc-users-list">
-            </ul>
-        </div>
-    
-    <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-
-    <button id="launch-custom-window-btn" style="display:none;">Open Popup Mode</button>
+        <ul id="vc-users-list"></ul>
+    </div>
 
 </div>
 
 <script>
-    const socket = io();
+    const socket = io(); // Connects automatically on Render
 
-    // --- DOM Elements ---
+    // --- UI Elements ---
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messagesDiv = document.getElementById('messages');
@@ -74,176 +61,57 @@
     const leaveVCBtn = document.getElementById('leave-vc-btn');
     const muteBtn = document.getElementById('mute-btn');
 
-    // Avatar / Image Elements
-    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
-    const currentAvatarPreview = document.getElementById('current-avatar-preview');
-    const hiddenFileInput = document.getElementById('hidden-file-input');
-    const fileUploadBtn = document.getElementById('file-upload-btn');
-    const imagePreviewArea = document.getElementById('image-preview-area');
-    const imagePreview = document.getElementById('image-preview');
-    const removeImageBtn = document.getElementById('remove-image-btn');
-
-    // State
     let myUsername = '';
-    let myAvatar = null;
-    let pendingImage = null; // Base64 string of image waiting to be sent
-    let isUploadingAvatar = false; // Flag to know if file input is for avatar or message
     
-    // --- WebRTC State ---
+    // --- Voice Chat State ---
     let localStream = null;
     let isMuted = false;
-    const peers = {}; // { socketId: RTCPeerConnection }
+    const peers = {}; // Stores connections: { socketId: RTCPeerConnection }
+    
+    // STUN Servers allow clients to find each other through NATs/Firewalls.
     const iceConfig = {
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' } // Public Google STUN server
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
         ]
     };
 
-    // --- 1. User & Avatar Logic ---
-    
-    // Check local storage
-    if (localStorage.getItem('chat_username')) {
-        myUsername = localStorage.getItem('chat_username');
-        usernameInput.value = myUsername;
-    }
-    if (localStorage.getItem('chat_avatar')) {
-        myAvatar = localStorage.getItem('chat_avatar');
-        currentAvatarPreview.src = myAvatar;
-    }
-
+    // --- 1. Basic Chat Logic ---
     setUsernameBtn.addEventListener('click', () => {
-        const val = usernameInput.value.trim();
-        if (val) {
-            myUsername = val;
-            localStorage.setItem('chat_username', myUsername);
-            socket.emit('set-username', { username: myUsername, avatar: myAvatar });
-            
+        if (usernameInput.value.trim()) {
+            myUsername = usernameInput.value.trim();
+            socket.emit('set-username', { username: myUsername, avatar: null });
             usernameInput.disabled = true;
             setUsernameBtn.disabled = true;
-            avatarUploadBtn.disabled = true; // Lock avatar after join
         }
     });
 
-    // Auto-join if user exists in storage (Optional, but good for refresh)
-    // For now we wait for explicit click
-
-    // Avatar Upload Click
-    avatarUploadBtn.addEventListener('click', () => {
-        if (!usernameInput.disabled) {
-            isUploadingAvatar = true;
-            hiddenFileInput.click();
-        }
-    });
-
-    // Message File Upload Click
-    fileUploadBtn.addEventListener('click', () => {
-        isUploadingAvatar = false;
-        hiddenFileInput.click();
-    });
-
-    // File Input Change
-    hiddenFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const result = evt.target.result;
-                if (isUploadingAvatar) {
-                    myAvatar = result;
-                    currentAvatarPreview.src = result;
-                    localStorage.setItem('chat_avatar', result);
-                } else {
-                    // It's a message image
-                    pendingImage = result;
-                    imagePreview.src = result;
-                    imagePreviewArea.style.display = 'flex';
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-        hiddenFileInput.value = ''; // Reset
-    });
-
-    removeImageBtn.addEventListener('click', () => {
-        pendingImage = null;
-        imagePreviewArea.style.display = 'none';
-    });
-
-
-    // --- 2. Sending Messages ---
-    sendButton.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
-    function sendMessage() {
-        const text = messageInput.value.trim();
-        
-        // If we have text OR an image, we send
-        if ((text || pendingImage) && myUsername) {
-            
-            // If image exists, we can append it to text as HTML or handle separate logic.
-            // Simple approach: Append img tag to text.
-            let finalContent = text;
-            if (pendingImage) {
-                finalContent += `<br><img src="${pendingImage}" class="message-image">`;
-            }
-
-            socket.emit('send-message', finalContent);
-            
-            // Reset
+    sendButton.addEventListener('click', () => {
+        if (messageInput.value.trim() && myUsername) {
+            socket.emit('send-message', messageInput.value.trim());
             messageInput.value = '';
-            pendingImage = null;
-            imagePreviewArea.style.display = 'none';
         }
-    }
+    });
 
-    // --- 3. Receiving Messages ---
     socket.on('chat-message', (msg) => {
-        displayMessage(msg);
-    });
-    
-    socket.on('history', (history) => {
-        messagesDiv.innerHTML = '';
-        history.forEach(displayMessage);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-
-    function displayMessage(msg) {
-        // msg = { text: "...", avatar: "..." }
-        // We expect text to contain HTML (from formatMessage)
-        
         const div = document.createElement('div');
         div.classList.add('message');
-
-        // Extract raw text to check if it's me
-        // Format: "**Name**: Message..."
-        // Simple check:
-        const isMe = msg.text.startsWith(`**${myUsername}**`);
-        if (isMe) div.classList.add('message-self');
-        
-        // Parse the text part vs sender part logic (simplified for this demo)
-        // We will just render innerHTML because server trusted formatted it (mostly)
-        
-        let contentHtml = msg.text;
-        
-        // Add avatar if present and not System
-        if (msg.avatar) {
-             div.innerHTML = `<img src="${msg.avatar}" class="avatar"> <span class="bubble">${contentHtml}</span>`;
-        } else {
-             // System message or no avatar
-             div.innerHTML = `<span class="bubble">${contentHtml}</span>`;
-        }
-        
+        div.innerHTML = msg.text; // Server sends pre-formatted HTML
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
+    });
 
+    socket.on('history', (history) => {
+        messagesDiv.innerHTML = '';
+        history.forEach(msg => {
+            const div = document.createElement('div');
+            div.classList.add('message');
+            div.innerHTML = msg;
+            messagesDiv.appendChild(div);
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
 
-    // --- 4. User Lists ---
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(u => {
@@ -257,110 +125,98 @@
         vcUsersList.innerHTML = '';
         vcUsers.forEach(u => {
             const li = document.createElement('li');
-            li.innerHTML = `${u.isMuted ? '🔇' : '🔊'} ${u.username}`;
+            li.textContent = `${u.isMuted ? '🔇' : '🔊'} ${u.username}`;
             vcUsersList.appendChild(li);
         });
     });
 
-    // --- 5. Voice Chat Logic (WebRTC) ---
+    // --- 2. Voice Chat Logic (WebRTC) ---
 
-    // A. Join Voice
+    // JOIN VOICE
     joinVCBtn.addEventListener('click', async () => {
-        if (!myUsername) {
-            alert("Set username first!");
-            return;
-        }
+        if (!myUsername) { alert("Please join chat first!"); return; }
 
         try {
-            // 1. Get Microphone stream
+            // Request Microphone Access
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             
-            // 2. Enable buttons
+            // Update UI
             joinVCBtn.disabled = true;
             leaveVCBtn.disabled = false;
             muteBtn.disabled = false;
 
-            // 3. Emit join event
+            // Notify Server
             socket.emit('join-vc');
 
         } catch (err) {
-            console.error("Microphone access denied:", err);
-            alert("Could not access microphone. Check permissions.");
+            console.error(err);
+            alert("Microphone access denied or not available.");
         }
     });
 
-    // B. Leave Voice
+    // LEAVE VOICE
     leaveVCBtn.addEventListener('click', () => {
-        // 1. Stop local tracks
+        // Stop Mic
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
         }
 
-        // 2. Close all peer connections
-        Object.keys(peers).forEach(key => {
-            peers[key].close();
-            delete peers[key];
-            
-            // Remove audio element
-            const audioEl = document.getElementById(`audio-${key}`);
-            if (audioEl) audioEl.remove();
+        // Close Connections
+        Object.keys(peers).forEach(socketId => {
+            peers[socketId].close();
+            delete peers[socketId];
+            removeAudioElement(socketId);
         });
 
-        // 3. Update UI
+        // Update UI
         joinVCBtn.disabled = false;
         leaveVCBtn.disabled = true;
         muteBtn.disabled = true;
         muteBtn.textContent = "Mute";
         isMuted = false;
 
-        // 4. Tell server
         socket.emit('leave-vc');
     });
 
-    // C. Mute Toggle
+    // MUTE TOGGLE
     muteBtn.addEventListener('click', () => {
         if (localStream) {
             isMuted = !isMuted;
-            localStream.getAudioTracks()[0].enabled = !isMuted; // Toggle track
+            localStream.getAudioTracks()[0].enabled = !isMuted;
             muteBtn.textContent = isMuted ? "Unmute" : "Mute";
             socket.emit('vc-mute-toggle', isMuted);
         }
     });
 
+    // --- 3. WebRTC Signaling Handling ---
 
-    // --- 6. WebRTC Socket Handlers ---
-
-    // Triggered when SOMEONE ELSE joins the VC
+    // A new user joined. We (existing users) initiate the call.
     socket.on('vc-user-joined', async (data) => {
-        // If we are not in VC, ignore
-        if (!localStream) return;
-        
-        console.log("New user in VC, initiating call to:", data.id);
+        if (!localStream) return; // We aren't in VC, ignore.
+
+        console.log(`User ${data.id} joined. Calling...`);
         const pc = createPeerConnection(data.id);
         
-        // Create Offer
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         
         socket.emit('voice-offer', { to: data.id, offer: offer });
     });
 
-    // Triggered when SOMEONE ELSE leaves
+    // Someone left. Cleanup.
     socket.on('vc-user-left', (data) => {
         if (peers[data.id]) {
             peers[data.id].close();
             delete peers[data.id];
-            const audioEl = document.getElementById(`audio-${data.id}`);
-            if (audioEl) audioEl.remove();
+            removeAudioElement(data.id);
         }
     });
 
-    // Handle incoming Offer
+    // Receive Offer (from an existing user)
     socket.on('voice-offer', async ({ from, offer }) => {
-        // We received a call
-        if (!localStream) return; // Should allow answering? Usually only if in VC.
-        
+        if (!localStream) return; // Safety check
+
         const pc = createPeerConnection(from);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         
@@ -370,7 +226,7 @@
         socket.emit('voice-answer', { to: from, answer: answer });
     });
 
-    // Handle incoming Answer
+    // Receive Answer
     socket.on('voice-answer', async ({ from, answer }) => {
         const pc = peers[from];
         if (pc) {
@@ -378,36 +234,33 @@
         }
     });
 
-    // Handle incoming Ice Candidate
+    // Receive ICE Candidate
     socket.on('voice-candidate', async ({ from, candidate }) => {
         const pc = peers[from];
         if (pc) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (e) {
-                console.error("Error adding ice candidate", e);
-            }
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
         }
     });
 
-    // --- 7. Helper: Create Peer Connection ---
+    // --- 4. WebRTC Helper Functions ---
+
     function createPeerConnection(socketId) {
         const pc = new RTCPeerConnection(iceConfig);
         peers[socketId] = pc;
 
-        // Add local stream tracks
+        // 1. Add Local Audio Tracks
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-        // ICE Candidate handler
+        // 2. Handle ICE Candidates
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 socket.emit('voice-candidate', { to: socketId, candidate: event.candidate });
             }
         };
 
-        // Track handler (Incoming Audio)
+        // 3. Handle Incoming Stream (Remote Audio)
         pc.ontrack = (event) => {
-            console.log("Received remote stream from", socketId);
+            console.log("Audio stream received from", socketId);
             const [remoteStream] = event.streams;
             
             let audioEl = document.getElementById(`audio-${socketId}`);
@@ -421,6 +274,11 @@
         };
 
         return pc;
+    }
+
+    function removeAudioElement(socketId) {
+        const el = document.getElementById(`audio-${socketId}`);
+        if (el) el.remove();
     }
 
 </script>
