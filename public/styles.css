@@ -120,6 +120,7 @@ html, body {
     gap: 10px; 
 }
 
+/* --- NEW AVATAR INPUT STYLES --- */
 #avatar-upload-btn {
     padding: 0;
     width: 38px; 
@@ -143,6 +144,8 @@ html, body {
     border-radius: 50%;
     display: block;
 }
+/* --- END AVATAR INPUT STYLES --- */
+
 
 #username-area h3 { margin: 0; font-size: 1em; }
 #username-input { flex-grow: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: var(--bg-input); color: var(--color-text); }
@@ -220,8 +223,12 @@ html, body {
 
 .avatar-spacer {
     /* Used for grouped messages to maintain alignment when avatar is hidden */
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0; 
     background: transparent !important;
     border: none !important;
+    border-radius: 50%;
 }
 
 
@@ -261,6 +268,16 @@ html, body {
     text-align: left;
     align-self: flex-start; 
 }
+.message-username strong {
+    color: var(--color-text);
+    font-weight: 600;
+}
+.message-username .username-separator {
+    margin-right: 5px;
+    font-weight: normal;
+    color: var(--color-muted);
+}
+
 
 /* Wrapper for the Bubble and the Time */
 .message-content-wrapper {
@@ -291,6 +308,9 @@ html, body {
 }
 
 /* 2. Messages from OTHER users (Left-Aligned) */
+.other-message .message-content-area {
+    align-items: flex-start;
+}
 .other-message .message-content-wrapper {
     align-items: flex-start;
 }
@@ -479,6 +499,7 @@ html, body {
 
 #send-button { background: var(--color-accent-green); }
 #file-upload-btn { background: var(--color-accent-yellow); color: var(--bg-primary); font-size: 1.2em; }
+#file-upload-btn[title*="Not implemented"] { opacity: 0.7; cursor: not-allowed; }
 
 
 /* NEW: VC Mute button active state */
