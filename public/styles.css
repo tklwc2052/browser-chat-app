@@ -15,6 +15,10 @@
     --color-accent-green: #4caf50;
     --color-vc-red: #dc3545;
     --color-preview-bg: #4a4a4a;
+
+    --color-online-bg: #2a3847; 
+    --color-online-text: #90caf9; 
+    --color-pm-accent: #c197ff;
 }
 
 /* --- GLOBAL LAYOUT --- */
@@ -37,7 +41,7 @@ html, body {
     border-right: 1px solid #333;
 }
 
-/* --- CHAT CONTAINER (Left/Middle) --- */
+/* --- CHAT CONTAINER --- */
 #chat-container {
     flex: 1; 
     display: flex;
@@ -47,7 +51,6 @@ html, body {
     position: relative;
 }
 
-/* --- USERNAME AREA --- */
 #username-area {
     padding: 15px;
     background-color: var(--bg-primary);
@@ -55,7 +58,6 @@ html, body {
     display: flex;
     align-items: center;
     gap: 10px;
-    flex-wrap: wrap; 
 }
 
 #avatar-upload-btn {
@@ -63,18 +65,14 @@ html, body {
     border: none;
     cursor: pointer;
     padding: 0;
+    width: 40px; height: 40px;
 }
 
 #current-avatar-preview {
-    width: 40px;
-    height: 40px;
+    width: 40px; height: 40px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid #555;
-    transition: border-color 0.2s;
-}
-#current-avatar-preview:hover {
-    border-color: var(--color-accent-blue);
 }
 
 #username-input {
@@ -94,7 +92,6 @@ html, body {
     cursor: pointer;
 }
 
-/* --- ONLINE USERS LIST (Top) --- */
 #online-users-area {
     padding: 10px 15px;
     background-color: #2a3847;
@@ -105,21 +102,16 @@ html, body {
     font-size: 0.9em;
     color: #90caf9;
     overflow-x: auto; 
-    white-space: nowrap; 
 }
 
 #online-users-list {
     list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    gap: 15px;
+    padding: 0; margin: 0;
+    display: flex; gap: 15px;
 }
 
 #online-users-list li {
-    display: flex;
-    align-items: center;
-    gap: 5px;
+    display: flex; align-items: center; gap: 5px;
 }
 
 /* --- MESSAGES AREA --- */
@@ -132,16 +124,15 @@ html, body {
     gap: 2px; 
 }
 
-/* Scrollbar Styling */
 #messages::-webkit-scrollbar { width: 8px; }
 #messages::-webkit-scrollbar-track { background: var(--bg-primary); }
 #messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
 
-/* Message Bubbles */
+/* Message Container */
 .message {
     display: flex;
-    align-items: flex-end; /* Align avatar to bottom of bubble */
-    margin-bottom: 10px;
+    align-items: flex-start; /* Top align avatar */
+    margin-bottom: 15px; /* More space between distinct messages */
     max-width: 100%;
 }
 
@@ -150,19 +141,18 @@ html, body {
 }
 
 .avatar {
-    width: 35px;
-    height: 35px;
+    width: 35px; height: 35px;
     border-radius: 50%;
     object-fit: cover;
     margin: 0 10px;
     flex-shrink: 0;
 }
 .avatar-spacer {
-    width: 35px; 
-    margin: 0 10px;
+    width: 35px; margin: 0 10px;
     flex-shrink: 0;
 }
 
+/* Wraps the Name, Bubble, and Time */
 .message-content-area {
     display: flex;
     flex-direction: column;
@@ -180,60 +170,72 @@ html, body {
     margin-left: 5px;
 }
 
+/* Wraps just the bubble content */
 .message-content-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.bubble-content {
     padding: 8px 12px;
     border-radius: 12px;
-    position: relative;
     word-wrap: break-word; 
     box-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
-.other-message .message-content-wrapper {
+.other-message .bubble-content {
     background-color: var(--color-bubble-other);
     border-bottom-left-radius: 2px;
 }
 
-.user-message .message-content-wrapper {
+.user-message .bubble-content {
     background-color: var(--color-bubble-self);
     border-bottom-right-radius: 2px;
 }
 
-/* Grouped Messages (Same sender < 1 min) */
-.grouped-message {
-    margin-bottom: 2px;
-    margin-top: -5px; 
+/* Time - explicitly outside */
+.message-time {
+    font-size: 0.65em;
+    color: rgba(255,255,255,0.5);
+    margin-top: 3px;
+    padding: 0 2px;
+}
+.user-message .message-time {
+    text-align: right;
 }
 
-/* System Messages */
+/* Grouped Messages */
+.grouped-message {
+    margin-bottom: 2px;
+    margin-top: -12px; 
+}
+
+/* System Messages - UPDATED CENTER ALIGNMENT */
 .system-message {
-    align-self: center;
+    align-self: center; /* Flex center */
     color: var(--color-system);
     font-style: italic;
     font-size: 0.85em;
     margin: 5px 0;
-    width: 100%;
     text-align: center;
+    max-width: 90%;
 }
+
 .private-message {
+    align-self: center;
     background: var(--color-bubble-pm);
-    padding: 5px;
+    padding: 5px 15px;
     border-radius: 5px;
     border-left: 3px solid var(--color-pm-accent);
     color: #e0e0e0;
+    margin: 5px 0;
 }
 
-/* Formatting Helpers */
 del { color: #888; }
 strong { color: #fff; font-weight: 700; }
 em { color: #ddd; }
 u { text-decoration-color: var(--color-accent-blue); text-decoration-thickness: 2px; }
 
-.message-time {
-    font-size: 0.65em;
-    color: rgba(255,255,255,0.6);
-    margin-left: 8px;
-    vertical-align: bottom;
-}
 
 /* --- INPUT AREA --- */
 #message-input-area {
@@ -257,20 +259,15 @@ u { text-decoration-color: var(--color-accent-blue); text-decoration-thickness: 
     flex-shrink: 0;
 }
 #image-preview-area img {
-    max-width: 140px;
-    max-height: 140px;
-    border-radius: 3px;
-    object-fit: contain;
+    max-width: 140px; max-height: 140px;
+    border-radius: 3px; object-fit: contain;
 }
 #remove-image-btn {
     background: var(--color-vc-red);
     color: white;
-    border: none;
-    border-radius: 3px;
-    padding: 2px 5px;
-    font-size: 0.7em;
+    border: none; border-radius: 3px;
+    padding: 2px 5px; font-size: 0.7em;
     cursor: pointer;
-    line-height: 1;
 }
 
 #message-input {
@@ -292,12 +289,10 @@ u { text-decoration-color: var(--color-accent-blue); text-decoration-thickness: 
     cursor: pointer;
     font-weight: bold;
 }
-
 #send-button { background-color: var(--color-accent-green); color: white; }
-#send-button:hover { background-color: #43a047; }
 #file-upload-btn { background-color: #555; color: white; }
 
-/* --- RIGHT PANEL (VC & Tools) --- */
+/* --- RIGHT PANEL --- */
 #right-panel {
     width: 200px;
     background-color: var(--bg-primary);
@@ -321,51 +316,35 @@ u { text-decoration-color: var(--color-accent-blue); text-decoration-thickness: 
     padding: 8px;
     background-color: var(--color-accent-blue);
     color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    text-align: center;
+    border: none; border-radius: 4px;
+    cursor: pointer; text-align: center;
     margin-bottom: 5px;
 }
 .panel-btn:hover { opacity: 0.9; }
 .panel-btn.active { background-color: var(--color-vc-red); }
 
-.panel-hint {
-    font-size: 0.75em;
-    color: #666;
-    margin: 0;
-}
-
 #vc-user-list {
     list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 8px;
 }
 
-/* VC List Items */
 #vc-user-list li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9em;
-    padding: 5px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.9em; padding: 5px;
     border-radius: 4px;
     background: rgba(255,255,255,0.05);
+    transition: all 0.2s;
 }
 
 #vc-user-list img.list-avatar {
-    width: 24px;
-    height: 24px;
+    width: 24px; height: 24px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid transparent; /* Prepare for border transition */
-    transition: all 0.1s ease;
+    border: 2px solid transparent; 
 }
 
-/* --- NEW: SPEAKING INDICATOR --- */
+/* --- SPEAKING INDICATOR (The Green Circle) --- */
 #vc-user-list li.speaking img.list-avatar {
     border-color: var(--color-accent-green);
     box-shadow: 0 0 8px var(--color-accent-green);
