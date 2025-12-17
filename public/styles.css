@@ -20,7 +20,7 @@
     --color-accent-blue: #007acc;
     --color-accent-green: #4caf50;
     --color-accent-yellow: #ffc107;
-    --color-vc-red: #dc3545; /* NEW: Color for the "Leave Call" button. */
+    --color-vc-red: #dc3545; /* Color for the "Leave Call" button. */
 
     /* Online User List */
     --color-online-bg: #2a3847; 
@@ -51,7 +51,7 @@ html, body {
     
     /* HEIGHT FIX: Changed to 700px */
     height: 700px; 
-    min-width: 200px; /* Min width needed for smaller popups */
+    min-width: 200px; 
 
 }
 
@@ -60,7 +60,7 @@ html, body {
     flex-grow: 1;
     max-width: 1200px;
     height: 100%; /* Fill the height of the main wrapper */
-    min-width: 100px; /* Ensure chat is readable */
+    min-width: 100px; 
 
     background: var(--bg-secondary); 
     border-radius: 8px;
@@ -71,7 +71,7 @@ html, body {
     color: var(--color-text); 
 }
 
-/* --- NEW: Right Side Panel Styling --- */
+/* --- Right Side Panel Styling --- */
 #right-panel {
     width: 250px; /* Fixed width for the panel */
     min-width: 200px;
@@ -113,7 +113,7 @@ html, body {
     margin: 0;
 }
 
-/* --- NEW: Voice Chat Styling --- */
+/* --- Voice Chat Styling --- */
 #vc-area {
     padding: 10px;
     border: 1px solid var(--bg-input);
@@ -141,7 +141,7 @@ html, body {
 
 #vc-user-list li {
     padding: 3px 0;
-    color: var(--color-accent-green); /* Green dot for active speaking */
+    color: var(--color-accent-green); 
     border-bottom: 1px dotted var(--bg-input);
 }
 
@@ -193,7 +193,7 @@ html, body {
 /* 1. Message Wrapper: Full width container (Flex column stacking Name, then Content Wrapper) */
 .message {
     display: flex;
-    flex-direction: column; /* Stacks username (if present) and content wrapper */
+    flex-direction: column; 
     margin: 8px 0;
     padding: 0 5px;
 }
@@ -227,7 +227,7 @@ html, body {
 /* New Wrapper: This controls the stacking of the bubble and the time */
 .message-content-wrapper {
     display: flex;
-    flex-direction: column; /* CRITICAL: Stack Bubble over Time */
+    flex-direction: column; 
     max-width: 75%;
     min-height: 20px;
 }
@@ -286,6 +286,41 @@ html, body {
     border-bottom-right-radius: 4px;
 }
 
+/* --- NEW: Image Specific Styling --- */
+.image-bubble-content {
+    /* Remove text padding for images (we use padding on the container instead) */
+    padding: 5px !important; 
+    max-width: 300px;
+    height: auto;
+    background: none !important; /* Ensure the bubble background doesn't interfere */
+}
+
+.image-container {
+    max-width: 100%;
+    max-height: 400px;
+    overflow: hidden;
+    border-radius: 12px;
+    /* Add color back to the container for the visual effect */
+    padding: 5px; 
+}
+.user-message .image-container {
+    background: var(--color-bubble-self);
+}
+.other-message .image-container {
+    background: var(--color-bubble-other);
+}
+
+.image-container img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px; /* Slightly smaller radius for image inside container */
+}
+
+
 /* 4. System/Announcement Messages (Centered, No Bubble) */
 .system-message {
     display: block;
@@ -314,13 +349,13 @@ html, body {
     margin: 10px auto;
     padding: 8px 15px;
     border-radius: 8px;
-    background-color: var(--color-bubble-pm); /* NEW PM BACKGROUND */
+    background-color: var(--color-bubble-pm); 
     color: var(--color-text);
-    border-left: 4px solid var(--color-pm-accent); /* NEW PM ACCENT */
+    border-left: 4px solid var(--color-pm-accent); 
     font-style: normal !important;
     max-width: 90%;
     width: fit-content;
-    font-weight: bold; /* Make entire PM text bold */
+    font-weight: bold; 
 }
 /* Ensure inner content inherits PM color/style */
 .private-message * {
