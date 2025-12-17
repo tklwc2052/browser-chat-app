@@ -13,12 +13,10 @@
 
     <div id="chat-container">
         <div id="username-area">
-            <h3>username:</h3>
-            
-            <input type="file" id="avatar-upload-input" accept="image/*" style="display: none;">
-            <button id="avatar-upload-btn" title="Upload Profile Picture">
-                <img id="current-avatar-preview" class="avatar" src="https://via.placeholder.com/30/007acc/ffffff?text=U" alt="Profile Picture">
+            <button id="avatar-upload-btn" title="Set Avatar (Click to Upload)">
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
             </button>
+            <h3>username:</h3>
             <input type="text" id="username-input" placeholder="whatr we callin ya">
             <button id="set-username-btn">Save</button>
         </div>
@@ -30,20 +28,15 @@
         </div>
         
         <div id="messages">
-            <div id="drop-zone-overlay" style="display: none;">Drop image here to send</div>
-        </div>
+            </div>
 
         <div id="message-input-area">
-            <div id="image-preview-area" style="display: none;">
+            <div id="image-preview-area" style="display:none;">
                 <img id="image-preview" src="" alt="Image Preview">
-                <button id="remove-image-btn" title="Remove Image">X</button>
+                <button id="remove-image-btn">X</button>
             </div>
-            
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            
-            <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
-            
-            <button id="file-upload-btn" title="Upload Image/File">
+            <button id="file-upload-btn" title="File Upload (Not implemented)">
                 📁
             </button>
             <button id="send-button">Send</button>
@@ -53,34 +46,29 @@
     <div id="right-panel">
         <h4 class="panel-title">other stuff</h4>
         <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-        <p class="panel-hint"></p>
-        
+        <p class="panel-hint">for a dedicated status/chat window.</p>
+
         <h4 class="panel-title">voice chat</h4>
-        <div id="vc-area">
-            <div id="vc-controls">
-                <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <button id="vc-btn-mute" class="vc-btn-mute" style="display: none;">Mute</button>
-                <button id="vc-btn-leave" class="vc-btn-leave" style="display: none;">Leave</button>
-            </div>
-            <ul id="vc-user-list">
-                </ul>
+        <button id="vc-btn-join" class="panel-btn">Join Call</button>
+        <button id="vc-btn-mute" class="panel-btn">Mute</button>
+        <ul id="vc-user-list">
+            </ul>
         </div>
-    </div>
     
 </div>
 
 <script>
-    // --- 0. Popup Mode Check ---
+    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
         const rightPanel = document.getElementById('right-panel');
         const chatContainer = document.getElementById('chat-container');
         
+        // Selectors for Input Area elements
         const messageInputArea = document.getElementById('message-input-area');
         const fileUploadBtn = document.getElementById('file-upload-btn');
         const sendButton = document.getElementById('send-button');
-
 
         if (mainWrapper) {
             mainWrapper.style.gap = '0';
@@ -93,6 +81,7 @@
             chatContainer.style.maxWidth = '100%';
         }
 
+        // --- NEW INPUT LAYOUT FOR POPUP MODE ---
         if (messageInputArea) {
             messageInputArea.style.flexDirection = 'column';
             messageInputArea.style.gap = '5px';
@@ -105,6 +94,7 @@
             sendButton.style.width = '100%';
             sendButton.style.alignSelf = 'stretch';
         }
+        // --- END NEW INPUT LAYOUT ---
     }
     // ------------------------------------
 
@@ -119,187 +109,129 @@
     const onlineUsersList = document.getElementById('online-users-list');
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     
-    // Media Elements
-    const fileUploadBtn = document.getElementById('file-upload-btn');
-    const imageUploadInput = document.getElementById('image-upload-input');
-    const dropZoneOverlay = document.getElementById('drop-zone-overlay'); 
-    const imagePreviewArea = document.getElementById('image-preview-area');
-    const imagePreview = document.getElementById('image-preview');
-    const removeImageBtn = document.getElementById('remove-image-btn');
-    
-    // NEW Avatar Elements
-    const avatarUploadInput = document.getElementById('avatar-upload-input');
+    // NEW AVATAR ELEMENTS
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
 
-    // VC Elements
-    const vcBtnJoin = document.getElementById('vc-btn-join');
-    const vcBtnMute = document.getElementById('vc-btn-mute');
-    const vcBtnLeave = document.getElementById('vc-btn-leave');
-    const vcUserList = document.getElementById('vc-user-list');
-
 
     let currentUsername = '';
-    // Use a default avatar URL constant
-    const DEFAULT_AVATAR_PLACEHOLDER = 'https://via.placeholder.com/30/007acc/ffffff?text=U';
-    // This will hold the Base64 string if a custom avatar is set
-    let currentAvatarDataUrl = DEFAULT_AVATAR_PLACEHOLDER; 
-    let lastUserMessageTime = 0; 
-    let lastOtherMessageSender = ''; 
-    
-    let stagedImage = null; 
-    
-    // VC State
-    let localStream = null; 
-    const peerConnections = {}; 
-    let isMuted = false;
+    let currentAvatarBase64 = ''; // Store the Base64 string here
+    let lastMessageSender = ''; // Unified sender tracker
+    let lastMessageTime = 0; // Unified time tracker
 
-
-    // --- 1. Utility Function to Handle Formatting (Unchanged) ---
+    // --- 1. Utility Function to Handle Formatting ---
     function parseFormatting(text) {
-        if (!text) return '';
         let formattedText = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // Order is important: Crossout, Bold, Underline, Italics
+        // Crossout: ~~text~~ with <del>text</del>
         formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        
+        // Bold: **text** with <strong>text</strong>
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Underline: __text__ with <u>text</u>
         formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        formattedText = formattedText.replace(/\*(.*?)\b/g, '<em>$1</em>'); 
-
-        // UNSANITIZE the newly added HTML tags for rendering
+        
+        // Slanted (Italics): *text* with <em>text</em>
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // UNSANITIZE only the newly added HTML tags for rendering
         formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
         formattedText = formattedText.replace(/&lt;strong&gt;/g, '<strong>').replace(/&lt;\/strong&gt;/g, '</strong>');
         formattedText = formattedText.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
         formattedText = formattedText.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
-        
-        // This is necessary because the server creates an object, so we only handle image HTML on the client
-        formattedText = formattedText.replace(/&lt;div class="image-container"&gt;/g, '<div class="image-container">').replace(/&lt;\/div&gt;/g, '</div>');
-        formattedText = formattedText.replace(/&lt;img src="(.*?)" alt="(.*?)"&gt;/g, (match, src, alt) => {
-            return `<img src="${src}" alt="${alt}">`;
-        });
-
 
         return formattedText;
     }
 
-    // --- 2. Username & Avatar Handling (UPDATED) ---
+    // --- 2. Avatar Selection and Conversion ---
+    
+    avatarUploadBtn.addEventListener('click', () => {
+        // Create an invisible file input element
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    // reader.result is the Base64 Data URL
+                    currentAvatarBase64 = reader.result;
+                    currentAvatarPreview.src = currentAvatarBase64; // Update UI preview
+                    
+                    // If username is already set, resend profile data to server
+                    if (currentUsername) {
+                        setUsername(currentUsername); 
+                    }
+                    localStorage.setItem('chatAvatar', currentAvatarBase64);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        fileInput.click(); // Programmatically click the hidden input
+    });
+
+
+    // --- 3. Username Handling ---
     
     document.addEventListener('DOMContentLoaded', () => {
         const storedUsername = localStorage.getItem('chatUsername');
         const storedAvatar = localStorage.getItem('chatAvatar');
-        
+
         if (storedAvatar) {
-            currentAvatarDataUrl = storedAvatar;
-            currentAvatarPreview.src = storedAvatar;
+            currentAvatarBase64 = storedAvatar;
+            currentAvatarPreview.src = currentAvatarBase64;
         } else {
-             currentAvatarPreview.src = DEFAULT_AVATAR_PLACEHOLDER;
+             // Set default avatar image placeholder if none is stored
+            currentAvatarPreview.src = 'placeholder-avatar.png';
         }
 
         if (storedUsername) {
             usernameInput.value = storedUsername;
-            // Use the stored avatar when setting the username
-            setUsername(storedUsername, storedAvatar);
+            setUsername(storedUsername);
         }
     });
 
-    // 2a. Handle Avatar Selection
-    avatarUploadBtn.addEventListener('click', () => {
-        avatarUploadInput.click();
-    });
-
-    avatarUploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            if (!file.type.startsWith('image/')) {
-                alert('Only image files are supported for avatars.');
-                return;
-            }
-            
-            // Limit avatar size to 50KB for performance
-            const MAX_AVATAR_SIZE = 50 * 1024;
-            if (file.size > MAX_AVATAR_SIZE) {
-                alert(`Avatar size (${(file.size / 1024).toFixed(0)} KB) exceeds the ${MAX_AVATAR_SIZE / 1024} KB limit.`);
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (readerEvent) => {
-                const dataUrl = readerEvent.target.result;
-                
-                // Store the Base64 URL locally
-                currentAvatarDataUrl = dataUrl;
-                localStorage.setItem('chatAvatar', dataUrl);
-                
-                // Update the preview
-                currentAvatarPreview.src = dataUrl;
-            };
-            reader.readAsDataURL(file);
-        }
-        avatarUploadInput.value = ''; // Clear input for re-upload
-    });
-
-
-    // 2b. Handle Username/Save Button
     setUsernameBtn.addEventListener('click', () => {
         const username = usernameInput.value.trim();
         if (username) {
             localStorage.setItem('chatUsername', username);
-            setUsername(username, currentAvatarDataUrl); // Send avatar data
+            if (currentAvatarBase64) {
+                 localStorage.setItem('chatAvatar', currentAvatarBase64);
+            }
+            setUsername(username);
         } else {
             console.warn('Please enter a username.');
         }
     });
     
-    function setUsername(username, avatarUrl) {
+    function setUsername(username) {
         currentUsername = username;
-        // Send both username and avatar data to the server
-        socket.emit('set-username', {
-            username: currentUsername,
-            avatarDataUrl: avatarUrl
+        // UPDATED: Send both username and avatar
+        socket.emit('set-username', { 
+            username: currentUsername, 
+            avatar: currentAvatarBase64 || 'placeholder-avatar.png'
         }); 
-        
         usernameInput.disabled = true;
         setUsernameBtn.disabled = true;
-        avatarUploadBtn.disabled = true; // Disable changes once set
         usernameInput.placeholder = 'Username set!';
         messageInput.focus();
     }
 
-    // --- 3. Message Sending (Unchanged) ---
+    // --- 4. Message Sending ---
 
-    function clearStagedImage() {
-        stagedImage = null;
-        imagePreview.src = '';
-        imagePreviewArea.style.display = 'none';
-        messageInput.style.flexGrow = '1';
-    }
-
-    removeImageBtn.addEventListener('click', clearStagedImage);
-    
     function sendMessage() {
-        let text = messageInput.value.trim();
-        const hasText = !!text;
-        const hasImage = !!stagedImage;
+        let msg = messageInput.value.trim();
+        if (!msg || !currentUsername) return; 
 
-        if ((!hasText && !hasImage) || !currentUsername) return; 
-
-        if (hasImage) {
-            socket.emit('send-media', {
-                type: 'image',
-                content: stagedImage, 
-                text: text           
-            });
-            
-            clearStagedImage();
-            messageInput.value = '';
-
-        } else if (hasText) {
-            socket.emit('chat-message', text); 
-            messageInput.value = '';
-        }
+        socket.emit('chat-message', msg);
+        messageInput.value = '';
     }
 
     sendButton.addEventListener('click', sendMessage);
@@ -310,114 +242,84 @@
             sendMessage();
         }
     });
-
-    // --- 3b. Image Upload & Drag/Drop Logic (Unchanged) ---
-
-    const MAX_FILE_SIZE = 500 * 1024; 
-
-    function processAndStageFile(file) {
-        if (!currentUsername) {
-            alert('Please set a username before sharing an image.');
-            return;
-        }
+    
+    // --- 5. Message Display Helper Function (Grouping Logic) ---
+    // UPDATED: Accepts message object { text, avatar, sender }
+    function displayMessage(messageObject) {
         
-        if (!file.type.startsWith('image/')) {
-            alert('Only image files are supported.');
-            return;
+        // Determine if it's a simple history string or a system message object
+        if (typeof messageObject === 'string' || messageObject.avatar === null) {
+            var formattedMessage = messageObject.text || messageObject; // messageObject is just the text string from history
+            var messageAvatar = null;
+            var sender = null;
+        } else {
+            // Regular chat message object
+            var formattedMessage = messageObject.text;
+            var messageAvatar = messageObject.avatar;
+            var sender = messageObject.sender;
         }
 
-        if (file.size > MAX_FILE_SIZE) { 
-             alert(`Image file size (${(file.size / 1024).toFixed(0)} KB) exceeds the ${MAX_FILE_SIZE / 1024} KB limit for embedded chat images. Please choose a smaller image.`);
-             return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (readerEvent) => {
-            const dataUrl = readerEvent.target.result;
-            
-            stagedImage = dataUrl;
-            
-            imagePreview.src = dataUrl;
-            imagePreviewArea.style.display = 'flex';
-            messageInput.style.flexGrow = '0';
-            messageInput.focus();
-        };
-        reader.readAsDataURL(file);
-    }
-
-    fileUploadBtn.addEventListener('click', () => {
-        imageUploadInput.click();
-    });
-
-    imageUploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            processAndStageFile(file);
-        }
-        imageUploadInput.value = ''; 
-    });
-    
-    messagesDiv.addEventListener('dragover', (e) => {
-        e.preventDefault(); 
-        dropZoneOverlay.style.display = 'flex'; 
-    });
-
-    messagesDiv.addEventListener('dragleave', (e) => {
-        if (e.target === messagesDiv || !messagesDiv.contains(e.relatedTarget)) {
-            dropZoneOverlay.style.display = 'none';
-        }
-    });
-
-    messagesDiv.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZoneOverlay.style.display = 'none'; 
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            processAndStageFile(files[0]);
-        }
-    });
-    
-    
-    // --- 4. Message Display Helper Function (Unchanged) ---
-    function displayMessage(message) { 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // Reset trackers on non-regular message types
-        if (message.type !== 'text' && message.type !== 'image' && message.type !== 'image_with_caption') {
-             lastUserMessageTime = 0; 
-             lastOtherMessageSender = ''; 
-        }
+        // Regex 1: Regular messages (HAS colon) **[User]**: [Message Text] [Time]
+        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
 
-        // --- 1. Handle System/Announcement/PM Messages (No Avatar) ---
-        if (message.type === 'system' || message.type === 'announcement' || message.type.startsWith('pm_')) {
-            messageEl.classList.add('system-message');
-            if (message.type.startsWith('pm_')) {
-                messageEl.classList.add('private-message');
-                let prefix = message.type === 'pm_to' ? `PM to ${message.target}` : `PM from ${message.target}`;
-                const pmContent = `<u><strong>[${prefix}]</strong>: ${message.content}</u>`; 
-                messageEl.innerHTML = parseFormatting(pmContent); 
-            } else {
-                 messageEl.innerHTML = parseFormatting(message.content);
+        // --- Handle System Messages/Announcements ---
+        if (!fullMatch) {
+            // Check for the System format: **[User]** [Message Text] [Time] (No colon)
+            const systemMatch = formattedMessage.match(/\*\*(.*?)\*\* (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
+            
+            // CRITICAL: Reset trackers on system message
+            lastMessageTime = 0; 
+            lastMessageSender = ''; 
+
+            if (systemMatch) {
+                messageEl.classList.add('system-message');
+                const systemText = systemMatch[2];
+                
+                // Private Message Check 
+                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
+                    messageEl.classList.add('private-message');
+                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
+                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
+
+                    messagesDiv.appendChild(messageEl);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    return; 
+                }
+                
+                // Standard System Message / Announcement
+                messageEl.innerHTML = parseFormatting(systemText);
+                messagesDiv.appendChild(messageEl);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
             }
             
+            // Fallback for unparseable system messages/errors
+            messageEl.classList.add('system-message');
+            messageEl.innerHTML = parseFormatting(formattedMessage);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return;
         }
+        
+        // Extracted parts for REGULAR messages:
+        const extractedSender = fullMatch[1];
+        const messageText = fullMatch[2];
+        const timeString = fullMatch[3]; 
+
+        // Use the sender and avatar from the message object, or fallback to extracted text
+        const finalSender = sender || extractedSender;
+        const finalAvatar = messageAvatar || 'placeholder-avatar.png'; // Use a default if avatar is missing
 
 
-        // --- 2. Handle REGULAR Messages (Text, Image, Image+Caption) ---
-
-        const sender = message.sender;
-        const senderAvatar = message.senderAvatar; 
-        const timeString = message.time; 
-        const isUserMessage = (sender === currentUsername);
-        let showTime = true; 
+        // 1. Determine alignment class, tracking variables, and grouping logic
+        const isUserMessage = (finalSender === currentUsername);
+        let showAvatar = true;
         let showUsername = true; 
 
-        // --- Grouping Logic (Unchanged) ---
+        // --- Calculate Time in Minutes for Grouping ---
         let currentTimeInMinutes = 0;
         const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
         if (timeParts) {
@@ -430,140 +332,130 @@
             currentTimeInMinutes = hours * 60 + minutes;
         }
 
-        // 2b. Set base alignment/username visibility
+
+        // 1a. Set base alignment
         if (isUserMessage) {
             messageEl.classList.add('user-message');
-            showUsername = false; 
+            showUsername = false; // Never show username on self-messages
         } else {
             messageEl.classList.add('other-message');
         }
 
-        let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
-        let lastTime = lastUserMessageTime;
-        let currentSender = sender;
 
-        const shouldGroup = (lastSender === currentSender) && (currentTimeInMinutes - lastTime) < 1;
+        // 1b. Unified Grouping Logic
+        // Group if the sender is the same AND less than 1 minute has passed
+        const shouldGroup = (lastMessageSender === finalSender) && (currentTimeInMinutes - lastMessageTime) < 1;
 
         if (shouldGroup) {
+            showAvatar = false; 
             showUsername = false; 
             messageEl.classList.add('grouped-message');
 
+            // CRITICAL RETROACTIVE FIX (Removes time from the previous message)
             const previousMessageEl = messagesDiv.lastChild;
             if (previousMessageEl) {
-                const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
-                if (prevContentWrapper) {
-                    const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
-                    if (prevTimeSpan) {
-                        prevTimeSpan.remove();
+                // Ensure we don't accidentally remove time from a system message
+                if (!previousMessageEl.classList.contains('system-message')) {
+                     const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
+                    if (prevContentWrapper) {
+                        const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
+                        if (prevTimeSpan) {
+                            prevTimeSpan.remove(); // DELETE TIME from the previous message
+                        }
                     }
                 }
             }
+        } 
 
-        } else {
-            if (isUserMessage) { lastOtherMessageSender = ''; } 
-            else { lastUserMessageTime = 0; }
-        }
+        // 1c. Update Tracking Variables (After Grouping Check)
+        lastMessageSender = finalSender;
+        lastMessageTime = currentTimeInMinutes;
+        
 
-        if (isUserMessage) { lastUserMessageTime = currentTimeInMinutes; } 
-        else { lastOtherMessageSender = currentSender; lastUserMessageTime = currentTimeInMinutes; }
-
-
-        // --- 3. Assemble the Message Structure ---
-
-        // 3a. Avatar (Left side for others, no avatar for user message)
+        // --- 2. Assemble the Message Structure ---
+        
+        // 2a. Avatar (Always add either the image or a spacer)
         if (!isUserMessage) {
-            const avatarImg = document.createElement('img');
-            avatarImg.classList.add('avatar');
-            avatarImg.src = senderAvatar;
-            avatarImg.alt = sender;
-            
-            // Only show avatar on first message of a group
-            if (showUsername) { 
+            // Other User Messages: Avatar (Left) / Content (Right)
+            if (showAvatar) {
+                const avatarImg = document.createElement('img');
+                avatarImg.classList.add('avatar');
+                avatarImg.src = finalAvatar;
                 messageEl.appendChild(avatarImg);
             } else {
-                // For grouped messages, use an invisible space holder to maintain alignment
-                const avatarSpacer = document.createElement('div');
-                avatarSpacer.classList.add('avatar', 'avatar-spacer');
-                messageEl.appendChild(avatarSpacer);
+                // Spacer for grouped messages
+                const spacer = document.createElement('div');
+                spacer.classList.add('avatar-spacer');
+                messageEl.appendChild(spacer);
             }
         }
         
-        // 3b. Content Area Wrapper
+        // 2b. Content Area Wrapper
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         
-        // 3c. Username 
+        // 2c. Username (Only for other users, when showUsername is true)
         if (showUsername && !isUserMessage) {
             const usernameDiv = document.createElement('div');
             usernameDiv.classList.add('message-username');
-            usernameDiv.innerHTML = `<strong>${sender}</strong><span class="username-separator">:</span>`;
+            usernameDiv.innerHTML = `<strong>${finalSender}</strong><span class="username-separator">:</span>`;
             contentArea.appendChild(usernameDiv);
         }
 
-        // 3d. Content Wrapper (Bubble + Content + Time)
+        // 2d. Content Wrapper (Bubble + Time)
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
         const bubbleContent = document.createElement('span');
         bubbleContent.classList.add('bubble-content');
         
-        let contentHtml = '';
-
-        if (message.type === 'text') {
-            contentHtml = parseFormatting(message.content); 
-
-        } else if (message.type === 'image' || message.type === 'image_with_caption') {
-            
-            let imageContentHtml = `<img src="${message.content}" alt="Image uploaded by ${sender}">`;
-            let captionHtml = '';
-
-            if (message.type === 'image_with_caption' && message.caption) {
-                captionHtml = `<div class="image-caption">${parseFormatting(message.caption)}</div>`;
-                contentHtml = captionHtml + imageContentHtml; 
-                bubbleContent.classList.add('caption-bubble-content');
-            } else {
-                contentHtml = imageContentHtml; 
-            }
-            
-            contentHtml = `<div class="image-container">${contentHtml}</div>`;
-            bubbleContent.classList.add('image-bubble-content');
-        }
+        let contentHtml = parseFormatting(messageText); 
 
         bubbleContent.innerHTML = contentHtml;
         contentWrapper.appendChild(bubbleContent); 
         
-        // 3e. Time Content 
-        if (showTime) {
-            const timeSpan = document.createElement('span');
-            timeSpan.classList.add('message-time');
-            timeSpan.textContent = timeString; 
-            contentWrapper.appendChild(timeSpan); 
-        }
+        // 2e. Time Content (Renders only for the last message in a group)
+        const timeSpan = document.createElement('span');
+        timeSpan.classList.add('message-time');
+        timeSpan.textContent = timeString; 
+        contentWrapper.appendChild(timeSpan); 
+        
 
-        // 4. Assemble the final message element
+        // 3. Assemble the final message element
         contentArea.appendChild(contentWrapper);
-        messageEl.appendChild(contentArea);
+
+        if (isUserMessage) {
+            // User Messages: Content (Left) / Avatar (Right)
+            messageEl.appendChild(contentArea);
+        } else {
+            // Other Messages: Avatar (Left) / Content (Right) - Avatar already added in 2a
+            messageEl.appendChild(contentArea);
+        }
         
         messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-
-    // --- 5. Receiving Messages (History and Live) (Unchanged) ---
-
+    // --- 6. Receiving Messages (History and Live) ---
+    
+    // History messages are simple strings from the server log
     socket.on('history', (history) => {
-        lastUserMessageTime = 0; 
-        lastOtherMessageSender = ''; 
+        // Reset trackers before starting the loop
+        lastMessageTime = 0; 
+        lastMessageSender = ''; 
         messagesDiv.innerHTML = ''; 
 
+        // Loop through history messages sequentially
         history.forEach(msg => {
-            displayMessage(msg);
+            // Pass the string directly. displayMessage handles parsing the sender/time from the string.
+            displayMessage(msg); 
         });
         
         messagesDiv.scrollTop = messagesDiv.scrollHeight; 
     });
 
-    socket.on('chat-message', (messageObject) => { 
+    // Live messages are objects { text, avatar, sender }
+    socket.on('chat-message', (messageObject) => {
         displayMessage(messageObject);
     });
 
@@ -571,28 +463,26 @@
         messagesDiv.innerHTML = '';
     });
 
-    // --- 6. Online User List Update (Unchanged) ---
+    // --- 7. Online User List Update ---
     
-    socket.on('user-list-update', (users) => { 
+    // User list is an array of objects { username, avatar }
+    socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(userData => {
             const li = document.createElement('li');
             
-            const avatar = document.createElement('img');
-            avatar.classList.add('avatar', 'list-avatar'); 
-            avatar.src = userData.avatarURL;
-            avatar.alt = userData.username;
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = userData.username;
-            
-            li.appendChild(avatar);
-            li.appendChild(nameSpan);
+            // Add list avatar
+            const listAvatar = document.createElement('img');
+            listAvatar.classList.add('avatar', 'list-avatar');
+            listAvatar.src = userData.avatar || 'placeholder-avatar.png'; // Use stored avatar
+            li.appendChild(listAvatar);
+
+            li.appendChild(document.createTextNode(userData.username));
             onlineUsersList.appendChild(li);
         });
     });
 
-    // --- 7. Launch Custom Window Logic (Unchanged) ---
+    // --- 8. Launch Custom Window Logic ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             const currentUrl = window.location.href.split('?')[0]; 
@@ -601,179 +491,6 @@
             window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
         });
     }
-
-    // --- 8. VOICE CHAT IMPLEMENTATION (Unchanged) ---
-
-    function updateVcControls(inCall) {
-        vcBtnJoin.style.display = inCall ? 'none' : 'block';
-        vcBtnMute.style.display = inCall ? 'block' : 'block'; 
-        vcBtnLeave.style.display = inCall ? 'block' : 'none';
-        
-        if (inCall) {
-            vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
-            vcBtnMute.classList.toggle('active', isMuted);
-        } else {
-            vcBtnMute.textContent = 'Mute';
-            vcBtnMute.classList.remove('active');
-        }
-    }
-
-    vcBtnJoin.addEventListener('click', async () => {
-        if (!currentUsername) {
-            console.warn('Set a username before joining the voice chat.');
-            return;
-        }
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-
-            socket.emit('vc-join');
-            updateVcControls(true);
-            
-        } catch (err) {
-            console.error('Failed to get local audio stream (User denied access or no device):', err);
-            updateVcControls(false); 
-        }
-    });
-
-    vcBtnMute.addEventListener('click', () => {
-        isMuted = !isMuted;
-        if (localStream) {
-            localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-        }
-        updateVcControls(localStream !== null); 
-    });
-
-    vcBtnLeave.addEventListener('click', () => {
-        socket.emit('vc-leave');
-        
-        Object.values(peerConnections).forEach(pc => pc.close());
-        
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-        }
-        
-        localStream = null;
-        Object.keys(peerConnections).forEach(key => delete peerConnections[key]);
-        document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
-
-        updateVcControls(false);
-    });
-
-    function createPeerConnection(remoteSocketId) {
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' } 
-            ]
-        });
-
-        pc.onicecandidate = ({ candidate }) => {
-            if (candidate) {
-                socket.emit('webrtc-signal', remoteSocketId, { 'ice-candidate': candidate });
-            }
-        };
-
-        pc.ontrack = ({ streams: [stream] }) => {
-            const audioEl = document.createElement('audio');
-            audioEl.srcObject = stream;
-            audioEl.autoplay = true;
-            audioEl.id = `audio-${remoteSocketId}`;
-            
-            document.body.appendChild(audioEl); 
-            console.log(`Playing audio from peer ${remoteSocketId}`);
-        };
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        }
-
-        peerConnections[remoteSocketId] = pc;
-        return pc;
-    }
-
-    socket.on('vc-user-joined', async (newUserId) => {
-        if (!localStream) return; 
-
-        const pc = createPeerConnection(newUserId);
-        
-        try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            
-            socket.emit('webrtc-signal', newUserId, { 'offer': pc.localDescription });
-        } catch (e) {
-             console.error('Error creating offer:', e);
-        }
-    });
-
-    socket.on('vc-user-left', (leavingUserId) => {
-        if (peerConnections[leavingUserId]) {
-            peerConnections[leavingUserId].close();
-            delete peerConnections[leavingUserId];
-        }
-        const audioEl = document.getElementById(`audio-${leavingUserId}`);
-        if (audioEl) audioEl.remove();
-        console.log(`Removed connection and audio for peer ${leavingUserId}`);
-    });
-
-    socket.on('webrtc-signal', async (fromId, signal) => {
-        let pc = peerConnections[fromId];
-        
-        if (signal.offer) {
-            if (!localStream) return; 
-
-            if (!pc) pc = createPeerConnection(fromId); 
-
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
-                
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                
-                socket.emit('webrtc-signal', fromId, { 'answer': pc.localDescription });
-            } catch (e) {
-                console.error('Error handling offer/answer:', e);
-            }
-            
-        } else if (signal.answer) {
-            if (pc && pc.signalingState !== 'stable') {
-                 try {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
-                } catch (e) {
-                    console.error('Error setting remote description for answer:', e);
-                }
-            }
-        } else if (signal['ice-candidate']) {
-            if (pc) {
-                try {
-                    await pc.addIceCandidate(new RTCIceCandidate(signal['ice-candidate']));
-                } catch (e) {
-                }
-            }
-        }
-    });
-
-    socket.on('vc-user-list-update', (users) => { 
-        vcUserList.innerHTML = '';
-        users.forEach(userData => {
-            const li = document.createElement('li');
-            
-            const avatar = document.createElement('img');
-            avatar.classList.add('avatar', 'list-avatar');
-            avatar.src = userData.avatarURL;
-            avatar.alt = userData.username;
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = `🟢 ${userData.username}`; 
-            
-            li.appendChild(avatar);
-            li.appendChild(nameSpan);
-
-            vcUserList.appendChild(li);
-        });
-    });
-
-    updateVcControls(false); 
     
 </script>
 
