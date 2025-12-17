@@ -29,6 +29,11 @@
         </div>
 
         <div id="message-input-area">
+            <div id="image-preview-area" style="display: none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn" title="Remove Image">X</button>
+            </div>
+            
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
             
             <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
@@ -55,12 +60,12 @@
             <ul id="vc-user-list">
                 </ul>
         </div>
-        </div>
+    </div>
     
 </div>
 
 <script>
-    // --- 0. Popup Mode Check (CRITICAL: Hides the side panel when URL contains ?mode=popup) ---
+    // --- 0. Popup Mode Check ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         const mainWrapper = document.getElementById('main-wrapper');
@@ -112,7 +117,10 @@
     // NEW Media Elements
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const imageUploadInput = document.getElementById('image-upload-input');
-    const dropZoneOverlay = document.getElementById('drop-zone-overlay'); // NEW: Drop Zone Overlay
+    const dropZoneOverlay = document.getElementById('drop-zone-overlay'); 
+    const imagePreviewArea = document.getElementById('image-preview-area');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageBtn = document.getElementById('remove-image-btn');
 
     // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
@@ -125,6 +133,9 @@
     let lastUserMessageTime = 0; 
     let lastOtherMessageSender = ''; 
     
+    // NEW: Variable to hold staged image data until user sends
+    let stagedImage = null; 
+    
     // VC State
     let localStream = null; 
     const peerConnections = {}; 
@@ -133,6 +144,7 @@
 
     // --- 1. Utility Function to Handle Formatting ---
     function parseFormatting(text) {
+        if (!text) return '';
         let formattedText = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -142,7 +154,7 @@
         formattedText = formattedText.replace(/~~(.*?)~~/g, '<del>$1</del>');
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/__(.*?)\b__/g, '<u>$1</u>'); 
-        formattedText = formattedText.replace(/\*(.*?)\b/g, '<em>$1</em>'); // Fix: Added \b to * to prevent partial word matching
+        formattedText = formattedText.replace(/\*(.*?)\b/g, '<em>$1</em>'); 
 
         // UNSANITIZE the newly added HTML tags for rendering
         formattedText = formattedText.replace(/&lt;del&gt;/g, '<del>').replace(/&lt;\/del&gt;/g, '</del>');
@@ -161,7 +173,7 @@
         return formattedText;
     }
 
-    // --- 2. Username Handling ---
+    // --- 2. Username Handling (Unchanged) ---
     
     document.addEventListener('DOMContentLoaded', () => {
         const storedUsername = localStorage.getItem('chatUsername');
@@ -190,15 +202,41 @@
         messageInput.focus();
     }
 
-    // --- 3. Message Sending (Text Only) ---
+    // --- 3. Message Sending (UPDATED to handle staged images) ---
 
+    function clearStagedImage() {
+        stagedImage = null;
+        imagePreview.src = '';
+        imagePreviewArea.style.display = 'none';
+        messageInput.style.flexGrow = '1';
+    }
+
+    removeImageBtn.addEventListener('click', clearStagedImage);
+    
     function sendMessage() {
-        let msg = messageInput.value.trim();
-        if (!msg || !currentUsername) return; 
+        let text = messageInput.value.trim();
+        const hasText = !!text;
+        const hasImage = !!stagedImage;
 
-        // Send the raw text, the server handles creating the object
-        socket.emit('chat-message', msg); 
-        messageInput.value = '';
+        if ((!hasText && !hasImage) || !currentUsername) return; 
+
+        if (hasImage) {
+            // Send the staged image with the message text as the caption
+            socket.emit('send-media', {
+                type: 'image',
+                content: stagedImage, // The Base64 image data
+                text: text           // The message text (caption)
+            });
+            
+            // Clear the staged image and message input after sending
+            clearStagedImage();
+            messageInput.value = '';
+
+        } else if (hasText) {
+            // Only text message
+            socket.emit('chat-message', text); 
+            messageInput.value = '';
+        }
     }
 
     sendButton.addEventListener('click', sendMessage);
@@ -210,13 +248,12 @@
         }
     });
 
-    // --- NEW: 3b. Image Upload & Drag/Drop Logic ---
+    // --- 3b. Image Upload & Drag/Drop Logic (UPDATED to stage image) ---
 
-    // Max file size for Base64 Data URLs (500 KB)
     const MAX_FILE_SIZE = 500 * 1024; 
 
-    // Reusable function to handle sending the image
-    function processAndSendFile(file) {
+    // Function to handle the file processing and staging
+    function processAndStageFile(file) {
         if (!currentUsername) {
             alert('Please set a username before sharing an image.');
             return;
@@ -236,12 +273,14 @@
         reader.onload = (readerEvent) => {
             const dataUrl = readerEvent.target.result;
             
-            // Send the structured media object to the server
-            socket.emit('send-media', {
-                type: 'image',
-                mimeType: file.type,
-                content: dataUrl // The Base64 encoded image data
-            });
+            // STAGE the image data instead of sending immediately
+            stagedImage = dataUrl;
+            
+            // Show the preview
+            imagePreview.src = dataUrl;
+            imagePreviewArea.style.display = 'flex';
+            messageInput.style.flexGrow = '0'; // Adjust input layout
+            messageInput.focus();
         };
         reader.readAsDataURL(file);
     }
@@ -254,19 +293,18 @@
     imageUploadInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-            processAndSendFile(file);
+            processAndStageFile(file);
         }
-        imageUploadInput.value = ''; // Clear the input for next upload
+        imageUploadInput.value = ''; 
     });
     
     // 3b.2. Drag and Drop Implementation
     messagesDiv.addEventListener('dragover', (e) => {
         e.preventDefault(); 
-        dropZoneOverlay.style.display = 'flex'; // Show overlay
+        dropZoneOverlay.style.display = 'flex'; 
     });
 
     messagesDiv.addEventListener('dragleave', (e) => {
-        // Only hide if the mouse moves out of the message area, not just over a child element
         if (e.target === messagesDiv || !messagesDiv.contains(e.relatedTarget)) {
             dropZoneOverlay.style.display = 'none';
         }
@@ -274,32 +312,31 @@
 
     messagesDiv.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZoneOverlay.style.display = 'none'; // Hide overlay
+        dropZoneOverlay.style.display = 'none'; 
         
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            // Process the first dropped file
-            processAndSendFile(files[0]);
+            // Stage the first dropped file
+            processAndStageFile(files[0]);
         }
     });
     
     
-    // --- 4. Message Display Helper Function (Now accepts a message OBJECT) ---
-    function displayMessage(message) { // NEW: Accepts object {id, sender, content, type, time, target}
+    // --- 4. Message Display Helper Function (UPDATED for image_with_caption) ---
+    function displayMessage(message) { 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
         // Reset trackers on non-regular message types
-        if (message.type !== 'text' && message.type !== 'image') {
+        if (message.type !== 'text' && message.type !== 'image' && message.type !== 'image_with_caption') {
              lastUserMessageTime = 0; 
              lastOtherMessageSender = ''; 
         }
 
-        // --- 1. Handle System/Announcement/PM Messages ---
+        // --- 1. Handle System/Announcement/PM Messages (Unchanged) ---
         if (message.type === 'system' || message.type === 'announcement') {
             messageEl.classList.add('system-message');
             messageEl.innerHTML = parseFormatting(message.content);
-            
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return;
@@ -308,29 +345,23 @@
         if (message.type === 'pm_to' || message.type === 'pm_from') {
              messageEl.classList.add('system-message', 'private-message');
              let prefix = message.type === 'pm_to' ? `PM to ${message.target}` : `PM from ${message.target}`;
-             
-             // Content format: <u><strong>[Prefix]</strong>: Raw message content</u>
              const pmContent = `<u><strong>[${prefix}]</strong>: ${message.content}</u>`; 
              messageEl.innerHTML = parseFormatting(pmContent); 
-             
              messagesDiv.appendChild(messageEl);
              messagesDiv.scrollTop = messagesDiv.scrollHeight;
              return;
         }
 
 
-        // --- 2. Handle REGULAR Messages (Text & Image) ---
+        // --- 2. Handle REGULAR Messages (Text, Image, Image+Caption) ---
 
-        // Extracted parts for REGULAR messages:
         const sender = message.sender;
-        const messageText = message.content;
         const timeString = message.time; 
-
         const isUserMessage = (sender === currentUsername);
         let showTime = true; 
         let showUsername = true; 
 
-        // --- Calculate Time in Minutes for Grouping ---
+        // --- Grouping Logic (Unchanged) ---
         let currentTimeInMinutes = 0;
         const timeParts = timeString.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
         if (timeParts) {
@@ -343,7 +374,6 @@
             currentTimeInMinutes = hours * 60 + minutes;
         }
 
-        // 2b. Set base alignment/username visibility
         if (isUserMessage) {
             messageEl.classList.add('user-message');
             showUsername = false; 
@@ -351,8 +381,6 @@
             messageEl.classList.add('other-message');
         }
 
-
-        // 2c. Unified Grouping Logic
         let lastSender = isUserMessage ? currentUsername : lastOtherMessageSender;
         let lastTime = lastUserMessageTime;
         let currentSender = sender;
@@ -363,34 +391,24 @@
             showUsername = false; 
             messageEl.classList.add('grouped-message');
 
-            // === CRITICAL RETROACTIVE FIX (Removes time from the previous message) ===
             const previousMessageEl = messagesDiv.lastChild;
             if (previousMessageEl) {
                 const prevContentWrapper = previousMessageEl.querySelector('.message-content-wrapper');
                 if (prevContentWrapper) {
                     const prevTimeSpan = prevContentWrapper.querySelector('.message-time');
                     if (prevTimeSpan) {
-                        prevTimeSpan.remove(); // DELETE TIME from the previous message
+                        prevTimeSpan.remove();
                     }
                 }
             }
-            // =======================================================================
 
         } else {
-            if (isUserMessage) {
-                lastOtherMessageSender = '';
-            } else {
-                lastUserMessageTime = 0; 
-            }
+            if (isUserMessage) { lastOtherMessageSender = ''; } 
+            else { lastUserMessageTime = 0; }
         }
 
-        // 2d. Update Tracking Variables (After Grouping Check)
-        if (isUserMessage) {
-            lastUserMessageTime = currentTimeInMinutes;
-        } else {
-            lastOtherMessageSender = currentSender;
-            lastUserMessageTime = currentTimeInMinutes; 
-        }
+        if (isUserMessage) { lastUserMessageTime = currentTimeInMinutes; } 
+        else { lastOtherMessageSender = currentSender; lastUserMessageTime = currentTimeInMinutes; }
 
 
         // --- 3. Assemble the Message Structure ---
@@ -413,12 +431,31 @@
         let contentHtml = '';
 
         if (message.type === 'text') {
-            // Text Message: Parse formatting
-            contentHtml = parseFormatting(messageText); 
-        } else if (message.type === 'image') {
-            // Image Message: Create image tag
-            contentHtml = `<div class="image-container"><img src="${messageText}" alt="Image uploaded by ${sender}"></div>`;
-            bubbleContent.classList.add('image-bubble-content'); // Add class for styling
+            // TEXT: Simple text message
+            contentHtml = parseFormatting(message.content); 
+
+        } else if (message.type === 'image' || message.type === 'image_with_caption') {
+            // IMAGE or IMAGE+CAPTION
+            
+            let imageContentHtml = `<img src="${message.content}" alt="Image uploaded by ${sender}">`;
+            let captionHtml = '';
+
+            if (message.type === 'image_with_caption' && message.caption) {
+                // Wrap the caption text (which is just plain text at this point)
+                captionHtml = `<div class="image-caption">${parseFormatting(message.caption)}</div>`;
+                // Add the caption to the HTML right before the image
+                contentHtml = captionHtml + imageContentHtml; 
+                
+                // Add special class for combined message styling
+                bubbleContent.classList.add('caption-bubble-content');
+            } else {
+                // Just an image (no caption)
+                contentHtml = imageContentHtml; 
+            }
+            
+            // Always wrap the image inside the image-container class
+            contentHtml = `<div class="image-container">${contentHtml}</div>`;
+            bubbleContent.classList.add('image-bubble-content');
         }
 
         bubbleContent.innerHTML = contentHtml;
@@ -440,8 +477,7 @@
     }
 
 
-    // --- 5. Receiving Messages (History and Live) ---
-    // history and chat-message now emit/receive message OBJECTS
+    // --- 5. Receiving Messages (History and Live) (Unchanged) ---
 
     socket.on('history', (history) => {
         lastUserMessageTime = 0; 
@@ -463,7 +499,7 @@
         messagesDiv.innerHTML = '';
     });
 
-    // --- 6. Online User List Update ---
+    // --- 6. Online User List Update (Unchanged) ---
     
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
@@ -474,7 +510,7 @@
         });
     });
 
-    // --- 7. Launch Custom Window Logic (UPDATED) ---
+    // --- 7. Launch Custom Window Logic (Unchanged) ---
     if (launchCustomWindowBtn) {
          launchCustomWindowBtn.addEventListener('click', () => {
             const currentUrl = window.location.href.split('?')[0]; 
@@ -484,9 +520,8 @@
         });
     }
 
-    // --- 8. VOICE CHAT IMPLEMENTATION (WebRTC & Socket.IO Signaling) ---
+    // --- 8. VOICE CHAT IMPLEMENTATION (Unchanged) ---
 
-    // --- UI Control ---
     function updateVcControls(inCall) {
         vcBtnJoin.style.display = inCall ? 'none' : 'block';
         vcBtnMute.style.display = inCall ? 'block' : 'block'; 
@@ -501,7 +536,6 @@
         }
     }
 
-    // --- VC Connect ---
     vcBtnJoin.addEventListener('click', async () => {
         if (!currentUsername) {
             console.warn('Set a username before joining the voice chat.');
@@ -520,7 +554,6 @@
         }
     });
 
-    // --- VC Mute/Unmute ---
     vcBtnMute.addEventListener('click', () => {
         isMuted = !isMuted;
         if (localStream) {
@@ -529,7 +562,6 @@
         updateVcControls(localStream !== null); 
     });
 
-    // --- VC Leave ---
     vcBtnLeave.addEventListener('click', () => {
         socket.emit('vc-leave');
         
@@ -545,8 +577,6 @@
 
         updateVcControls(false);
     });
-
-    // --- Peer Connection Handling ---
 
     function createPeerConnection(remoteSocketId) {
         const pc = new RTCPeerConnection({
@@ -578,9 +608,6 @@
         peerConnections[remoteSocketId] = pc;
         return pc;
     }
-
-
-    // --- Socket.IO WebRTC Signaling Handlers ---
 
     socket.on('vc-user-joined', async (newUserId) => {
         if (!localStream) return; 
@@ -643,8 +670,6 @@
             }
         }
     });
-
-    // --- Socket.IO VC User List Update ---
 
     socket.on('vc-user-list-update', (users) => {
         vcUserList.innerHTML = '';
