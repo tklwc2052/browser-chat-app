@@ -40,7 +40,18 @@
         <h4 class="panel-title">other stuff</h4>
         <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
         <p class="panel-hint"></p>
-    </div>
+        
+        <h4 class="panel-title">voice chat</h4>
+        <div id="vc-area">
+            <div id="vc-controls">
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="vc-btn-mute" style="display: none;">Mute</button>
+                <button id="vc-btn-leave" class="vc-btn-leave" style="display: none;">Leave</button>
+            </div>
+            <ul id="vc-user-list">
+                </ul>
+        </div>
+        </div>
     
 </div>
 
@@ -105,11 +116,23 @@
     const onlineUsersList = document.getElementById('online-users-list');
     // New Button
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    
+    // NEW VC Elements
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcBtnLeave = document.getElementById('vc-btn-leave');
+    const vcUserList = document.getElementById('vc-user-list');
 
 
     let currentUsername = '';
     let lastUserMessageTime = 0; 
     let lastOtherMessageSender = ''; 
+    
+    // NEW VC State
+    let localStream = null; 
+    const peerConnections = {}; // Stores RTCPeerConnection objects: { socketId: RTCPeerConnection }
+    let isMuted = false;
+
 
     // --- 1. Utility Function to Handle Formatting ---
     function parseFormatting(text) {
@@ -207,28 +230,16 @@
 
             if (systemMatch) {
                 messageEl.classList.add('system-message');
-                const systemSender = systemMatch[1];
-                let systemText = systemMatch[2];
+                const systemText = systemMatch[2];
                 
-                // NEW/FIX: Private Message Check (uses the specific tags we set in server.js)
-                // Check for Sender Confirmation (sent as 'System') AND Receiver PM (sent as 'Announcement')
-                if (systemSender === 'System' && systemText.startsWith('**[PM to')) {
-                     // Sender PM confirmation
+                // NEW: Private Message Check (uses the specific tags we set in server.js)
+                if (systemText.startsWith('**[PM from') || systemText.startsWith('**[PM to')) {
                     messageEl.classList.add('private-message');
                     // Remove the surrounding bolding and colon introduced by the server's formatMessage
                     let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
                     
-                    messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
-
-                    messagesDiv.appendChild(messageEl);
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    return; // PM handled, exit function
-                } else if ((systemSender === 'Announcement' || systemSender === 'System') && systemText.startsWith('**[PM from')) {
-                    // Receiver PM (sent by server using 'Announcement' in the updated server.js)
-                    messageEl.classList.add('private-message');
-                    // Remove the surrounding bolding and colon introduced by the server's formatMessage
-                    let pmContent = systemText.replace(/\*\*(.*?)\*\*/, '$1'); 
-                    
+                    // We wrap the entire content in <u> tags to force underline
+                    // The inner message (e.g., 'hi') is already bolded by the server.
                     messageEl.innerHTML = parseFormatting(`<u>${pmContent}</u>`); 
 
                     messagesDiv.appendChild(messageEl);
@@ -411,6 +422,207 @@
             window.open(newUrl, '_blank', 'width=200,height=700,resizable=yes');
         });
     }
+
+    // --- 8. VOICE CHAT IMPLEMENTATION (WebRTC & Socket.IO Signaling) ---
+
+    // --- UI Control ---
+    function updateVcControls(inCall) {
+        vcBtnJoin.style.display = inCall ? 'none' : 'block';
+        vcBtnMute.style.display = inCall ? 'block' : 'block'; // Always visible when not joined to enable pre-mute
+        vcBtnLeave.style.display = inCall ? 'block' : 'none';
+        
+        // Ensure mute button reflects state
+        if (inCall) {
+            vcBtnMute.textContent = isMuted ? 'Unmute' : 'Mute';
+            vcBtnMute.classList.toggle('active', isMuted);
+        } else {
+            // Display only a generic Mute button when not in call (as a preference)
+            vcBtnMute.textContent = 'Mute';
+            vcBtnMute.classList.remove('active');
+        }
+    }
+
+    // --- VC Connect ---
+    vcBtnJoin.addEventListener('click', async () => {
+        if (!currentUsername) {
+            console.warn('Set a username before joining the voice chat.');
+            return;
+        }
+        try {
+            // 1. Get user's microphone stream
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            
+            // 2. Apply initial mute state
+            localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+
+            // 3. Signal to the server that we are joining
+            socket.emit('vc-join');
+            updateVcControls(true);
+
+            // 4. Creation of connections with peers is handled by the 'vc-user-joined' event from the server.
+            
+        } catch (err) {
+            console.error('Failed to get local audio stream (User denied access or no device):', err);
+            // Fallback UI or error message
+            updateVcControls(false); 
+        }
+    });
+
+    // --- VC Mute/Unmute ---
+    vcBtnMute.addEventListener('click', () => {
+        isMuted = !isMuted;
+        if (localStream) {
+            localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+        }
+        updateVcControls(localStream !== null); // Update button text/class
+    });
+
+    // --- VC Leave ---
+    vcBtnLeave.addEventListener('click', () => {
+        socket.emit('vc-leave');
+        
+        // 1. Close all peer connections
+        Object.values(peerConnections).forEach(pc => pc.close());
+        
+        // 2. Stop local audio tracks
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // 3. Clean up
+        localStream = null;
+        Object.keys(peerConnections).forEach(key => delete peerConnections[key]);
+        // Remove all dynamically created remote audio elements
+        document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
+
+        updateVcControls(false);
+    });
+
+    // --- Peer Connection Handling ---
+
+    // Utility to create a new RTCPeerConnection
+    function createPeerConnection(remoteSocketId) {
+        const pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' } // Standard STUN server
+            ]
+        });
+
+        pc.onicecandidate = ({ candidate }) => {
+            // 1. Send ICE candidates to the remote peer via the server
+            if (candidate) {
+                socket.emit('webrtc-signal', remoteSocketId, { 'ice-candidate': candidate });
+            }
+        };
+
+        pc.ontrack = ({ streams: [stream] }) => {
+            // 2. When a remote stream is received, play it (audio only)
+            const audioEl = document.createElement('audio');
+            audioEl.srcObject = stream;
+            audioEl.autoplay = true;
+            audioEl.id = `audio-${remoteSocketId}`;
+            
+            // Hidden audio elements can be appended anywhere, e.g., to the body
+            document.body.appendChild(audioEl); 
+            console.log(`Playing audio from peer ${remoteSocketId}`);
+        };
+
+        // 3. Add local tracks to the connection
+        if (localStream) {
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        }
+
+        peerConnections[remoteSocketId] = pc;
+        return pc;
+    }
+
+
+    // --- Socket.IO WebRTC Signaling Handlers ---
+
+    // A new user has joined (Initiate a call to them)
+    socket.on('vc-user-joined', async (newUserId) => {
+        if (!localStream) return; // Only process if we are currently in a call
+
+        const pc = createPeerConnection(newUserId);
+        
+        // 1. Create and send an Offer (Pioneer role)
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            socket.emit('webrtc-signal', newUserId, { 'offer': pc.localDescription });
+        } catch (e) {
+             console.error('Error creating offer:', e);
+        }
+    });
+
+    // A user has left (Clean up their connection)
+    socket.on('vc-user-left', (leavingUserId) => {
+        if (peerConnections[leavingUserId]) {
+            peerConnections[leavingUserId].close();
+            delete peerConnections[leavingUserId];
+        }
+        const audioEl = document.getElementById(`audio-${leavingUserId}`);
+        if (audioEl) audioEl.remove();
+        console.log(`Removed connection and audio for peer ${leavingUserId}`);
+    });
+
+    // Receive WebRTC signals (Offers, Answers, ICE Candidates)
+    socket.on('webrtc-signal', async (fromId, signal) => {
+        let pc = peerConnections[fromId];
+        
+        if (signal.offer) {
+            // Received an Offer (Responder role)
+            if (!localStream) return; // Must be in call to respond
+
+            if (!pc) pc = createPeerConnection(fromId); // Create PC if it doesn't exist
+
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+                
+                // 1. Create and send an Answer
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                
+                socket.emit('webrtc-signal', fromId, { 'answer': pc.localDescription });
+            } catch (e) {
+                console.error('Error handling offer/answer:', e);
+            }
+            
+        } else if (signal.answer) {
+            // Received an Answer (Pioneer role)
+            if (pc && pc.signalingState !== 'stable') {
+                 try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+                } catch (e) {
+                    console.error('Error setting remote description for answer:', e);
+                }
+            }
+        } else if (signal['ice-candidate']) {
+            // Received an ICE Candidate
+            if (pc) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal['ice-candidate']));
+                } catch (e) {
+                    // Ignore error if candidate is invalid or connection is closed
+                    // console.error('Error adding received ICE candidate:', e); 
+                }
+            }
+        }
+    });
+
+    // --- Socket.IO VC User List Update ---
+
+    socket.on('vc-user-list-update', (users) => {
+        vcUserList.innerHTML = '';
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = `🟢 ${user}`; 
+            vcUserList.appendChild(li);
+        });
+    });
+
+    updateVcControls(false); // Initialize controls state
     
 </script>
 
