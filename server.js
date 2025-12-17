@@ -21,9 +21,6 @@ const ADMIN_USERNAME = 'kl_'; // Designated Admin User (You!)
 
 /**
  * Formats a message string with username and timestamp.
- * @param {string} sender - The sender's name (or System/Announcement).
- * @param {string} text - The raw message content.
- * @returns {string} The formatted message string.
  */
 function formatMessage(sender, text) {
     const now = new Date();
@@ -53,7 +50,6 @@ function broadcastVCUserList() {
 
 /**
  * Adds a message to history and truncates it if necessary.
- * @param {string} msg - The formatted message string.
  */
 function addToHistory(msg) {
     messageHistory.push(msg);
@@ -101,7 +97,7 @@ io.on('connection', (socket) => {
             id: socket.id 
         };
 
-        // If the user is currently in VC, update their VC profile data (e.g., new username/avatar)
+        // If the user is currently in VC, update their VC profile data
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].username = username;
             vcUsers[socket.id].avatar = newAvatar;
@@ -124,7 +120,7 @@ io.on('connection', (socket) => {
         const senderAvatar = userData.avatar;
         const senderId = socket.id;
 
-        if (msg.startsWith('/')) {
+        if (typeof msg === 'string' && msg.startsWith('/')) {
             const parts = msg.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
             const args = parts.slice(1).join(' '); 
@@ -191,7 +187,7 @@ io.on('connection', (socket) => {
                 socket.emit('chat-message', { text: commandResponse, avatar: null });
             }
 
-        } else if (msg.trim()) {
+        } else if (msg && (typeof msg === 'string' ? msg.trim() : true)) {
             const formattedMsg = formatMessage(sender, msg);
             io.emit('chat-message', {
                 text: formattedMsg,
@@ -202,26 +198,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 3. Voice Chat Handlers ---
+    // --- 3. Voice Chat Handlers (WebRTC Signaling) ---
 
-    // Handler to join or leave the VC
     socket.on('vc-join', (isJoining) => {
         const userData = users[socket.id];
-
         if (!userData) return;
 
         if (isJoining) {
-            // Add user to VC list
+            // 1. Add user to VC list
             vcUsers[socket.id] = { 
                 username: userData.username, 
                 avatar: userData.avatar, 
-                isMuted: false, // Start unmuted
+                isMuted: false, 
                 id: socket.id
             };
+            
+            // 2. Notify others for UI update
             const joinMsg = formatMessage('System', `**${userData.username}** joined the Voice Chat.`);
             io.emit('chat-message', { text: joinMsg, avatar: null });
             addToHistory(joinMsg);
             
+            // 3. IMPORTANT: Tell existing VC users that someone joined so they can initiate a P2P connection
+            // We broadcast to everyone, and clients filter if they are in VC
+            socket.broadcast.emit('vc-user-joined', socket.id);
+
         } else {
             // Remove user from VC list
             if (vcUsers[socket.id]) {
@@ -229,18 +229,32 @@ io.on('connection', (socket) => {
                 const leaveMsg = formatMessage('System', `**${userData.username}** left the Voice Chat.`);
                 io.emit('chat-message', { text: leaveMsg, avatar: null });
                 addToHistory(leaveMsg);
+                
+                // Notify others to destroy the P2P connection
+                socket.broadcast.emit('vc-user-left', socket.id);
             }
         }
         
         broadcastVCUserList();
     });
 
-    // Handler to toggle mute status
+    // Handler to toggle mute status (Visual & Logic)
     socket.on('vc-mute-toggle', (isMuted) => {
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].isMuted = isMuted;
-            broadcastVCUserList(); // Update all clients with new status
+            broadcastVCUserList(); // Update all clients with new visual status
         }
+    });
+
+    // --- NEW: WebRTC Signal Routing ---
+    // This allows clients to exchange connection data (Offers, Answers, ICE Candidates)
+    socket.on('signal', (data) => {
+        const { target, signal } = data;
+        // Forward the signal to the specific target user
+        io.to(target).emit('signal', {
+            sender: socket.id,
+            signal: signal
+        });
     });
 
     // --- 4. Handle Disconnect ---
@@ -254,6 +268,8 @@ io.on('connection', (socket) => {
             if (vcUsers[socket.id]) {
                 delete vcUsers[socket.id];
                 broadcastVCUserList(); 
+                // Notify WebRTC clients to remove peer connection
+                socket.broadcast.emit('vc-user-left', socket.id);
             }
             
             const leaveMsg = formatMessage('System', `User '${userData.username}' left the chat.`);
