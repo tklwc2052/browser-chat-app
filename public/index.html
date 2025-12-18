@@ -181,15 +181,15 @@
             messageEl.appendChild(contentArea);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            lastMessageSender = ''; // Reset grouping
+            lastMessageSender = ''; 
             return;
         }
 
         // --- TYPE: SYSTEM MESSAGE ---
         if (msg.type === 'system' || msg.text.startsWith('**System**') || msg.text.startsWith('**Announcement**')) {
             messageEl.classList.add('system-message');
-            // Clean text if it came from the old format
             let displayText = msg.text;
+            // Cleanup legacy format
             if (displayText.startsWith('**System**')) {
                 displayText = displayText.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '');
             }
@@ -219,7 +219,9 @@
         if (!isUserMessage) {
             if (showAvatar) {
                 const img = document.createElement('img');
-                img.classList.add('avatar'); img.src = msg.avatar || 'placeholder-avatar.png';
+                img.classList.add('avatar'); 
+                // SAFETY: Fallback to placeholder if missing from history object
+                img.src = msg.avatar || 'placeholder-avatar.png';
                 messageEl.appendChild(img);
             } else {
                 const spacer = document.createElement('div');
@@ -240,7 +242,7 @@
 
         const bubble = document.createElement('div');
         bubble.classList.add('bubble-content');
-        bubble.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, '')); // Strip old format if present
+        bubble.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, '')); 
         
         const time = document.createElement('div');
         time.classList.add('message-time');
@@ -257,7 +259,7 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- 3. VOICE CHAT (Same as before) ---
+    // --- 3. VOICE CHAT ---
     function attachSpeakingDetector(stream, userId) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioCtx.createMediaStreamSource(stream);
@@ -377,7 +379,6 @@
     socket.on('chat-message', displayMessage);
     socket.on('history', (h) => { messagesDiv.innerHTML = ''; h.forEach(displayMessage); });
     
-    // !!! FIXED CLEAR COMMAND !!!
     socket.on('clear-chat', () => {
         messagesDiv.innerHTML = '';
         console.log("Chat cleared by server command.");
