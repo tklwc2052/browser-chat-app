@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The C&C Corp chat</title>
+<title>The Best Chat Ever</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -59,9 +59,10 @@
         </div>
 
         <div class="panel-bottom-group">
-            <h4 class="panel-title">Eagler</h4>
-            <button id="btn-cloak-launcher" class="panel-btn">Launch</button>
+            <h4 class="panel-title">Browser</h4>
+            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
             <div style="margin-bottom: 15px;"></div> 
+
             <h4 class="panel-title">notifications</h4>
             <div class="settings-panel">
                 <ul class="settings-list">
@@ -136,6 +137,11 @@
     let audioCtx; 
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+    // --- COOLDOWN VARS ---
+    let vcCooldownTimer = null;
+    let vcCooldownEnd = 0;
+    const VC_COOLDOWN_DURATION = 15000; // 15 seconds
+
     // ==========================================
     // --- NOTIFICATION LOGIC ---
     // ==========================================
@@ -182,7 +188,7 @@
             const n = new Notification(title, { 
                 body: body, 
                 icon: 'placeholder-avatar.png',
-                requireInteraction: true // Persistent
+                requireInteraction: true 
             });
             playNotificationSound();
         }
@@ -441,7 +447,12 @@
             vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)';
             vcBtnMute.style.display = 'block';
             socket.emit('vc-join', true);
-        } catch (err) { console.error(err); alert('Microphone access denied.'); }
+        } catch (err) { 
+            console.error(err); 
+            alert('Microphone access denied or error occurred.'); 
+            // Reset cooldown if we failed to join
+            resetVcCooldown();
+        }
     }
 
     function leaveVC() {
@@ -500,7 +511,44 @@
             try { await peer.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
         }
     });
-    vcBtnJoin.addEventListener('click', () => { if (!currentUsername) return alert("Set username first."); isInVC ? leaveVC() : startVC(); });
+
+    // --- UPDATED VC BUTTON LISTENER ---
+    vcBtnJoin.addEventListener('click', () => { 
+        if (!currentUsername) return alert("Set username first.");
+        
+        // Check cooldown
+        if (vcCooldownTimer) {
+            const remaining = Math.ceil((vcCooldownEnd - Date.now()) / 1000);
+            triggerNotification('System', `Please wait ${remaining}s before toggling VC again.`);
+            alert(`Please wait ${remaining}s before toggling VC again.`);
+            return;
+        }
+
+        // Apply visual cooldown
+        startVcCooldown();
+
+        if (isInVC) {
+            leaveVC();
+        } else {
+            startVC();
+        }
+    });
+
+    function startVcCooldown() {
+        vcCooldownEnd = Date.now() + VC_COOLDOWN_DURATION;
+        vcBtnJoin.classList.add('disabled-btn');
+        vcCooldownTimer = setTimeout(() => {
+            resetVcCooldown();
+        }, VC_COOLDOWN_DURATION);
+    }
+
+    function resetVcCooldown() {
+        if (vcCooldownTimer) clearTimeout(vcCooldownTimer);
+        vcCooldownTimer = null;
+        vcBtnJoin.classList.remove('disabled-btn');
+    }
+    // ----------------------------------
+
     vcBtnMute.addEventListener('click', () => {
         if (!localStream) return;
         const track = localStream.getAudioTracks()[0];
@@ -542,32 +590,25 @@
     // --- CLOAKED LAUNCHER LOGIC ---
     // ==========================================
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
-    
-    // SVG Data URI for the 9-dot Apps Grid Icon (Chrome New Tab look)
     const chromeIconSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236e6e6e' d='M6 6h3v3H6zm5 0h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3z'/%3E%3C/svg%3E`;
 
     if(btnCloakLauncher) {
         btnCloakLauncher.addEventListener('click', () => {
             const urlToEmbed = "https://tuff.speedslicer.dev/files/1_1UT8/WASM/";
-            
-            // 1. Open a new tab explicitly set to 'about:blank'.
             const newWindow = window.open('about:blank', '_blank');
 
             if (!newWindow) {
-                // Handle popup blockers
                 btnCloakLauncher.innerText = "Blocked!";
                 btnCloakLauncher.style.backgroundColor = "var(--color-vc-red)";
                 btnCloakLauncher.style.color = "white";
                 setTimeout(() => {
                     btnCloakLauncher.innerText = "Launch New Tab";
-                    // Reset to default panel-btn blue, or let css take over if we remove inline styles
                     btnCloakLauncher.style.backgroundColor = ""; 
                     btnCloakLauncher.style.color = ""; 
                 }, 2000);
                 return;
             }
 
-            // 2. Write the complete HTML document containing the iframe directly into the new tab.
             const htmlContent = `
                 <!DOCTYPE html>
                 <html>
@@ -576,12 +617,7 @@
                     <link rel="icon" type="image/svg+xml" href="${chromeIconSvg}">
                     <style>
                         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
-                        iframe { 
-                            border: none; 
-                            width: 100vw; 
-                            height: 100vh; 
-                            display: block; 
-                        }
+                        iframe { border: none; width: 100vw; height: 100vh; display: block; }
                     </style>
                 </head>
                 <body>
@@ -589,7 +625,6 @@
                 </body>
                 </html>
             `;
-
             newWindow.document.write(htmlContent);
             newWindow.document.close();
         });
