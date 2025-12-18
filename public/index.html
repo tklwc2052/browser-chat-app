@@ -63,22 +63,26 @@
             <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
             <div style="margin-bottom: 15px;"></div> 
 
-            <h4 class="panel-title">Settings</h4>
+            <h4 class="panel-title">Appearance</h4>
             <div class="settings-panel">
                 <ul class="settings-list">
-                    <li class="setting-item">
-                        <span>Transparent Mode</span>
-                        <input type="checkbox" id="setting-transparent">
-                    </li>
-                    <li class="setting-item" style="flex-direction: column; gap: 5px; align-items: stretch;">
-                        <span>Custom Background</span>
-                        <div style="display: flex; gap: 5px;">
-                            <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0;">Upload</button>
-                            <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; background-color: var(--color-vc-red);">Reset</button>
+                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <div style="display:flex; justify-content:space-between; width:100%;">
+                            <span>Transparent Mode</span>
+                            <input type="checkbox" id="setting-transparent">
+                        </div>
+                        
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #444; padding-top: 5px;">
+                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
+                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
+                            </div>
                         </div>
                         <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
                     </li>
                     
+                    <h4 class="panel-title" style="margin-top: 10px;">Notifications</h4>
                     <li class="setting-item">
                         <span>Main Messages</span>
                         <input type="checkbox" id="setting-main" checked>
@@ -139,7 +143,7 @@
     const settingVC = document.getElementById('setting-vc');
     const settingSound = document.getElementById('setting-sound');
     
-    // NEW APPEARANCE INPUTS
+    // APPEARANCE INPUTS
     const settingTransparent = document.getElementById('setting-transparent');
     const btnBgUpload = document.getElementById('btn-bg-upload');
     const btnBgReset = document.getElementById('btn-bg-reset');
@@ -159,7 +163,7 @@
     // --- COOLDOWN VARS ---
     let vcCooldownTimer = null;
     let vcCooldownEnd = 0;
-    const VC_COOLDOWN_DURATION = 5000; // 5 seconds
+    const VC_COOLDOWN_DURATION = 5000; 
 
     // ==========================================
     // --- SETTINGS & APPEARANCE LOGIC ---
@@ -226,10 +230,16 @@
         }
     });
 
-    // Handle Reset Background
+    // Handle Reset Background & Disable Transparency
     btnBgReset.addEventListener('click', () => {
+        // 1. Reset Background
         localStorage.removeItem('custom-bg');
         document.body.style.backgroundImage = '';
+
+        // 2. Turn off Transparent Mode automatically
+        settingTransparent.checked = false;
+        document.body.classList.remove('transparent-mode');
+        localStorage.setItem('setting-transparent', 'false');
     });
 
     function playNotificationSound() {
@@ -289,8 +299,6 @@
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => {
         e.preventDefault();
-        // Check if dropping a background on the body vs an image in chat?
-        // For simplicity, we assume drops are for chat images unless triggered via settings
         if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]);
     });
 
