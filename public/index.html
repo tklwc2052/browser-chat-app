@@ -1,67 +1,64 @@
-<div class="panel-bottom-group">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Best Chat Ever</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+<div id="main-wrapper">
+
+    <div id="chat-container">
+        <div id="username-area">
+            <button id="avatar-upload-btn" title="Set Avatar">
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
+            </button>
+            <h3>username:</h3>
+            <input type="text" id="username-input" placeholder="whatr we callin ya">
+            <button id="set-username-btn">Save</button>
+        </div>
+
+        <div id="online-users-area">
+            <h4>whos online:</h4>
+            <ul id="online-users-list"></ul>
+        </div>
+        
+        <div id="messages"></div>
+
+        <div id="message-input-area">
+            <div id="image-preview-area" style="display:none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn">X</button>
+            </div>
+            
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+            
+            <button id="file-upload-btn" title="Upload Image">📁</button>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+    
+    <div id="right-panel">
+        
+        <div class="panel-top-group">
+            <div>
+                <h4 class="panel-title">other stuff</h4>
+                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+            </div>
+
+            <div>
+                <h4 class="panel-title">voice chat</h4>
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <ul id="vc-user-list"></ul>
+                <div id="audio-container" style="display:none;"></div>
+            </div>
+        </div>
+
+        <div class="panel-bottom-group">
             <h4 class="panel-title">Browser</h4>
             <button id="btn-cloak-launcher" class="panel-btn special-white-btn">Launch New Tab</button>
-            <div style="margin-bottom: 15px;"></div> <h4 class="panel-title">notifications</h4>
-            <div class="settings-panel">
-                <ul class="settings-list">
-                    ```
-
-**B. The JavaScript**
-Add this code inside your `<script>` tag, preferably near the bottom with the other event listeners (around line 348).
-
-```javascript
-    // ==========================================
-    // --- CLOAKED LAUNCHER LOGIC ---
-    // ==========================================
-    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
-    
-    // SVG Data URI for the 9-dot Apps Grid Icon (Chrome New Tab look)
-    const chromeIconSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236e6e6e' d='M6 6h3v3H6zm5 0h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3z'/%3E%3C/svg%3E`;
-
-    if(btnCloakLauncher) {
-        btnCloakLauncher.addEventListener('click', () => {
-            const urlToEmbed = "https://tuff.speedslicer.dev/files/1_1UT8/WASM/";
-            
-            // 1. Open a new tab explicitly set to 'about:blank'.
-            const newWindow = window.open('about:blank', '_blank');
-
-            if (!newWindow) {
-                // Handle popup blockers
-                btnCloakLauncher.innerText = "Blocked!";
-                btnCloakLauncher.style.backgroundColor = "var(--color-vc-red)";
-                btnCloakLauncher.style.color = "white";
-                setTimeout(() => {
-                    btnCloakLauncher.innerText = "Launch New Tab";
-                    btnCloakLauncher.style.backgroundColor = ""; 
-                    btnCloakLauncher.style.color = ""; 
-                }, 2000);
-                return;
-            }
-
-            // 2. Write the complete HTML document containing the iframe directly into the new tab.
-            const htmlContent = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>New Tab</title> 
-                    <link rel="icon" type="image/svg+xml" href="${chromeIconSvg}">
-                    <style>
-                        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
-                        iframe { 
-                            border: none; 
-                            width: 100vw; 
-                            height: 100vh; 
-                            display: block; 
-                        }
-                    </style>
-                </head>
-                <body>
-                    <iframe src="${urlToEmbed}" title="Embedded Content"></iframe>
-                </body>
-                </html>
-            `;
-
-            newWindow.document.write(htmlContent);
-            newWindow.document.close();
-        });
-    }
+            <div style="margin-bottom:
