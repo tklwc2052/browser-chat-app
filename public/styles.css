@@ -1,149 +1,14 @@
-/* --- Dark Mode Variables --- */
-:root {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-input: #3c3c3c;
-    
-    --color-bubble-self: #007acc; 
-    --color-bubble-other: #3c3c3c; 
-    --color-bubble-pm: #512da8; 
-    --color-pm-text: #e1bee7;
-
-    --color-text: #f0f0f0;   
-    --color-muted: #aaaaaa;  
-    --color-system: #ff8c00; 
-    
-    --color-accent-blue: #007acc;
-    --color-accent-green: #4caf50;
-    --color-vc-red: #dc3545;
-    --color-preview-bg: #4a4a4a;
-
-    --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
-}
-
-html, body {
-    margin: 0; padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg-primary);
-    color: var(--color-text);
-    height: 100%; overflow: hidden; 
-}
-
-#main-wrapper {
-    display: flex; height: 100vh;
-    max-width: 800px; margin: 0 auto;
-    border-left: 1px solid #333; border-right: 1px solid #333;
-}
-
-#chat-container {
-    flex: 1; display: flex; flex-direction: column;
-    min-width: 0; background-color: var(--bg-secondary);
-}
-
-/* Header Areas */
-#username-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-}
-#avatar-upload-btn { background: none; border: none; cursor: pointer; padding: 0; width: 40px; height: 40px; }
-#current-avatar-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #555; }
-#username-input { padding: 8px; border-radius: 4px; border: 1px solid #555; background-color: var(--bg-input); color: var(--color-text); }
-#set-username-btn { padding: 8px 15px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
-
-#online-users-area {
-    padding: 10px 15px; background-color: #2a3847;
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-    font-size: 0.9em; color: #90caf9; overflow-x: auto; 
-}
-#online-users-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 15px; }
-#online-users-list li { display: flex; align-items: center; gap: 5px; }
-
-/* Messages Area */
-#messages {
-    flex-grow: 1; overflow-y: auto;
-    padding: 20px; display: flex; flex-direction: column; gap: 2px; 
-}
-#messages::-webkit-scrollbar { width: 8px; }
-#messages::-webkit-scrollbar-track { background: var(--bg-primary); }
-#messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
-
-.message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
-.user-message { flex-direction: row-reverse; }
-
-.avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
-.avatar-spacer { width: 35px; margin: 0 10px; flex-shrink: 0; }
-
-.message-content-area { display: flex; flex-direction: column; max-width: 70%; }
-.user-message .message-content-area { align-items: flex-end; }
-
-.message-username { font-size: 0.8em; color: var(--color-muted); margin-bottom: 2px; margin-left: 5px; }
-.message-content-wrapper { display: flex; flex-direction: column; }
-
-.bubble-content {
-    padding: 8px 12px; border-radius: 12px;
-    word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
-.other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
-.user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
-
-.message-image {
-    max-width: 100%;
-    border-radius: 8px;
-    margin-bottom: 5px;
-    display: block;
-    cursor: pointer; 
-}
-
-.message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
-.user-message .message-time { text-align: right; }
-
-.grouped-message { margin-bottom: 2px; margin-top: -12px; }
-
-.system-message {
-    align-self: center; color: var(--color-system);
-    font-style: italic; font-size: 0.85em; margin: 5px 0;
-    text-align: center; max-width: 90%;
-}
-
-.private-message-container {
-    background-color: transparent; border: 1px dashed var(--color-bubble-pm);
-    padding: 5px; border-radius: 8px; margin-bottom: 10px;
-}
-.bubble-private { background-color: var(--color-bubble-pm) !important; color: #fff; border: 1px solid #7c43bd; }
-.pm-label { font-size: 0.75em; font-weight: bold; color: var(--color-pm-text); margin-bottom: 2px; display: block; }
-
-/* Input Area */
-#message-input-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;
-}
-#image-preview-area {
-    display: flex; flex-direction: column; align-items: flex-end;
-    padding: 5px; background: var(--color-preview-bg); border-radius: 4px;
-    gap: 5px; flex-basis: 150px; flex-shrink: 0;
-}
-#image-preview-area img { max-width: 140px; max-height: 140px; border-radius: 3px; object-fit: contain; }
-#remove-image-btn { background: var(--color-vc-red); color: white; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer; }
-
-#message-input {
-    flex-grow: 1; padding: 10px; border: 1px solid #555; border-radius: 4px;
-    resize: none; max-height: 80px; background: var(--bg-secondary); color: var(--color-text);
-}
-#send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-#file-upload-btn { background-color: #555; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-
-/* --- RIGHT PANEL FIXES --- */
+/* --- RIGHT PANEL LAYOUT --- */
 #right-panel {
-    width: 200px;
+    width: 250px; /* Slightly wider to accommodate scrollbar */
     background-color: var(--bg-primary);
     border-left: 1px solid #333;
     padding: 15px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between; 
-    height: 100%; 
+    height: 100vh; /* Full viewport height */
     box-sizing: border-box; 
+    overflow: hidden; /* Prevent the whole panel from scrolling */
 }
 
 /* Groups within Right Panel */
@@ -151,29 +16,68 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    flex: 1;        /* Takes up all remaining space above the bottom group */
+    min-height: 0;  /* Crucial: allows this container to shrink/scroll */
 }
+
+/* This targets the Voice Chat div specifically (the second div) */
+.panel-top-group > div:nth-child(2) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;        /* Takes up remaining space inside the top group */
+    min-height: 0;  /* Crucial for nested scrolling */
+}
+
 .panel-bottom-group {
     display: flex;
     flex-direction: column;
+    margin-top: 15px; /* Spacing between the list and bottom controls */
+    flex-shrink: 0;   /* Prevents this section from squishing */
 }
 
 .panel-title { margin: 0 0 10px 0; color: var(--color-muted); text-transform: uppercase; font-size: 0.8em; letter-spacing: 1px; }
-.panel-btn { width: 100%; padding: 8px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px; transition: opacity 0.2s, background-color 0.2s; }
+
+.panel-btn { 
+    width: 100%; padding: 8px; 
+    background-color: var(--color-accent-blue); color: white; 
+    border: none; border-radius: 4px; cursor: pointer; 
+    margin-bottom: 5px; transition: opacity 0.2s, background-color 0.2s; 
+}
 .panel-btn.active { background-color: var(--color-vc-red); }
 
 /* Disabled state for cooldown */
 .panel-btn.disabled-btn {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background-color: #555 !important;
+    opacity: 0.5; cursor: not-allowed; background-color: #555 !important;
 }
 
-#vc-user-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+/* --- SCROLLABLE VC LIST --- */
+#vc-user-list { 
+    list-style: none; padding: 0; margin: 0; 
+    display: flex; flex-direction: column; gap: 8px;
+    
+    /* Scroll Magic */
+    overflow-y: auto;  
+    flex: 1;           /* Fills the container */
+    padding-right: 5px; /* Space for scrollbar */
+    
+    /* Optional: Visual containment */
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    padding: 5px;
+}
+
+/* Scrollbar Styling for the list */
+#vc-user-list::-webkit-scrollbar { width: 6px; }
+#vc-user-list::-webkit-scrollbar-track { background: transparent; }
+#vc-user-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
 #vc-user-list li {
     display: flex; align-items: center; gap: 8px;
     font-size: 0.9em; padding: 5px; border-radius: 4px;
     background: rgba(255,255,255,0.05); transition: all 0.2s;
+    flex-shrink: 0; /* Prevents items from squishing */
 }
+
 #vc-user-list img.list-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 2px solid transparent; }
 #vc-user-list li.speaking img.list-avatar {
     border-color: var(--color-accent-green);
@@ -182,6 +86,9 @@ html, body {
 }
 
 /* Settings Panel */
+.settings-panel {
+    max-height: 200px; overflow-y: auto; /* Just in case settings get long too */
+}
 .settings-list {
     list-style: none; padding: 0; margin: 0;
     display: flex; flex-direction: column; gap: 10px;
