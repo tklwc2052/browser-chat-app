@@ -128,7 +128,6 @@
     // --- NOTIFICATION LOGIC ---
     // ==========================================
 
-    // 1. Load Settings
     const loadSetting = (key, checkbox) => {
         const saved = localStorage.getItem(key);
         if (saved !== null) checkbox.checked = (saved === 'true');
@@ -138,11 +137,9 @@
     loadSetting('notif-vc', settingVC);
     loadSetting('notif-sound', settingSound);
 
-    // 2. Save Settings & Request Permission
     const saveSetting = (key, checkbox) => {
         checkbox.addEventListener('change', () => {
             localStorage.setItem(key, checkbox.checked);
-            // Request permission on first interaction
             if (Notification.permission === 'default') {
                 Notification.requestPermission();
             }
@@ -153,7 +150,6 @@
     saveSetting('notif-vc', settingVC);
     saveSetting('notif-sound', settingSound);
 
-    // 3. Play Sound (Generated "Pop" - no file needed)
     function playNotificationSound() {
         if (!settingSound.checked) return;
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -169,14 +165,15 @@
         osc.stop(ctx.currentTime + 0.1);
     }
 
-    // 4. Trigger Notification
+    // --- UPDATED TRIGGER FUNCTION (Persistent, No Click Action) ---
     function triggerNotification(title, body) {
-        // ONLY if tab is hidden and permission granted
         if (document.hidden && Notification.permission === 'granted') {
-            const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png' });
+            const n = new Notification(title, { 
+                body: body, 
+                icon: 'placeholder-avatar.png',
+                requireInteraction: true // <--- Keeps it persistent
+            });
             playNotificationSound();
-            // Auto close after 3s
-            setTimeout(n.close.bind(n), 3000);
         }
     }
 
@@ -278,32 +275,24 @@
             .replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
 
-    // --- DISPLAY + NOTIFICATION HANDLER ---
     function displayMessage(msg) {
-        // --- NOTIFICATION LOGIC HOOK ---
-        if (msg.sender !== currentUsername) { // Don't notify myself
-            // 1. Private Message
+        if (msg.sender !== currentUsername) { 
             if (msg.type === 'private' && settingPM.checked) {
                 triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
             }
-            // 2. System / VC Message
             else if (msg.type === 'system' || msg.text.startsWith('**System**')) {
-                // Check if it is a VC Join/Leave event
                 const text = msg.text;
                 if (settingVC.checked && (text.includes('joined Voice Chat') || text.includes('left Voice Chat'))) {
-                    // Strip the **System** part for cleaner notif
                     let clean = text.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '').replace(/\*\*/g, '');
                     triggerNotification('Voice Chat Update', clean);
                 }
             }
-            // 3. General Message
             else if (msg.type === 'general' && settingMain.checked) {
                 const body = msg.image ? '[Image Attached]' : msg.text;
                 triggerNotification(`${msg.sender}`, body);
             }
         }
 
-        // --- RENDERING LOGIC ---
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
@@ -406,7 +395,6 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- VOICE CHAT ---
     function attachSpeakingDetector(stream, userId) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioCtx.createMediaStreamSource(stream);
