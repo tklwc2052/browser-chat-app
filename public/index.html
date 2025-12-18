@@ -67,17 +67,15 @@
             <div class="settings-panel">
                 <ul class="settings-list">
                     <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
-                        <div style="display:flex; justify-content:space-between; width:100%;">
-                            <span>Transparent Mode</span>
-                            <input type="checkbox" id="setting-transparent">
-                        </div>
-                        
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #444; padding-top: 5px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
                             <div style="display: flex; gap: 5px;">
                                 <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
                                 <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
                             </div>
+                        </div>
+                        <div style="font-size: 0.75em; color: #777; font-style: italic;">
+                            (Transparency auto-enables with BG)
                         </div>
                         <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
                     </li>
@@ -153,7 +151,6 @@
     const settingSound = document.getElementById('setting-sound');
     
     // APPEARANCE INPUTS
-    const settingTransparent = document.getElementById('setting-transparent');
     const btnBgUpload = document.getElementById('btn-bg-upload');
     const btnBgReset = document.getElementById('btn-bg-reset');
     const bgUploadInput = document.getElementById('bg-upload-input');
@@ -197,17 +194,11 @@
     loadSetting('notif-vc', settingVC);
     loadSetting('notif-sound', settingSound);
 
-    // Load Transparent Mode
-    const savedTransparent = localStorage.getItem('setting-transparent');
-    if (savedTransparent === 'true') {
-        settingTransparent.checked = true;
-        document.body.classList.add('transparent-mode');
-    }
-    
-    // Load Custom Background
+    // Load Custom Background & Auto-Enable Transparency
     const savedBg = localStorage.getItem('custom-bg');
     if (savedBg) {
         document.body.style.backgroundImage = `url(${savedBg})`;
+        document.body.classList.add('transparent-mode');
     }
 
     const saveSetting = (key, checkbox) => {
@@ -223,16 +214,6 @@
     saveSetting('notif-vc', settingVC);
     saveSetting('notif-sound', settingSound);
 
-    // Save Transparent Mode
-    settingTransparent.addEventListener('change', () => {
-        localStorage.setItem('setting-transparent', settingTransparent.checked);
-        if (settingTransparent.checked) {
-            document.body.classList.add('transparent-mode');
-        } else {
-            document.body.classList.remove('transparent-mode');
-        }
-    });
-
     // Handle Custom Background Upload
     btnBgUpload.addEventListener('click', () => bgUploadInput.click());
 
@@ -243,7 +224,12 @@
             reader.onload = (evt) => {
                 const bgData = evt.target.result;
                 localStorage.setItem('custom-bg', bgData);
+                
+                // Apply Image
                 document.body.style.backgroundImage = `url(${bgData})`;
+                
+                // AUTO ENABLE TRANSPARENCY
+                document.body.classList.add('transparent-mode');
             };
             reader.readAsDataURL(file);
         }
@@ -253,9 +239,9 @@
     btnBgReset.addEventListener('click', () => {
         localStorage.removeItem('custom-bg');
         document.body.style.backgroundImage = '';
-        settingTransparent.checked = false;
+        
+        // AUTO DISABLE TRANSPARENCY
         document.body.classList.remove('transparent-mode');
-        localStorage.setItem('setting-transparent', 'false');
     });
 
     function playNotificationSound() {
