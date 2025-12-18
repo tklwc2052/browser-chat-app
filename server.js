@@ -3,46 +3,79 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path');
-const fs = require('fs'); // Used to check if files exist
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// --- DEBUGGING: PRINT FILES ON STARTUP ---
-console.log("--- SERVER STARTUP DEBUG ---");
-console.log("Current Directory:", __dirname);
-try {
-    console.log("Files available:", fs.readdirSync(__dirname));
-} catch (e) {
-    console.log("Could not list files:", e);
-}
-console.log("----------------------------");
-
 // --- RENDER SPECIFIC FIX ---
 app.set('trust proxy', 1);
 
-// --- SERVE STATIC FILES ---
-// This tells Express to serve index.html, styles.css, etc. from the current folder
-app.use(express.static(__dirname));
+// --- FILE HUNTER LOGIC ---
+// This function looks for index.html in common folders
+function findStaticFolder() {
+    const possiblePaths = [
+        path.join(__dirname),           // Root
+        path.join(__dirname, 'public'), // Common 'public' folder
+        path.join(__dirname, 'client'), // Common 'client' folder
+        path.join(__dirname, 'src')     // Common 'src' folder
+    ];
 
-// --- FORCE HOMEPAGE ROUTE ---
-app.get('/', (req, res) => {
-    const indexPath = path.join(__dirname, 'index.html');
-    
-    // Check if the file actually exists before sending
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        // If this shows up in your browser, we know index.html is missing from the upload
-        res.status(404).send(`
-            <h1>CRITICAL ERROR: index.html not found!</h1>
-            <p>The server is running, but it cannot find your HTML file.</p>
-            <p>Current Directory: ${__dirname}</p>
-            <p>Files found: ${fs.readdirSync(__dirname).join(', ')}</p>
-        `);
+    for (let p of possiblePaths) {
+        if (fs.existsSync(path.join(p, 'index.html'))) {
+            console.log(`✅ Found index.html in: ${p}`);
+            return p;
+        }
     }
-});
+    return null;
+}
+
+const staticPath = findStaticFolder();
+
+if (staticPath) {
+    // Tell Express to serve files from the folder where we found index.html
+    app.use(express.static(staticPath));
+    
+    app.get('/', (req, res) => {
+        res.sendFile(path.join(staticPath, 'index.html'));
+    });
+} else {
+    // If we still can't find it, list ALL files to help debug
+    console.error("❌ CRITICAL: Could not find index.html anywhere!");
+    
+    app.get('/', (req, res) => {
+        // Recursive file lister to show you exactly what is on the server
+        const getAllFiles = function(dirPath, arrayOfFiles) {
+            files = fs.readdirSync(dirPath);
+            arrayOfFiles = arrayOfFiles || [];
+            files.forEach(function(file) {
+                if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+                    arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+                } else {
+                    arrayOfFiles.push(path.join(dirPath, "/", file));
+                }
+            });
+            return arrayOfFiles;
+        };
+
+        const allFiles = getAllFiles(__dirname);
+        
+        res.status(404).send(`
+            <body style="font-family: monospace; background: #222; color: #0f0; padding: 20px;">
+                <h1>❌ FILE MISSING ERROR</h1>
+                <p>The server searched for <b>index.html</b> but could not find it.</p>
+                <hr>
+                <h3>Here are the files actually present on the server:</h3>
+                <ul style="color: #fff;">
+                    ${allFiles.map(f => `<li>${f}</li>`).join('')}
+                </ul>
+                <hr>
+                <p><b>Fix:</b> Ensure index.html is committed to GitHub and is all lowercase.</p>
+            </body>
+        `);
+    });
+}
 
 // --- DATABASE CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost/chatapp';
@@ -103,7 +136,6 @@ function broadcastVCUserList() { io.emit('vc-user-list', Object.values(vcUsers))
 io.on('connection', async (socket) => {
     const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
 
-    // Check Ban
     const isBanned = await Ban.findOne({ ip: clientIp });
     if (isBanned) {
         socket.emit('banned', `You are banned: ${isBanned.reason}`);
@@ -111,19 +143,16 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // Init Data
     socket.emit('update-user-list', Object.values(users));
     broadcastVCUserList();
     socket.emit('history', messageHistory);
 
-    // Load Whiteboard
     try {
         let board = await Whiteboard.findById('main_board');
         if (!board) board = await Whiteboard.create({ _id: 'main_board' });
         socket.emit('wb-history', board.lines);
     } catch (err) { console.error("WB Load Error:", err); }
 
-    // Whiteboard Events
     socket.on('wb-draw', async (data) => {
         socket.broadcast.emit('wb-draw', data);
         await Whiteboard.findByIdAndUpdate('main_board', { $push: { lines: data } }, { upsert: true });
@@ -143,7 +172,6 @@ io.on('connection', async (socket) => {
         io.emit('wb-redraw-all', []);
     });
 
-    // Chat Events
     socket.on('join', (username) => {
         if (!username || username.trim() === "") return;
         users[socket.id] = { id: socket.id, username, avatar: 'default', isAdmin: username === ADMIN_USERNAME, ip: clientIp };
@@ -157,7 +185,6 @@ io.on('connection', async (socket) => {
         const user = users[socket.id];
         if (!user) return;
 
-        // Admin
         if (msg.startsWith('/') && user.isAdmin) {
             const parts = msg.split(' ');
             if (parts[0] === '/clear') {
@@ -188,7 +215,6 @@ io.on('connection', async (socket) => {
 
     socket.on('set-avatar', (data) => { if(users[socket.id]) { users[socket.id].avatar = data; broadcastUserList(); }});
     
-    // VC Events
     socket.on('vc-join', () => { 
         if(users[socket.id]) { vcUsers[socket.id] = {...users[socket.id], isMuted: false}; broadcastVCUserList(); socket.emit('vc-existing-users', Object.keys(vcUsers).filter(id => id !== socket.id)); }
     });
@@ -208,5 +234,4 @@ io.on('connection', async (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process
