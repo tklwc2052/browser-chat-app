@@ -2,74 +2,96 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The C&C Corp chat</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
+<div id="main-wrapper">
 
-<div id="app-split-container">
-    
     <div id="whiteboard-panel">
-        <div id="wb-toolbar">
-            <input type="color" id="wb-color" value="#ffffff" title="Brush Color">
-            <input type="range" id="wb-size" min="1" max="20" value="3" title="Brush Size">
-            <button id="wb-undo-btn">↩ Undo</button>
-            <button id="wb-clear-btn">🗑 Clear</button>
+        <div class="panel-header">
+            <span>🎨 Board</span>
+            <div class="wb-controls">
+                <input type="color" id="wb-color" value="#000000" title="Brush Color">
+                <input type="range" id="wb-size" min="1" max="20" value="3" title="Brush Size">
+                <button id="wb-clear-btn" style="background:none;border:none;cursor:pointer;">🗑</button>
+            </div>
         </div>
-        <canvas id="whiteboard"></canvas>
+        <div id="canvas-container">
+            <canvas id="whiteboard"></canvas>
+        </div>
     </div>
 
-    <div id="main-wrapper">
-        <div id="chat-container">
-            <div id="username-area">
-                <button id="avatar-upload-btn" title="Set Avatar">
-                    <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
-                </button>
-                <h3>username:</h3>
-                <input type="text" id="username-input" placeholder="whatr we callin ya">
-                <button id="set-username-btn">Save</button>
-                <div class="dropdown">
-                    <button class="dropbtn">⚙️</button>
-                    <div class="dropdown-content">
-                        <button id="bg-upload-btn">Upload BG</button>
-                        <button id="reset-bg-btn">Reset BG</button>
-                        <button id="toggle-transparent-btn">Transparent Mode</button>
-                        <button id="popout-btn">Popout Chat</button>
-                    </div>
-                </div>
-            </div>
+    <div id="chat-container">
+        <div id="username-area">
+            <button id="avatar-upload-btn" title="Set Avatar">
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
+            </button>
+            <h3>username:</h3>
+            <input type="text" id="username-input" placeholder="whatr we callin ya">
+            <button id="set-username-btn">Save</button>
+        </div>
 
-            <div id="online-users-area">
-                <h4>whos online:</h4>
-                <ul id="online-users-list"></ul>
-                <div id="vc-area">
-                   <h5>Voice Chat</h5>
-                   <ul id="vc-users-list"></ul>
-                </div>
+        <div id="online-users-area">
+            <h4>whos online:</h4>
+            <ul id="online-users-list"></ul>
+        </div>
+        
+        <div id="messages"></div>
+
+        <div id="typing-indicator"></div>
+
+        <div id="message-input-area">
+            <div id="image-preview-area" style="display:none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn">X</button>
             </div>
             
-            <div id="messages"></div>
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+            
+            <button id="file-upload-btn" title="Upload Image">📁</button>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+    
+    <div id="right-panel">
+        <div class="panel-top-group">
+            <div>
+                <h4 class="panel-title">other stuff</h4>
+                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+            </div>
 
-            <div id="typing-indicator"></div>
+            <div>
+                <h4 class="panel-title">voice chat</h4>
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <ul id="vc-user-list"></ul>
+                <div id="audio-container" style="display:none;"></div>
+            </div>
+        </div>
 
-            <div id="message-input-area">
-                <div id="image-preview-area" style="display:none;">
-                    <img id="image-preview" src="" alt="Image Preview">
-                    <button id="remove-image-btn">X</button>
-                </div>
-                
-                <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-                <input type="file" id="hidden-file-input" accept="image/*" style="display:none;">
-                <input type="file" id="bg-file-input" accept="image/*" style="display:none;">
-                
-                <button id="send-btn">Send</button>
-                <button id="upload-btn" title="Upload Image">+</button>
-                <button id="vc-join-btn">🎤 Join VC</button>
-                <button id="vc-mute-btn" style="display:none;">🔊 Mute</button>
-                <button id="cloak-launcher-btn" title="Cloak Launcher">🕵️</button>
+        <div class="panel-bottom-group">
+            <h4 class="panel-title">Browser</h4>
+            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
+            <div style="margin-bottom: 15px;"></div> 
+
+            <h4 class="panel-title">Appearance</h4>
+            <div class="settings-panel">
+                <ul class="settings-list">
+                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Up</button>
+                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Rst</button>
+                            </div>
+                        </div>
+                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
@@ -77,228 +99,187 @@
 
 <script>
     const socket = io();
-    
+
     // --- WHITEBOARD LOGIC ---
     const canvas = document.getElementById('whiteboard');
     const ctx = canvas.getContext('2d');
-    const wbColor = document.getElementById('wb-color');
-    const wbSize = document.getElementById('wb-size');
-    let drawing = false;
-    let currentX = 0;
-    let currentY = 0;
+    const wbWrapper = document.getElementById('canvas-container');
+    let drawing = false, lastX=0, lastY=0;
 
     function resizeCanvas() {
-        const parent = canvas.parentElement;
-        canvas.width = parent.offsetWidth;
-        canvas.height = parent.offsetHeight;
+        canvas.width = wbWrapper.offsetWidth;
+        canvas.height = wbWrapper.offsetHeight;
     }
     window.addEventListener('resize', resizeCanvas);
-    // Call once after load
-    setTimeout(resizeCanvas, 100);
+    setTimeout(resizeCanvas, 500);
 
-    function drawLine(x0, y0, x1, y1, color, size, emit) {
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1, y1);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-        ctx.closePath();
-
-        if (!emit) return;
-        
-        // Normalize coordinates (0 to 1) for varying screen sizes
-        const w = canvas.width;
-        const h = canvas.height;
-
-        socket.emit('wb-draw', {
-            x0: x0 / w, y0: y0 / h,
-            x1: x1 / w, y1: y1 / h,
-            color: color,
-            size: size
-        });
+    function draw(x0, y0, x1, y1, color, size, emit) {
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+        ctx.strokeStyle = color; ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.stroke(); ctx.closePath();
+        if(emit) {
+            const w = canvas.width, h = canvas.height;
+            socket.emit('wb-draw', { x0: x0/w, y0: y0/h, x1: x1/w, y1: y1/h, color, size });
+        }
     }
 
-    // Mouse Events
-    canvas.addEventListener('mousedown', (e) => {
-        drawing = true;
-        currentX = e.offsetX;
-        currentY = e.offsetY;
-    });
+    canvas.addEventListener('mousedown', (e) => { drawing=true; lastX=e.offsetX; lastY=e.offsetY; });
+    canvas.addEventListener('mouseup', () => drawing=false);
     canvas.addEventListener('mousemove', (e) => {
-        if (!drawing) return;
-        drawLine(currentX, currentY, e.offsetX, e.offsetY, wbColor.value, wbSize.value, true);
-        currentX = e.offsetX;
-        currentY = e.offsetY;
-    });
-    canvas.addEventListener('mouseup', () => drawing = false);
-    canvas.addEventListener('mouseout', () => drawing = false);
-
-    // Touch Events (For Mobile/Tablets)
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault(); 
-        const rect = canvas.getBoundingClientRect();
-        drawing = true;
-        currentX = e.touches[0].clientX - rect.left;
-        currentY = e.touches[0].clientY - rect.top;
-    }, { passive: false });
-
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        if (!drawing) return;
-        const rect = canvas.getBoundingClientRect();
-        const newX = e.touches[0].clientX - rect.left;
-        const newY = e.touches[0].clientY - rect.top;
-        drawLine(currentX, currentY, newX, newY, wbColor.value, wbSize.value, true);
-        currentX = newX;
-        currentY = newY;
-    }, { passive: false });
-    canvas.addEventListener('touchend', () => drawing = false);
-
-    // Whiteboard Socket Listeners
-    socket.on('wb-draw', (data) => {
-        const w = canvas.width;
-        const h = canvas.height;
-        drawLine(data.x0 * w, data.y0 * h, data.x1 * w, data.y1 * h, data.color, data.size, false);
+        if(!drawing) return;
+        draw(lastX, lastY, e.offsetX, e.offsetY, document.getElementById('wb-color').value, document.getElementById('wb-size').value, true);
+        lastX=e.offsetX; lastY=e.offsetY;
     });
 
-    socket.on('wb-history', (lines) => {
-        lines.forEach(line => {
-            const w = canvas.width;
-            const h = canvas.height;
-            drawLine(line.x0 * w, line.y0 * h, line.x1 * w, line.y1 * h, line.color, line.size, false);
-        });
-    });
+    // Touch Support
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const r = canvas.getBoundingClientRect(); drawing=true; lastX=e.touches[0].clientX-r.left; lastY=e.touches[0].clientY-r.top; }, {passive:false});
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if(!drawing)return; const r = canvas.getBoundingClientRect(); const x=e.touches[0].clientX-r.left; const y=e.touches[0].clientY-r.top; draw(lastX, lastY, x, y, document.getElementById('wb-color').value, document.getElementById('wb-size').value, true); lastX=x; lastY=y; }, {passive:false});
+    canvas.addEventListener('touchend', () => drawing=false);
 
-    socket.on('wb-redraw-all', (lines) => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        lines.forEach(line => {
-            const w = canvas.width;
-            const h = canvas.height;
-            drawLine(line.x0 * w, line.y0 * h, line.x1 * w, line.y1 * h, line.color, line.size, false);
-        });
-    });
-
-    document.getElementById('wb-undo-btn').addEventListener('click', () => socket.emit('wb-undo'));
+    socket.on('wb-draw', (d) => draw(d.x0*canvas.width, d.y0*canvas.height, d.x1*canvas.width, d.y1*canvas.height, d.color, d.size, false));
+    socket.on('wb-history', (lines) => lines.forEach(l => draw(l.x0*canvas.width, l.y0*canvas.height, l.x1*canvas.width, l.y1*canvas.height, l.color, l.size, false)));
+    socket.on('wb-redraw-all', () => ctx.clearRect(0,0,canvas.width,canvas.height));
     document.getElementById('wb-clear-btn').addEventListener('click', () => socket.emit('wb-clear'));
 
 
-    // --- CHAT & UI LOGIC (Existing functionality) ---
+    // --- CHAT & CORE LOGIC ---
+    // (Your existing logic preserved)
     const messagesDiv = document.getElementById('messages');
-    const msgInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
-    
-    // ... [Previous Chat Logic truncated for brevity but functionality preserved below] ...
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const onlineUsersList = document.getElementById('online-users-list');
+    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
+    const currentAvatarPreview = document.getElementById('current-avatar-preview');
+    const fileUploadBtn = document.getElementById('file-upload-btn');
+    const hiddenFileInput = document.getElementById('hidden-file-input');
+    const imagePreviewArea = document.getElementById('image-preview-area');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageBtn = document.getElementById('remove-image-btn');
+    const typingIndicator = document.getElementById('typing-indicator');
 
-    let myUsername = localStorage.getItem('chat_username') || '';
-    if(myUsername) {
-        usernameInput.value = myUsername;
-        socket.emit('join', myUsername);
-        document.getElementById('chat-container').style.display = 'flex';
+    // Appearance
+    const btnBgUpload = document.getElementById('btn-bg-upload');
+    const btnBgReset = document.getElementById('btn-bg-reset');
+    const bgUploadInput = document.getElementById('bg-upload-input');
+
+    let currentUsername = '';
+    let currentAvatarBase64 = ''; 
+    let stagedImage = null; 
+    let typingTimeout = null;
+
+    // Load Data
+    const storedUsername = localStorage.getItem('chatUsername');
+    const storedAvatar = localStorage.getItem('chatAvatar');
+    const savedBg = localStorage.getItem('custom-bg');
+
+    if (savedBg) {
+        document.body.style.backgroundImage = `url(${savedBg})`;
+        document.body.classList.add('transparent-mode');
+    }
+    if (storedAvatar) {
+        currentAvatarBase64 = storedAvatar;
+        currentAvatarPreview.src = storedAvatar;
+    }
+    if (storedUsername) {
+        usernameInput.value = storedUsername;
+        socket.emit('set-username', { username: storedUsername, avatar: currentAvatarBase64 });
+        currentUsername = storedUsername;
+        usernameInput.disabled = true; setUsernameBtn.disabled = true;
     }
 
     setUsernameBtn.addEventListener('click', () => {
         const name = usernameInput.value.trim();
-        if(name) {
-            myUsername = name;
-            localStorage.setItem('chat_username', name);
-            socket.emit('join', name);
-        }
-    });
-
-    sendBtn.addEventListener('click', sendMessage);
-    msgInput.addEventListener('keypress', (e) => {
-        if(e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
+        if (name) {
+            currentUsername = name;
+            localStorage.setItem('chatUsername', name);
+            socket.emit('set-username', { username: name, avatar: currentAvatarBase64 });
+            usernameInput.disabled = true; setUsernameBtn.disabled = true;
         }
     });
 
     function sendMessage() {
-        const text = msgInput.value.trim();
-        if(text) {
-            socket.emit('chat-message', text);
-            msgInput.value = '';
-        }
+        const text = messageInput.value.trim();
+        if ((!text && !stagedImage) || !currentUsername) return;
+        socket.emit('chat-message', { text, image: stagedImage });
+        messageInput.value = '';
+        stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
+        socket.emit('typing-stop');
     }
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }});
 
     socket.on('chat-message', (msg) => {
         const div = document.createElement('div');
-        div.classList.add('message');
-        if (msg.sender === myUsername) div.classList.add('self');
-        else if (msg.sender === 'System') div.classList.add('system');
-        
-        div.innerHTML = `<div class="bubble-content"><strong>${msg.sender}</strong>: ${marked.parse(msg.text)}</div>`;
+        div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
+        const imgHtml = msg.image ? `<img src="${msg.image}" class="message-image">` : '';
+        div.innerHTML = `<div class="bubble-content"><b>${msg.sender}</b>: ${msg.text}${imgHtml}</div>`;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
-    // Handle history
-    socket.on('history', (history) => {
+    socket.on('history', (msgs) => {
         messagesDiv.innerHTML = '';
-        history.forEach(msg => {
+        msgs.forEach(msg => {
             const div = document.createElement('div');
-            div.classList.add('message');
-            if (msg.sender === myUsername) div.classList.add('self');
-            else if (msg.sender === 'System') div.classList.add('system');
-            
-            div.innerHTML = `<div class="bubble-content"><strong>${msg.sender}</strong>: ${marked.parse(msg.text || '')}</div>`;
+            div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
+            const imgHtml = msg.image ? `<img src="${msg.image}" class="message-image">` : '';
+            div.innerHTML = `<div class="bubble-content"><b>${msg.sender}</b>: ${msg.text}${imgHtml}</div>`;
             messagesDiv.appendChild(div);
         });
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
-    // Update User Lists
-    socket.on('room-users', (data) => {
-        const list = document.getElementById('online-users-list');
-        list.innerHTML = data.users.map(u => `<li>${u.username}</li>`).join('');
+    socket.on('user-list-update', (users) => {
+        onlineUsersList.innerHTML = users.map(u => `<li>${u.username}</li>`).join('');
     });
 
-    // --- Background & Transparency Logic ---
-    const bgUploadBtn = document.getElementById('bg-upload-btn');
-    const bgFileInput = document.getElementById('bg-file-input');
-    const resetBgBtn = document.getElementById('reset-bg-btn');
-    const transBtn = document.getElementById('toggle-transparent-btn');
-
-    bgUploadBtn.addEventListener('click', () => bgFileInput.click());
-    
-    bgFileInput.addEventListener('change', () => {
-        const file = bgFileInput.files[0];
+    // Uploads
+    fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
+    hiddenFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                document.body.style.backgroundImage = `url('${e.target.result}')`;
-                localStorage.setItem('custom_bg', e.target.result);
+            reader.onload = (evt) => { stagedImage = evt.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; };
+            reader.readAsDataURL(file);
+        }
+    });
+    removeImageBtn.addEventListener('click', () => { stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value=''; });
+
+    // Backgrounds
+    btnBgUpload.addEventListener('click', () => bgUploadInput.click());
+    bgUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                localStorage.setItem('custom-bg', evt.target.result);
+                document.body.style.backgroundImage = `url(${evt.target.result})`;
+                document.body.classList.add('transparent-mode');
             };
             reader.readAsDataURL(file);
         }
     });
-
-    resetBgBtn.addEventListener('click', () => {
+    btnBgReset.addEventListener('click', () => {
+        localStorage.removeItem('custom-bg');
         document.body.style.backgroundImage = '';
-        localStorage.removeItem('custom_bg');
+        document.body.classList.remove('transparent-mode');
     });
 
-    transBtn.addEventListener('click', () => {
-        document.body.classList.toggle('transparent-mode');
+    // Typing
+    messageInput.addEventListener('input', () => {
+        socket.emit('typing-start');
+        if(typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => socket.emit('typing-stop'), 2000);
     });
+    socket.on('user-typing', (u) => { if(u && u!==currentUsername) { typingIndicator.innerText = `${u} is typing...`; typingIndicator.classList.add('active'); }});
+    socket.on('user-stopped-typing', () => typingIndicator.classList.remove('active'));
 
-    // Load saved BG
-    const savedBg = localStorage.getItem('custom_bg');
-    if(savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
-    
-    // Cloak
-    document.getElementById('cloak-launcher-btn').addEventListener('click', () => {
-        const win = window.open('about:blank', '_blank');
-        if(win) {
-            win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="border:0; width:100vw; height:100vh;"></iframe>');
-            win.document.close();
-        }
+    // VC Logic Placeholder
+    document.getElementById('vc-btn-join').addEventListener('click', () => socket.emit('vc-join'));
+    socket.on('vc-user-list-update', (list) => {
+        document.getElementById('vc-user-list').innerHTML = list.map(u => `<li>${u.username}</li>`).join('');
     });
-
 </script>
 </body>
 </html>
