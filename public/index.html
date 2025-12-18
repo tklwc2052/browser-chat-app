@@ -52,7 +52,7 @@
 </div>
 
 <script>
-    // --- Popup Logic ---
+    // --- Layout Mode ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         document.getElementById('right-panel').style.display = 'none';
@@ -79,19 +79,13 @@
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
     let lastMessageSender = ''; 
-    let lastMessageTime = 0; 
     
-    // --- WebRTC Variables ---
+    // --- WebRTC State ---
     let localStream = null;
     let peers = {}; 
     let isInVC = false;
     let audioCtx; 
-
-    const rtcConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
-    };
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     // --- 1. Avatar & Username ---
     avatarUploadBtn.addEventListener('click', () => {
@@ -145,78 +139,87 @@
     }
     sendButton.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault(); sendMessage();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     
     function parseFormatting(text) {
+        if (!text) return '';
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/~~(.*?)~~/g, '<del>$1</del>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
 
-    function displayMessage(messageObject) {
-        let formattedMessage, messageAvatar, sender;
-        if (typeof messageObject === 'string' || !messageObject.avatar) {
-            formattedMessage = messageObject.text || messageObject; 
-            messageAvatar = 'placeholder-avatar.png'; sender = null;
-        } else {
-            formattedMessage = messageObject.text;
-            messageAvatar = messageObject.avatar; sender = messageObject.sender;
-        }
-
+    function displayMessage(msg) {
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // Check for System Message
-        const systemMatch = formattedMessage.match(/^\*\*(System|Announcement)\*\* (.*?) \[/);
-        const privateMatch = formattedMessage.match(/^\*\*System\*\* \*\*\[PM/);
+        // --- TYPE: PRIVATE MESSAGE ---
+        if (msg.type === 'private') {
+            const isMe = (msg.sender === currentUsername);
+            if (isMe) messageEl.classList.add('user-message');
+            else messageEl.classList.add('other-message');
 
-        if (privateMatch) {
-            messageEl.classList.add('private-message');
-            messageEl.innerHTML = parseFormatting(formattedMessage.split(']**: ')[1].replace('**', ''));
+            const contentArea = document.createElement('div');
+            contentArea.classList.add('message-content-area', 'private-message-container');
+
+            const label = document.createElement('span');
+            label.classList.add('pm-label');
+            label.innerText = isMe ? `Private to ${msg.target}` : `Private from ${msg.sender}`;
+            contentArea.appendChild(label);
+
+            const bubble = document.createElement('div');
+            bubble.classList.add('bubble-content', 'bubble-private');
+            bubble.innerHTML = parseFormatting(msg.text);
+            contentArea.appendChild(bubble);
+
+            const time = document.createElement('div');
+            time.classList.add('message-time');
+            time.innerText = msg.time;
+            contentArea.appendChild(time);
+
+            messageEl.appendChild(contentArea);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            lastMessageSender = ''; // Reset grouping
             return;
         }
 
-        if (systemMatch) {
+        // --- TYPE: SYSTEM MESSAGE ---
+        if (msg.type === 'system' || msg.text.startsWith('**System**') || msg.text.startsWith('**Announcement**')) {
             messageEl.classList.add('system-message');
-            // Extract just the text content, ignore timestamp for system
-            let content = formattedMessage.substring(formattedMessage.indexOf('** ') + 3, formattedMessage.lastIndexOf('['));
-            messageEl.innerHTML = parseFormatting(content);
+            // Clean text if it came from the old format
+            let displayText = msg.text;
+            if (displayText.startsWith('**System**')) {
+                displayText = displayText.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '');
+            }
+             if (displayText.startsWith('**Announcement**')) {
+                displayText = displayText.replace(/^\*\*Announcement\*\* /, '').replace(/ \[.*?\]$/, '');
+            }
+            messageEl.innerHTML = parseFormatting(displayText);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            lastMessageSender = ''; 
             return;
         }
 
-        // Regular Message Parsing
-        const fullMatch = formattedMessage.match(/\*\*(.*?)\*\*: (.*?) \[(\d{1,2}:\d{2} (?:AM|PM))\]/);
-        if (!fullMatch) return; 
-
-        const finalSender = sender || fullMatch[1];
-        const messageText = fullMatch[2];
-        const timeString = fullMatch[3]; 
-        const isUserMessage = (finalSender === currentUsername);
-
+        // --- TYPE: GENERAL MESSAGE ---
+        const isUserMessage = (msg.sender === currentUsername);
         if (isUserMessage) messageEl.classList.add('user-message');
         else messageEl.classList.add('other-message');
 
         // Grouping
         let showAvatar = true;
-        if (lastMessageSender === finalSender) {
+        if (lastMessageSender === msg.sender) {
             showAvatar = false;
             messageEl.classList.add('grouped-message');
         }
-        lastMessageSender = finalSender;
+        lastMessageSender = msg.sender;
 
-        // Avatar
         if (!isUserMessage) {
             if (showAvatar) {
                 const img = document.createElement('img');
-                img.classList.add('avatar'); img.src = messageAvatar;
+                img.classList.add('avatar'); img.src = msg.avatar || 'placeholder-avatar.png';
                 messageEl.appendChild(img);
             } else {
                 const spacer = document.createElement('div');
@@ -231,38 +234,32 @@
         if (showAvatar && !isUserMessage) {
             const uDiv = document.createElement('div');
             uDiv.classList.add('message-username');
-            uDiv.innerText = finalSender;
+            uDiv.innerText = msg.sender;
             contentArea.appendChild(uDiv);
         }
 
-        const contentWrapper = document.createElement('div');
-        contentWrapper.classList.add('message-content-wrapper');
-
         const bubble = document.createElement('div');
         bubble.classList.add('bubble-content');
-        bubble.innerHTML = parseFormatting(messageText);
+        bubble.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, '')); // Strip old format if present
         
         const time = document.createElement('div');
         time.classList.add('message-time');
-        time.innerText = timeString;
+        time.innerText = msg.time;
 
-        contentWrapper.appendChild(bubble);
-        contentWrapper.appendChild(time);
-        
-        contentArea.appendChild(contentWrapper);
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('message-content-wrapper');
+        wrapper.appendChild(bubble);
+        wrapper.appendChild(time);
+
+        contentArea.appendChild(wrapper);
         messageEl.appendChild(contentArea);
         messagesDiv.appendChild(messageEl);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // ======================================================
-    // --- 3. VOICE CHAT CORE (The missing part!) ---
-    // ======================================================
-    
-    // Monitors volume and toggles the .speaking class
+    // --- 3. VOICE CHAT (Same as before) ---
     function attachSpeakingDetector(stream, userId) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
@@ -275,8 +272,6 @@
             let sum = 0;
             for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
             const average = sum / dataArray.length;
-
-            // Update UI
             const userLi = document.getElementById(`vc-user-${userId}`);
             if (userLi) {
                 if (average > 10) userLi.classList.add('speaking');
@@ -290,31 +285,20 @@
     async function startVC() {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-            // Light up my own avatar when I speak
             attachSpeakingDetector(localStream, socket.id);
-
             isInVC = true;
             vcBtnJoin.textContent = 'Leave Call';
             vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)';
             vcBtnMute.style.display = 'block';
             socket.emit('vc-join', true);
-
-        } catch (err) {
-            console.error(err);
-            alert('Microphone access denied.');
-        }
+        } catch (err) { console.error(err); alert('Microphone access denied.'); }
     }
 
     function leaveVC() {
         socket.emit('vc-join', false);
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
+        if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
         Object.keys(peers).forEach(key => { peers[key].close(); delete peers[key]; });
         isInVC = false;
         vcBtnJoin.textContent = 'Join Call';
@@ -322,14 +306,11 @@
         vcBtnMute.style.display = 'none';
     }
 
-    // Create P2P Connection
     function createPeerConnection(targetId, initiator) {
         if (peers[targetId]) return;
         const peer = new RTCPeerConnection(rtcConfig);
         peers[targetId] = peer;
-
         if (localStream) localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
         peer.ontrack = (event) => {
             let audioEl = document.getElementById(`audio-${targetId}`);
             if (!audioEl) {
@@ -341,13 +322,9 @@
             audioEl.srcObject = event.streams[0];
             attachSpeakingDetector(event.streams[0], targetId);
         };
-
         peer.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('signal', { target: targetId, signal: { type: 'candidate', candidate: event.candidate } });
-            }
+            if (event.candidate) socket.emit('signal', { target: targetId, signal: { type: 'candidate', candidate: event.candidate } });
         };
-
         if (initiator) {
             peer.createOffer().then(offer => peer.setLocalDescription(offer))
                 .then(() => socket.emit('signal', { target: targetId, signal: { type: 'offer', sdp: peer.localDescription } }));
@@ -355,18 +332,15 @@
         return peer;
     }
 
-    // VC Socket Listeners
     socket.on('vc-user-joined', (id) => { if (isInVC) createPeerConnection(id, true); });
     socket.on('vc-user-left', (id) => { 
         if (peers[id]) { peers[id].close(); delete peers[id]; }
         const el = document.getElementById(`audio-${id}`); if (el) el.remove();
     });
-    
     socket.on('signal', async ({ sender, signal }) => {
         if (!isInVC) return;
         let peer = peers[sender];
         if (!peer) peer = createPeerConnection(sender, false);
-
         if (signal.type === 'offer') {
             await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
             const answer = await peer.createAnswer();
@@ -378,12 +352,7 @@
             try { await peer.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
         }
     });
-
-    vcBtnJoin.addEventListener('click', () => {
-        if (!currentUsername) return alert("Set username first.");
-        isInVC ? leaveVC() : startVC();
-    });
-
+    vcBtnJoin.addEventListener('click', () => { if (!currentUsername) return alert("Set username first."); isInVC ? leaveVC() : startVC(); });
     vcBtnMute.addEventListener('click', () => {
         if (!localStream) return;
         const track = localStream.getAudioTracks()[0];
@@ -391,18 +360,14 @@
         vcBtnMute.textContent = track.enabled ? 'Mute' : 'Unmute';
         socket.emit('vc-mute-toggle', !track.enabled);
     });
-
-    // VC List Update
     socket.on('vc-user-list-update', (users) => {
         vcUserList.innerHTML = '';
         users.forEach(u => {
             const li = document.createElement('li');
-            li.id = `vc-user-${u.id}`; // Crucial for green circle finding
+            li.id = `vc-user-${u.id}`; 
             const img = document.createElement('img');
-            img.classList.add('avatar', 'list-avatar');
-            img.src = u.avatar;
-            li.appendChild(img);
-            li.appendChild(document.createTextNode(u.username));
+            img.classList.add('avatar', 'list-avatar'); img.src = u.avatar;
+            li.appendChild(img); li.appendChild(document.createTextNode(u.username));
             if (u.isMuted) li.innerHTML += ' <span style="color:var(--color-vc-red)">🔇</span>';
             vcUserList.appendChild(li);
         });
@@ -411,6 +376,13 @@
     // --- Standard Socket Listeners ---
     socket.on('chat-message', displayMessage);
     socket.on('history', (h) => { messagesDiv.innerHTML = ''; h.forEach(displayMessage); });
+    
+    // !!! FIXED CLEAR COMMAND !!!
+    socket.on('clear-chat', () => {
+        messagesDiv.innerHTML = '';
+        console.log("Chat cleared by server command.");
+    });
+    
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(u => {
@@ -421,11 +393,9 @@
             onlineUsersList.appendChild(li);
         });
     });
-    
     if (launchCustomWindowBtn) launchCustomWindowBtn.addEventListener('click', () => {
         window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
     });
-
 </script>
 </body>
 </html>
