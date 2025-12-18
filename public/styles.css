@@ -156,34 +156,17 @@ html, body {
     animation: pulse-green 1s infinite;
 }
 
-/* --- NEW: SETTINGS PANEL --- */
+/* --- SETTINGS PANEL --- */
 .settings-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 10px;
 }
 .setting-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.85em;
-    color: #ccc;
-    background: rgba(0,0,0,0.2);
-    padding: 8px;
-    border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.85em; color: #ccc; background: rgba(0,0,0,0.2);
+    padding: 8px; border-radius: 4px;
 }
-.setting-item input[type="checkbox"] {
-    cursor: pointer;
-    width: 16px;
-    height: 16px;
-    accent-color: var(--color-accent-blue);
-}
+.setting-item input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--color-accent-blue); }
 
-@keyframes pulse-green {
-    0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
-    70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
-}
+/* --- NEW: Push notifications to bottom --- */
+#notifications-
