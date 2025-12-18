@@ -140,7 +140,8 @@
     // --- COOLDOWN VARS ---
     let vcCooldownTimer = null;
     let vcCooldownEnd = 0;
-    const VC_COOLDOWN_DURATION = 15000; // 15 seconds
+    // CHANGED: Reduced cooldown from 15000 to 5000 (5 seconds)
+    const VC_COOLDOWN_DURATION = 5000; 
 
     // ==========================================
     // --- NOTIFICATION LOGIC ---
@@ -512,25 +513,28 @@
         }
     });
 
-    // --- UPDATED VC BUTTON LISTENER ---
+    // --- UPDATED VC BUTTON LOGIC ---
     vcBtnJoin.addEventListener('click', () => { 
         if (!currentUsername) return alert("Set username first.");
         
-        // Check cooldown
+        // Block actions if a cooldown is active (occurs after leaving)
         if (vcCooldownTimer) {
             const remaining = Math.ceil((vcCooldownEnd - Date.now()) / 1000);
-            triggerNotification('System', `Please wait ${remaining}s before toggling VC again.`);
-            alert(`Please wait ${remaining}s before toggling VC again.`);
+            triggerNotification('System', `Please wait ${remaining}s before joining again.`);
             return;
         }
 
-        // Apply visual cooldown
-        startVcCooldown();
-
         if (isInVC) {
+            // LEAVING:
+            // 1. Leave immediately (No delay)
             leaveVC();
+            // 2. Start the cooldown NOW so you can't spam re-join
+            startVcCooldown();
         } else {
+            // JOINING:
+            // 1. Join immediately
             startVC();
+            // 2. Do NOT start cooldown yet. This allows you to leave immediately if you want.
         }
     });
 
