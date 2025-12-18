@@ -87,7 +87,6 @@ html, body {
 .other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
 .user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
 
-/* --- IMAGES IN CHAT --- */
 .message-image {
     max-width: 100%;
     border-radius: 8px;
@@ -119,7 +118,6 @@ html, body {
     padding: 15px; background-color: var(--bg-primary);
     border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;
 }
-/* PREVIEW AREA */
 #image-preview-area {
     display: flex; flex-direction: column; align-items: flex-end;
     padding: 5px; background: var(--color-preview-bg); border-radius: 4px;
@@ -157,6 +155,33 @@ html, body {
     box-shadow: 0 0 8px var(--color-accent-green);
     animation: pulse-green 1s infinite;
 }
+
+/* --- NEW: SETTINGS PANEL --- */
+.settings-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85em;
+    color: #ccc;
+    background: rgba(0,0,0,0.2);
+    padding: 8px;
+    border-radius: 4px;
+}
+.setting-item input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent-blue);
+}
+
 @keyframes pulse-green {
     0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
     70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
