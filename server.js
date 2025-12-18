@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const mongoose = require('mongoose');
+const mongoose = require('mongoose'); // NEW: Database tool
 
 const app = express();
 const server = http.createServer(app);
@@ -44,167 +44,317 @@ const vcUsers = {};
 let messageHistory = []; 
 const MAX_HISTORY = 50; 
 const userAvatarCache = {}; 
-let whiteboardHistory = [];
 
 // --- Admin State ---
 const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
-const ADMIN_USERNAME = "kl_"; 
+const bannedHistory = {};     
 
-// --- Helper Functions ---
-function formatMessage(username, text, type = 'text', avatar = '', image = '') {
-    return {
-        username,
-        text,
-        type,
-        avatar,
-        image,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-}
+const ADMIN_USERNAME = 'kl_'; 
 
-async function addToHistory(msg) {
-    messageHistory.push(msg);
-    if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
+// --- INITIAL DATA LOAD ---
+async function loadData() {
     try {
-        const newMsg = new Message({
-            text: msg.text,
-            sender: msg.username,
-            avatar: msg.avatar,
-            image: msg.image,
-            time: msg.time,
-            type: msg.type
+        // 1. Load Bans
+        const savedBans = await Ban.find({});
+        savedBans.forEach(b => {
+            bannedIPs.set(b.ip, b.username);
+            bannedHistory[b.username.toLowerCase()] = b.ip;
         });
-        await newMsg.save();
-    } catch (err) { console.error("Error saving message:", err); }
-}
+        console.log(`Loaded ${savedBans.length} bans.`);
 
-async function loadBansAndHistory() {
-    try {
-        const bans = await Ban.find({});
-        bans.forEach(b => bannedIPs.set(b.ip, b.reason));
-        const oldMsgs = await Message.find().sort({ timestamp: -1 }).limit(MAX_HISTORY);
-        messageHistory = oldMsgs.reverse().map(m => ({
-            username: m.sender,
+        // 2. Load History
+        const savedMsgs = await Message.find({ type: { $ne: 'private' } }) 
+            .sort({ timestamp: -1 })
+            .limit(MAX_HISTORY);
+        
+        messageHistory = savedMsgs.reverse().map(m => ({
             text: m.text,
+            sender: m.sender,
             avatar: m.avatar,
             image: m.image,
             time: m.time,
             type: m.type
         }));
-    } catch (err) { console.error("Error loading data:", err); }
+        console.log(`Loaded ${messageHistory.length} messages.`);
+    } catch (err) {
+        console.error("Error loading data:", err);
+    }
 }
-loadBansAndHistory();
+loadData();
 
-app.use(express.static(__dirname));
+// --- Utility Functions ---
+function formatMessage(sender, text, avatar = null, image = null) {
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    let finalAvatar = avatar;
+    if (!finalAvatar && userAvatarCache[sender]) {
+        finalAvatar = userAvatarCache[sender];
+    }
+    if (!finalAvatar && sender !== 'System') {
+        finalAvatar = 'placeholder-avatar.png';
+    }
+
+    if (sender === 'System' || sender === 'Announcement') {
+        return {
+            text: `**${sender}** ${text} [${time}]`,
+            sender: sender,
+            avatar: null,
+            time: time,
+            type: 'system'
+        };
+    }
+    
+    return {
+        text: text, 
+        image: image, 
+        sender: sender,
+        avatar: finalAvatar, 
+        time: time,
+        type: 'general'
+    };
+}
+
+function broadcastUserList() {
+    io.emit('user-list-update', Object.values(users));
+}
+
+function broadcastVCUserList() {
+    io.emit('vc-user-list-update', Object.values(vcUsers));
+}
+
+function addToHistory(msgObj) {
+    messageHistory.push(msgObj);
+    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
+
+    // SAVE TO DB
+    const newMsg = new Message({
+        text: msgObj.text,
+        sender: msgObj.sender,
+        avatar: msgObj.avatar,
+        image: msgObj.image,
+        time: msgObj.time,
+        type: msgObj.type,
+        target: msgObj.target || null
+    });
+    newMsg.save().catch(err => console.error("Save Msg Error:", err));
+}
+
+function findSocketIdByUsername(username) {
+    return Object.keys(users).find(id => 
+        users[id].username.toLowerCase() === username.toLowerCase()
+    );
+}
+
+function getClientIp(socket) {
+    const forwarded = socket.handshake.headers['x-forwarded-for'];
+    if (forwarded) {
+        return forwarded.split(',')[0].trim();
+    }
+    return socket.handshake.address;
+}
+
+app.use(express.static('public'));
 
 io.on('connection', (socket) => {
-    const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.request.connection.remoteAddress;
-
+    // --- 0. Ban Check ---
+    const clientIp = getClientIp(socket);
+    
     if (bannedIPs.has(clientIp)) {
-        socket.emit('banned', bannedIPs.get(clientIp));
-        socket.disconnect();
+        console.log(`Banned connection attempt from ${clientIp}`);
+        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
+        socket.disconnect(true);
         return;
     }
 
+    console.log(`User connected: ${socket.id} (IP: ${clientIp})`);
+
     socket.emit('history', messageHistory);
-    socket.emit('whiteboard-history', whiteboardHistory);
-    
-    const broadcastUserList = () => {
-        const userList = Object.values(users).map(u => ({ 
-            id: u.id, username: u.username, avatar: u.avatar, isAdmin: u.username === ADMIN_USERNAME
-        }));
-        io.emit('update-user-list', userList);
-    };
-
-    const broadcastVCUserList = () => {
-        io.emit('vc-update-users', Object.values(vcUsers));
-    };
-
     broadcastUserList();
-    broadcastVCUserList();
+    broadcastVCUserList(); 
 
-    socket.on('set-username', (data) => {
-        const username = data.username.trim().substring(0, 20) || 'Anonymous';
-        const avatar = data.avatar || 'placeholder-avatar.png';
-        users[socket.id] = { id: socket.id, username, avatar, ip: clientIp };
-        userAvatarCache[username] = avatar;
-        io.emit('chat-message', formatMessage('System', `**${username}** joined the chat.`));
+    // --- 1. Set Username ---
+    socket.on('set-username', ({ username, avatar }) => {
+        const oldUserData = users[socket.id] || {};
+        const oldUsername = oldUserData.username;
+        const newAvatar = avatar || 'placeholder-avatar.png'; 
+
+        if (!username) return;
+
+        const usernameLower = username.toLowerCase();
+        const isDuplicate = Object.keys(users).some(id => 
+            id !== socket.id && users[id].username.toLowerCase() === usernameLower
+        );
+
+        if (isDuplicate) {
+            socket.emit('chat-message', formatMessage('System', `The username '${username}' is already taken.`));
+            return;
+        }
+
+        userAvatarCache[username] = newAvatar;
+        users[socket.id] = { username, avatar: newAvatar, id: socket.id };
+
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].username = username;
+            vcUsers[socket.id].avatar = newAvatar;
+            broadcastVCUserList();
+        }
+        
+        if (username !== oldUsername) {
+            const joinMsg = formatMessage('System', `User '${username}' joined the chat.`);
+            io.emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+        }
         broadcastUserList();
     });
 
-    socket.on('chat-message', (msgData) => {
-        const user = users[socket.id];
-        if (!user) return;
-        if (mutedUsers.has(clientIp)) {
-            socket.emit('system-message', 'You are muted.');
+    // --- 2. Chat Messages ---
+    socket.on('chat-message', (payload) => {
+        const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
+        const sender = userData.username;
+
+        if (mutedUsers.has(sender.toLowerCase())) {
+            socket.emit('chat-message', formatMessage('System', 'You are currently muted.'));
             return;
         }
 
-        const text = msgData.text;
-        if (text.startsWith('/') && user.username === ADMIN_USERNAME) {
-            const args = text.split(' ');
-            const command = args[0];
-            const targetName = args[1];
+        let msgText = '';
+        let msgImage = null;
 
-            if (command === '/clear') {
-                messageHistory = [];
-                io.emit('clear-chat');
-                return;
-            }
-            if (targetName) {
-                const targetId = Object.keys(users).find(id => users[id].username === targetName);
-                if (targetId) {
-                    const targetIp = users[targetId].ip;
-                    if (command === '/kick') {
-                        io.to(targetId).emit('kick');
-                        io.sockets.sockets.get(targetId)?.disconnect();
-                        io.emit('chat-message', formatMessage('System', `**${targetName}** was kicked.`));
-                    } else if (command === '/ban') {
-                        bannedIPs.set(targetIp, "Banned by Admin");
-                        new Ban({ ip: targetIp, username: targetName, reason: "Banned by Admin" }).save();
-                        io.to(targetId).emit('banned', "Banned by Admin");
-                        io.sockets.sockets.get(targetId)?.disconnect();
-                        io.emit('chat-message', formatMessage('System', `**${targetName}** was banned.`));
-                    } else if (command === '/mute') {
-                        mutedUsers.add(targetIp);
+        if (typeof payload === 'string') {
+            msgText = payload;
+        } else if (typeof payload === 'object') {
+            msgText = payload.text || '';
+            msgImage = payload.image || null;
+        }
+
+        // --- COMMANDS ---
+        if (msgText.startsWith('/')) {
+            const parts = msgText.trim().slice(1).split(/\s+/); 
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1); 
+            
+            if (command === 'msg') {
+                const targetUsername = parts[1];
+                const privateText = parts.slice(2).join(' ').trim();
+                const recipientId = findSocketIdByUsername(targetUsername);
+
+                if (recipientId) {
+                    const now = new Date();
+                    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    const pmObject = {
+                        text: privateText,
+                        type: 'private',
+                        sender: sender,
+                        target: users[recipientId].username,
+                        time: time,
+                        avatar: userAvatarCache[sender] || userData.avatar
+                    };
+                    socket.emit('chat-message', pmObject);
+                    io.to(recipientId).emit('chat-message', pmObject);
+                } else {
+                    socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`));
+                }
+                return; 
+            } 
+            
+            // ADMIN COMMANDS
+            if (sender === ADMIN_USERNAME) {
+                const targetName = args[0];
+                const reason = args.slice(1).join(' ') || 'No reason';
+
+                if (command === 'server') {
+                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
+                    io.emit('chat-message', serverMsg);
+                    addToHistory(serverMsg);
+                } else if (command === 'clear') {
+                    Message.deleteMany({}).then(() => console.log("DB History Cleared"));
+                    messageHistory.length = 0; 
+                    io.emit('clear-chat'); 
+                    const clearMsg = formatMessage('System', `Chat history cleared by admin.`);
+                    io.emit('chat-message', clearMsg);
+                    addToHistory(clearMsg);
+                } else if (command === 'mute') {
+                    if (targetName) {
+                        mutedUsers.add(targetName.toLowerCase());
                         io.emit('chat-message', formatMessage('System', `**${targetName}** was muted.`));
                     }
+                } else if (command === 'unmute') {
+                    if (targetName) {
+                        mutedUsers.delete(targetName.toLowerCase());
+                        socket.emit('chat-message', formatMessage('System', `User ${targetName} unmuted.`));
+                    }
+                } else if (command === 'kick') {
+                     const targetId = findSocketIdByUsername(targetName);
+                     if (targetId) {
+                        io.emit('chat-message', formatMessage('System', `**${users[targetId].username}** was kicked.`));
+                        io.sockets.sockets.get(targetId).disconnect(true);
+                     }
+                } else if (command === 'ban') {
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const targetSocket = io.sockets.sockets.get(targetId);
+                        const targetIp = getClientIp(targetSocket);
+                        const realName = users[targetId].username;
+
+                        bannedIPs.set(targetIp, realName);
+                        bannedHistory[realName.toLowerCase()] = targetIp; 
+                        
+                        const newBan = new Ban({ ip: targetIp, username: realName, reason: reason });
+                        newBan.save();
+
+                        io.emit('chat-message', formatMessage('System', `**${realName}** was BANNED.`));
+                        targetSocket.disconnect(true);
+                    }
+                } else if (command === 'unban') {
+                    const targetIp = bannedHistory[targetName.toLowerCase()];
+                    if (targetIp) {
+                        bannedIPs.delete(targetIp);
+                        Ban.deleteOne({ ip: targetIp }).exec();
+                        socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}**`));
+                    } else {
+                         Ban.deleteOne({ username: targetName }).exec();
+                         socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}** (DB)`));
+                    }
                 }
+            } else {
+                socket.emit('chat-message', formatMessage('System', `Unknown command.`));
             }
             return;
-        }
-
-        const newMsg = formatMessage(user.username, text, msgData.image ? 'image' : 'text', user.avatar, msgData.image);
-        io.emit('chat-message', newMsg);
-        addToHistory(newMsg);
-    });
-
-    socket.on('drawing', (data) => {
-        whiteboardHistory.push(data);
-        if(whiteboardHistory.length > 2000) whiteboardHistory.shift();
-        socket.broadcast.emit('drawing', data);
-    });
-
-    socket.on('clear-board', () => {
-        whiteboardHistory = [];
-        io.emit('clear-board');
-    });
-
-    socket.on('vc-join', () => {
-        const user = users[socket.id];
-        if (user) {
-            vcUsers[socket.id] = { id: socket.id, username: user.username, avatar: user.avatar, isMuted: false };
-            io.emit('chat-message', formatMessage('System', `**${user.username}** joined Voice Chat.`));
-            broadcastVCUserList();
+        } 
+        
+        // NORMAL MESSAGE
+        if (msgText.trim() || msgImage) {
+            const currentAvatar = userAvatarCache[sender] || userData.avatar;
+            const msgObj = formatMessage(sender, msgText, currentAvatar, msgImage);
+            io.emit('chat-message', msgObj);
+            addToHistory(msgObj);
         }
     });
 
-    socket.on('vc-leave', () => {
-        if (vcUsers[socket.id]) {
-            delete vcUsers[socket.id];
-            broadcastVCUserList();
+    // --- 3. Voice Chat ---
+    socket.on('vc-join', (isJoining) => {
+        const userData = users[socket.id];
+        if (!userData) return;
+        if (mutedUsers.has(userData.username.toLowerCase())) return;
+
+        if (isJoining) {
+            vcUsers[socket.id] = { username: userData.username, avatar: userData.avatar, isMuted: false, id: socket.id };
+            const joinMsg = formatMessage('System', `**${userData.username}** joined Voice Chat.`);
+            io.emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+            socket.broadcast.emit('vc-user-joined', socket.id);
+        } else {
+            if (vcUsers[socket.id]) {
+                delete vcUsers[socket.id];
+                const leaveMsg = formatMessage('System', `**${userData.username}** left Voice Chat.`);
+                io.emit('chat-message', leaveMsg);
+                addToHistory(leaveMsg);
+                socket.broadcast.emit('vc-user-left', socket.id);
+            }
         }
+        broadcastVCUserList();
     });
 
     socket.on('vc-mute-toggle', (isMuted) => {
@@ -217,19 +367,27 @@ io.on('connection', (socket) => {
     socket.on('signal', (data) => io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }));
     
     socket.on('typing-start', () => {
-        if (users[socket.id]) socket.broadcast.emit('user-typing', users[socket.id].username);
+        const user = users[socket.id];
+        if (user) socket.broadcast.emit('user-typing', user.username);
     });
+
     socket.on('typing-stop', () => {
-        if (users[socket.id]) socket.broadcast.emit('user-stopped-typing', users[socket.id].username);
+        const user = users[socket.id];
+        if (user) socket.broadcast.emit('user-stopped-typing', user.username);
     });
 
     socket.on('disconnect', () => {
-        if (users[socket.id]) delete users[socket.id];
-        if (vcUsers[socket.id]) delete vcUsers[socket.id];
-        broadcastUserList();
-        broadcastVCUserList();
+        if (users[socket.id]) {
+            delete users[socket.id];
+            if (vcUsers[socket.id]) {
+                delete vcUsers[socket.id];
+                broadcastVCUserList(); 
+                socket.broadcast.emit('vc-user-left', socket.id);
+            }
+            broadcastUserList();
+        }
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
