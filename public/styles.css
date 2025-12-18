@@ -1,19 +1,16 @@
-/* --- Dark Mode Variables --- */
+/* --- ORIGINAL VARIABLES --- */
 :root {
     --bg-primary: #1e1e1e;
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
-    
-    --color-bubble-self: #007acc; 
-    --color-bubble-other: #3c3c3c; 
     --color-text: #f0f0f0;   
-    --color-muted: #aaaaaa;  
-    --color-system: #ff8c00; 
-    
     --color-accent-blue: #007acc;
     --color-vc-red: #dc3545;
-    --color-preview-bg: #4a4a4a;
     --color-online-bg: #2a3847; 
+    --color-bubble-self: #007acc; 
+    --color-bubble-other: #3c3c3c; 
+    --color-muted: #aaaaaa;
+    --color-system: #ff8c00; 
 }
 
 html, body {
@@ -26,10 +23,11 @@ html, body {
     transition: background-image 0.5s ease-in-out;
 }
 
-/* --- MAIN LAYOUT --- */
+/* --- MODIFIED MAIN WRAPPER --- */
+/* Changed max-width to 98% so 3 columns fit comfortably */
 #main-wrapper {
     display: flex; height: 100vh;
-    max-width: 95%; /* Widened for 3 columns */
+    max-width: 98%; 
     margin: 0 auto;
     border-left: 1px solid #333; border-right: 1px solid #333;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
@@ -37,25 +35,27 @@ html, body {
     transition: background-color 0.3s ease;
 }
 
-/* [NEW] Whiteboard Panel */
+/* --- [NEW] WHITEBOARD PANEL --- */
 #whiteboard-panel {
-    flex: 1.5; /* Give whiteboard a bit more space */
+    flex: 1.5; /* Takes more space than chat */
+    min-width: 300px;
     display: flex; flex-direction: column;
     border-right: 1px solid #333;
-    min-width: 300px;
+    background: var(--bg-secondary);
 }
+
 .panel-header {
-    padding: 10px; background-color: var(--bg-primary);
+    padding: 10px; background: var(--bg-primary);
     border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;
 }
 .wb-controls { display: flex; gap: 5px; align-items: center; }
 #canvas-container {
     flex: 1; position: relative;
-    background-color: #fff; /* Default white canvas */
+    background: #fff; 
     cursor: crosshair; overflow: hidden;
 }
 
-/* Chat Container (Middle) */
+/* --- EXISTING CHAT CONTAINER --- */
 #chat-container {
     flex: 1; display: flex; flex-direction: column;
     min-width: 320px; 
@@ -63,31 +63,25 @@ html, body {
     border-right: 1px solid #333;
 }
 
-/* Right Panel */
+/* --- EXISTING RIGHT PANEL --- */
 #right-panel {
-    width: 250px; flex-shrink: 0;
+    width: 280px; flex-shrink: 0;
     background-color: var(--bg-primary);
     display: flex; flex-direction: column;
     padding: 15px; gap: 20px; overflow-y: auto;
 }
 
-/* --- CHAT STYLES --- */
+/* --- YOUR ORIGINAL ELEMENT STYLES --- */
 #username-area {
     padding: 15px; background-color: var(--bg-primary);
     border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
 }
-#avatar-upload-btn { background: none; border: none; cursor: pointer; padding: 0; width: 40px; height: 40px; }
-#current-avatar-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #555; }
-#username-input { padding: 8px; border-radius: 4px; border: 1px solid #555; background-color: var(--bg-input); color: var(--color-text); }
-#set-username-btn { padding: 8px 15px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
-
 #online-users-area {
     padding: 10px 15px; background-color: var(--color-online-bg);
     border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
     font-size: 0.9em; color: #90caf9; overflow-x: auto; 
 }
 #online-users-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 15px; }
-#online-users-list li { display: flex; align-items: center; gap: 5px; }
 
 #messages {
     flex-grow: 1; overflow-y: auto;
@@ -102,8 +96,7 @@ html, body {
 }
 .other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
 .user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; color: white; }
-
-.message-image { max-width: 200px; border-radius: 8px; display: block; margin-bottom: 5px; }
+.message-image { max-width: 200px; border-radius: 8px; margin-bottom: 5px; }
 
 #message-input-area {
     padding: 15px; background-color: var(--bg-primary);
@@ -112,7 +105,7 @@ html, body {
 #message-input { flex: 1; background-color: var(--bg-input); border: 1px solid #555; color: white; padding: 10px; border-radius: 4px; resize: none; }
 button { cursor: pointer; }
 
-/* --- RIGHT PANEL COMPONENTS --- */
+/* Right Panel Components */
 .panel-title { color: var(--color-muted); font-size: 0.85em; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
 .panel-btn {
     width: 100%; padding: 8px; margin-bottom: 8px;
@@ -121,24 +114,29 @@ button { cursor: pointer; }
 }
 .panel-btn:hover { background-color: #444; }
 
-/* --- TRANSPARENT MODE --- */
-/* Makes the wrapper transparent but keeps components readable */
+/* --- UPDATED TRANSPARENT MODE --- */
+/* Includes #whiteboard-panel now */
 body.transparent-mode #main-wrapper {
-    background-color: rgba(30, 30, 30, 0.85); 
-    backdrop-filter: blur(8px); 
-    border: 1px solid rgba(255,255,255,0.1);
+    background-color: transparent; 
+    box-shadow: none; border: none;
 }
+
 body.transparent-mode #whiteboard-panel,
 body.transparent-mode #chat-container,
 body.transparent-mode #right-panel {
-    background-color: transparent; 
-}
-/* Ensure canvas is slightly see-through in glass mode */
-body.transparent-mode #canvas-container {
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(30, 30, 30, 0.85); 
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    margin: 5px; /* Spacing between glass panels */
 }
 
-/* Mobile */
+/* Make canvas slightly see-through in glass mode */
+body.transparent-mode #canvas-container {
+    opacity: 0.9;
+}
+
+/* --- MOBILE RESPONSIVENESS --- */
 @media (max-width: 800px) {
     #main-wrapper { flex-direction: column; max-width: 100%; height: auto; overflow-y: auto; }
     #whiteboard-panel { width: 100%; height: 50vh; border-right: none; border-bottom: 1px solid #333; }
