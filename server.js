@@ -2,27 +2,50 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
-const path = require('path'); // Added this to help with file paths
+const path = require('path');
+const fs = require('fs'); // Used to check if files exist
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// --- DEBUGGING: PRINT FILES ON STARTUP ---
+console.log("--- SERVER STARTUP DEBUG ---");
+console.log("Current Directory:", __dirname);
+try {
+    console.log("Files available:", fs.readdirSync(__dirname));
+} catch (e) {
+    console.log("Could not list files:", e);
+}
+console.log("----------------------------");
+
 // --- RENDER SPECIFIC FIX ---
 app.set('trust proxy', 1);
 
-// --- SERVE STATIC FILES (CSS, JS, IMAGES) ---
+// --- SERVE STATIC FILES ---
+// This tells Express to serve index.html, styles.css, etc. from the current folder
 app.use(express.static(__dirname));
 
-// --- THE FIX: EXPLICIT ROOT ROUTE ---
-// This forces the server to send index.html when you visit the site
+// --- FORCE HOMEPAGE ROUTE ---
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    const indexPath = path.join(__dirname, 'index.html');
+    
+    // Check if the file actually exists before sending
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        // If this shows up in your browser, we know index.html is missing from the upload
+        res.status(404).send(`
+            <h1>CRITICAL ERROR: index.html not found!</h1>
+            <p>The server is running, but it cannot find your HTML file.</p>
+            <p>Current Directory: ${__dirname}</p>
+            <p>Files found: ${fs.readdirSync(__dirname).join(', ')}</p>
+        `);
+    }
 });
 
 // --- DATABASE CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost/chatapp';
-
 mongoose.connect(mongoURI)
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(err => console.log('❌ MongoDB Error:', err));
@@ -70,9 +93,7 @@ function formatMessage(username, text, avatar = null, image = null, type = 'chat
 async function addToHistory(msg) {
     messageHistory.push(msg);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
-    try {
-        await new Message(msg).save();
-    } catch (err) { console.error("DB Save Error:", err); }
+    try { await new Message(msg).save(); } catch (err) { console.error("DB Save Error:", err); }
 }
 
 function broadcastUserList() { io.emit('room-users', { users: Object.values(users) }); }
