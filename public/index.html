@@ -14,7 +14,7 @@
         <div class="panel-header">
             <span>🎨 Board</span>
             <div class="wb-controls">
-                <input type="color" id="wb-color" value="#000000" title="Brush Color">
+                <input type="color" id="wb-color" value="#ffffff" title="Brush Color">
                 <input type="range" id="wb-size" min="1" max="20" value="3" title="Brush Size">
                 <button id="wb-clear-btn" style="background:none;border:none;cursor:pointer;">🗑</button>
             </div>
@@ -40,7 +40,6 @@
         </div>
         
         <div id="messages"></div>
-
         <div id="typing-indicator"></div>
 
         <div id="message-input-area">
@@ -48,10 +47,8 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
-            
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
             <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-            
             <button id="file-upload-btn" title="Upload Image">📁</button>
             <button id="send-button">Send</button>
         </div>
@@ -85,8 +82,8 @@
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
                             <div style="display: flex; gap: 5px;">
-                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Up</button>
-                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Rst</button>
+                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
+                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
                             </div>
                         </div>
                         <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
@@ -141,8 +138,7 @@
     document.getElementById('wb-clear-btn').addEventListener('click', () => socket.emit('wb-clear'));
 
 
-    // --- CHAT & CORE LOGIC ---
-    // (Your existing logic preserved)
+    // --- YOUR ORIGINAL CHAT LOGIC ---
     const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
@@ -158,10 +154,11 @@
     const removeImageBtn = document.getElementById('remove-image-btn');
     const typingIndicator = document.getElementById('typing-indicator');
 
-    // Appearance
+    // Appearance Inputs
     const btnBgUpload = document.getElementById('btn-bg-upload');
     const btnBgReset = document.getElementById('btn-bg-reset');
     const bgUploadInput = document.getElementById('bg-upload-input');
+    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
 
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
@@ -266,14 +263,16 @@
         document.body.classList.remove('transparent-mode');
     });
 
-    // Typing
-    messageInput.addEventListener('input', () => {
-        socket.emit('typing-start');
-        if(typingTimeout) clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => socket.emit('typing-stop'), 2000);
-    });
-    socket.on('user-typing', (u) => { if(u && u!==currentUsername) { typingIndicator.innerText = `${u} is typing...`; typingIndicator.classList.add('active'); }});
-    socket.on('user-stopped-typing', () => typingIndicator.classList.remove('active'));
+    // Cloak Launcher (Your Original Logic)
+    if(btnCloakLauncher) {
+        btnCloakLauncher.addEventListener('click', () => {
+            const win = window.open('about:blank', '_blank');
+            if(win) {
+                win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="border:0; width:100vw; height:100vh;"></iframe>');
+                win.document.close();
+            }
+        });
+    }
 
     // VC Logic Placeholder
     document.getElementById('vc-btn-join').addEventListener('click', () => socket.emit('vc-join'));
