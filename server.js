@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
+const path = require('path'); // Added this to help with file paths
 
 const app = express();
 const server = http.createServer(app);
@@ -10,9 +11,14 @@ const io = socketIo(server);
 // --- RENDER SPECIFIC FIX ---
 app.set('trust proxy', 1);
 
-// --- IMPORTANT: SERVE STATIC FILES ---
-// This was missing! It tells the server to use index.html and styles.css
+// --- SERVE STATIC FILES (CSS, JS, IMAGES) ---
 app.use(express.static(__dirname));
+
+// --- THE FIX: EXPLICIT ROOT ROUTE ---
+// This forces the server to send index.html when you visit the site
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // --- DATABASE CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost/chatapp';
@@ -21,7 +27,7 @@ mongoose.connect(mongoURI)
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(err => console.log('❌ MongoDB Error:', err));
 
-// --- Mongoose Schemas ---
+// --- SCHEMAS ---
 const msgSchema = new mongoose.Schema({
     text: String,
     sender: String,
@@ -42,23 +48,20 @@ const banSchema = new mongoose.Schema({
 });
 const Ban = mongoose.model('Ban', banSchema);
 
-// --- WHITEBOARD SCHEMA ---
 const whiteboardSchema = new mongoose.Schema({
     _id: { type: String, default: 'main_board' },
     lines: { type: Array, default: [] } 
 });
 const Whiteboard = mongoose.model('Whiteboard', whiteboardSchema);
 
-// --- State Management ---
+// --- STATE ---
 const users = {};
 const vcUsers = {};
 let messageHistory = []; 
 const MAX_HISTORY = 50;
-
-// --- Admin State ---
 const ADMIN_USERNAME = "kl_"; 
 
-// --- HELPER FUNCTIONS ---
+// --- HELPERS ---
 function formatMessage(username, text, avatar = null, image = null, type = 'chat', target = null) {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return { sender: username, text, time, avatar, image, type, target };
@@ -67,28 +70,19 @@ function formatMessage(username, text, avatar = null, image = null, type = 'chat
 async function addToHistory(msg) {
     messageHistory.push(msg);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
-
     try {
-        const newMsg = new Message(msg);
-        await newMsg.save();
-    } catch (err) {
-        console.error("DB Save Error:", err);
-    }
+        await new Message(msg).save();
+    } catch (err) { console.error("DB Save Error:", err); }
 }
 
-function broadcastUserList() {
-    io.emit('room-users', { users: Object.values(users) });
-}
-
-function broadcastVCUserList() {
-    io.emit('vc-user-list', Object.values(vcUsers));
-}
+function broadcastUserList() { io.emit('room-users', { users: Object.values(users) }); }
+function broadcastVCUserList() { io.emit('vc-user-list', Object.values(vcUsers)); }
 
 // --- SOCKET LOGIC ---
 io.on('connection', async (socket) => {
     const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
 
-    // Check Ban Status
+    // Check Ban
     const isBanned = await Ban.findOne({ ip: clientIp });
     if (isBanned) {
         socket.emit('banned', `You are banned: ${isBanned.reason}`);
@@ -96,26 +90,22 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // 1. Send Data to New User
+    // Init Data
     socket.emit('update-user-list', Object.values(users));
     broadcastVCUserList();
     socket.emit('history', messageHistory);
 
-    // 2. Send Whiteboard History (From DB)
+    // Load Whiteboard
     try {
         let board = await Whiteboard.findById('main_board');
         if (!board) board = await Whiteboard.create({ _id: 'main_board' });
         socket.emit('wb-history', board.lines);
-    } catch (err) {
-        console.error("WB Load Error:", err);
-    }
+    } catch (err) { console.error("WB Load Error:", err); }
 
-    // --- WHITEBOARD EVENTS ---
+    // Whiteboard Events
     socket.on('wb-draw', async (data) => {
         socket.broadcast.emit('wb-draw', data);
-        await Whiteboard.findByIdAndUpdate('main_board', { 
-            $push: { lines: data } 
-        }, { upsert: true });
+        await Whiteboard.findByIdAndUpdate('main_board', { $push: { lines: data } }, { upsert: true });
     });
 
     socket.on('wb-undo', async () => {
@@ -132,19 +122,11 @@ io.on('connection', async (socket) => {
         io.emit('wb-redraw-all', []);
     });
 
-    // --- CHAT & USER EVENTS ---
+    // Chat Events
     socket.on('join', (username) => {
         if (!username || username.trim() === "") return;
-        
-        users[socket.id] = { 
-            id: socket.id, 
-            username: username, 
-            avatar: 'default',
-            isAdmin: username === ADMIN_USERNAME,
-            ip: clientIp 
-        };
-
-        const joinMsg = formatMessage('System', `**${username}** joined the chat.`);
+        users[socket.id] = { id: socket.id, username, avatar: 'default', isAdmin: username === ADMIN_USERNAME, ip: clientIp };
+        const joinMsg = formatMessage('System', `**${username}** joined.`);
         io.emit('chat-message', joinMsg);
         addToHistory(joinMsg);
         broadcastUserList();
@@ -154,37 +136,27 @@ io.on('connection', async (socket) => {
         const user = users[socket.id];
         if (!user) return;
 
-        // Admin Commands
-        if (msg.startsWith('/')) {
+        // Admin
+        if (msg.startsWith('/') && user.isAdmin) {
             const parts = msg.split(' ');
-            const cmd = parts[0];
-            const targetName = parts[1];
-            
-            if (user.isAdmin) {
-                if (cmd === '/clear') {
-                    messageHistory = [];
-                    await Message.deleteMany({});
-                    io.emit('clear-history');
-                    return;
+            if (parts[0] === '/clear') {
+                messageHistory = [];
+                await Message.deleteMany({});
+                io.emit('clear-history');
+                return;
+            }
+            if (parts[0] === '/kick' && parts[1]) {
+                const targetId = Object.keys(users).find(id => users[id].username === parts[1]);
+                if (targetId) { io.to(targetId).emit('kicked'); io.sockets.sockets.get(targetId)?.disconnect(); }
+                return;
+            }
+            if (parts[0] === '/ban' && parts[1]) {
+                const targetId = Object.keys(users).find(id => users[id].username === parts[1]);
+                if (targetId) {
+                    await Ban.create({ ip: users[targetId].ip, username: users[targetId].username, reason: "Admin Ban" });
+                    io.to(targetId).emit('banned'); io.sockets.sockets.get(targetId)?.disconnect();
                 }
-                if (cmd === '/kick' && targetName) {
-                    const targetSocketId = Object.keys(users).find(id => users[id].username === targetName);
-                    if (targetSocketId) {
-                        io.to(targetSocketId).emit('kicked', 'You have been kicked.');
-                        io.sockets.sockets.get(targetSocketId)?.disconnect();
-                    }
-                    return;
-                }
-                if (cmd === '/ban' && targetName) {
-                    const targetSocketId = Object.keys(users).find(id => users[id].username === targetName);
-                    if (targetSocketId) {
-                        const targetUser = users[targetSocketId];
-                        await Ban.create({ ip: targetUser.ip, username: targetUser.username, reason: "Admin Ban" });
-                        io.to(targetSocketId).emit('banned', 'You have been banned.');
-                        io.sockets.sockets.get(targetSocketId)?.disconnect();
-                    }
-                    return;
-                }
+                return;
             }
         }
 
@@ -193,57 +165,23 @@ io.on('connection', async (socket) => {
         addToHistory(messageData);
     });
 
-    socket.on('set-avatar', (avatarData) => {
-        if (users[socket.id]) {
-            users[socket.id].avatar = avatarData;
-            broadcastUserList();
-        }
-    });
-
-    // --- VOICE CHAT EVENTS ---
-    socket.on('vc-join', () => {
-        if (users[socket.id]) {
-            vcUsers[socket.id] = { ...users[socket.id], isMuted: false };
-            broadcastVCUserList();
-            socket.emit('vc-existing-users', Object.keys(vcUsers).filter(id => id !== socket.id));
-        }
-    });
-
-    socket.on('vc-leave', () => {
-        if (vcUsers[socket.id]) {
-            delete vcUsers[socket.id];
-            broadcastVCUserList();
-            socket.broadcast.emit('vc-user-left', socket.id);
-        }
-    });
-
-    socket.on('vc-mute-toggle', (isMuted) => {
-        if (vcUsers[socket.id]) {
-            vcUsers[socket.id].isMuted = isMuted;
-            broadcastVCUserList();
-        }
-    });
-
-    socket.on('signal', (data) => io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }));
+    socket.on('set-avatar', (data) => { if(users[socket.id]) { users[socket.id].avatar = data; broadcastUserList(); }});
     
-    socket.on('typing-start', () => {
-        const user = users[socket.id];
-        if (user) socket.broadcast.emit('user-typing', user.username);
+    // VC Events
+    socket.on('vc-join', () => { 
+        if(users[socket.id]) { vcUsers[socket.id] = {...users[socket.id], isMuted: false}; broadcastVCUserList(); socket.emit('vc-existing-users', Object.keys(vcUsers).filter(id => id !== socket.id)); }
     });
-
-    socket.on('typing-stop', () => {
-        const user = users[socket.id];
-        if (user) socket.broadcast.emit('user-stopped-typing', user.username);
-    });
+    socket.on('vc-leave', () => { if(vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }});
+    socket.on('vc-mute-toggle', (m) => { if(vcUsers[socket.id]) { vcUsers[socket.id].isMuted = m; broadcastVCUserList(); }});
+    socket.on('signal', (d) => io.to(d.target).emit('signal', { sender: socket.id, signal: d.signal }));
+    
+    socket.on('typing-start', () => { if(users[socket.id]) socket.broadcast.emit('user-typing', users[socket.id].username); });
+    socket.on('typing-stop', () => { if(users[socket.id]) socket.broadcast.emit('user-stopped-typing', users[socket.id].username); });
 
     socket.on('disconnect', () => {
         if (users[socket.id]) {
             delete users[socket.id];
-            if (vcUsers[socket.id]) {
-                delete vcUsers[socket.id];
-                broadcastVCUserList(); 
-                socket.broadcast.emit('vc-user-left', socket.id);
-            }
+            if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
             broadcastUserList();
         }
     });
