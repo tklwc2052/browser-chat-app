@@ -10,18 +10,15 @@
 <body>
 <div id="main-wrapper">
 
-    <div id="whiteboard-panel">
-        <div class="panel-header">
-            <span>🎨 Board</span>
+    <div id="whiteboard-area">
+        <div class="wb-header">
+            <span>Whiteboard</span>
             <div class="wb-controls">
-                <input type="color" id="wb-color" value="#ffffff" title="Brush Color">
-                <input type="range" id="wb-size" min="1" max="20" value="3" title="Brush Size">
-                <button id="wb-clear-btn" style="background:none;border:none;cursor:pointer;">🗑</button>
+                <input type="color" id="wb-color" value="#ffffff">
+                <button id="wb-clear-btn" title="Clear Board">🗑️</button>
             </div>
         </div>
-        <div id="canvas-container">
-            <canvas id="whiteboard"></canvas>
-        </div>
+        <canvas id="wb-canvas"></canvas>
     </div>
 
     <div id="chat-container">
@@ -47,238 +44,339 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
+            
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-            <button id="file-upload-btn" title="Upload Image">📁</button>
-            <button id="send-button">Send</button>
+            <input type="file" id="hidden-file-input" accept="image/*" style="display:none;">
+            <button id="upload-btn" title="Upload Image">📷</button>
+            <button id="send-btn">Send</button>
         </div>
     </div>
-    
+
     <div id="right-panel">
-        <div class="panel-top-group">
-            <div>
-                <h4 class="panel-title">other stuff</h4>
-                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+        <button id="toggle-panel-btn">☰</button>
+
+        <div id="panel-content">
+            <h3>Settings</h3>
+            <div class="panel-section">
+                <label>Background Image URL:</label>
+                <input type="text" id="bg-url-input" placeholder="https://...">
+                <button id="set-bg-btn">Set BG</button>
+                <button id="clear-bg-btn">Reset</button>
+            </div>
+            <div class="panel-section">
+                <label>Transparent Mode:</label>
+                <input type="checkbox" id="transparent-mode-toggle">
+            </div>
+            <div class="panel-section">
+                <label>Cloak Launcher:</label>
+                <button id="btn-cloak-launcher">Launch New Tab</button>
             </div>
 
-            <div>
-                <h4 class="panel-title">voice chat</h4>
-                <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
-                <ul id="vc-user-list"></ul>
-                <div id="audio-container" style="display:none;"></div>
+            <hr>
+            <h3>Voice Chat</h3>
+            <div id="vc-controls">
+                <button id="join-vc-btn">Join VC</button>
+                <button id="leave-vc-btn" disabled>Leave VC</button>
+                <button id="mute-vc-btn" disabled>Mute</button>
             </div>
-        </div>
-
-        <div class="panel-bottom-group">
-            <h4 class="panel-title">Browser</h4>
-            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
-            <div style="margin-bottom: 15px;"></div> 
-
-            <h4 class="panel-title">Appearance</h4>
-            <div class="settings-panel">
-                <ul class="settings-list">
-                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
-                            <div style="display: flex; gap: 5px;">
-                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
-                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
-                            </div>
-                        </div>
-                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
-                    </li>
-                </ul>
-            </div>
+            <div id="vc-participants"></div>
         </div>
     </div>
+
 </div>
 
 <script>
     const socket = io();
 
-    // --- WHITEBOARD LOGIC ---
-    const canvas = document.getElementById('whiteboard');
-    const ctx = canvas.getContext('2d');
-    const wbWrapper = document.getElementById('canvas-container');
-    let drawing = false, lastX=0, lastY=0;
-
-    function resizeCanvas() {
-        canvas.width = wbWrapper.offsetWidth;
-        canvas.height = wbWrapper.offsetHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    setTimeout(resizeCanvas, 500);
-
-    function draw(x0, y0, x1, y1, color, size, emit) {
-        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-        ctx.strokeStyle = color; ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.stroke(); ctx.closePath();
-        if(emit) {
-            const w = canvas.width, h = canvas.height;
-            socket.emit('wb-draw', { x0: x0/w, y0: y0/h, x1: x1/w, y1: y1/h, color, size });
-        }
-    }
-
-    canvas.addEventListener('mousedown', (e) => { drawing=true; lastX=e.offsetX; lastY=e.offsetY; });
-    canvas.addEventListener('mouseup', () => drawing=false);
-    canvas.addEventListener('mousemove', (e) => {
-        if(!drawing) return;
-        draw(lastX, lastY, e.offsetX, e.offsetY, document.getElementById('wb-color').value, document.getElementById('wb-size').value, true);
-        lastX=e.offsetX; lastY=e.offsetY;
-    });
-
-    // Touch Support
-    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const r = canvas.getBoundingClientRect(); drawing=true; lastX=e.touches[0].clientX-r.left; lastY=e.touches[0].clientY-r.top; }, {passive:false});
-    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if(!drawing)return; const r = canvas.getBoundingClientRect(); const x=e.touches[0].clientX-r.left; const y=e.touches[0].clientY-r.top; draw(lastX, lastY, x, y, document.getElementById('wb-color').value, document.getElementById('wb-size').value, true); lastX=x; lastY=y; }, {passive:false});
-    canvas.addEventListener('touchend', () => drawing=false);
-
-    socket.on('wb-draw', (d) => draw(d.x0*canvas.width, d.y0*canvas.height, d.x1*canvas.width, d.y1*canvas.height, d.color, d.size, false));
-    socket.on('wb-history', (lines) => lines.forEach(l => draw(l.x0*canvas.width, l.y0*canvas.height, l.x1*canvas.width, l.y1*canvas.height, l.color, l.size, false)));
-    socket.on('wb-redraw-all', () => ctx.clearRect(0,0,canvas.width,canvas.height));
-    document.getElementById('wb-clear-btn').addEventListener('click', () => socket.emit('wb-clear'));
-
-
-    // --- YOUR ORIGINAL CHAT LOGIC ---
+    // --- Chat Elements ---
     const messagesDiv = document.getElementById('messages');
+    const msgInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
-    const messageInput = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
-    const onlineUsersList = document.getElementById('online-users-list');
+    const onlineList = document.getElementById('online-users-list');
+    const fileInput = document.getElementById('hidden-file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const imgPreviewArea = document.getElementById('image-preview-area');
+    const imgPreview = document.getElementById('image-preview');
+    const removeImgBtn = document.getElementById('remove-image-btn');
+    const typingIndicator = document.getElementById('typing-indicator');
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
-    const fileUploadBtn = document.getElementById('file-upload-btn');
-    const hiddenFileInput = document.getElementById('hidden-file-input');
-    const imagePreviewArea = document.getElementById('image-preview-area');
-    const imagePreview = document.getElementById('image-preview');
-    const removeImageBtn = document.getElementById('remove-image-btn');
-    const typingIndicator = document.getElementById('typing-indicator');
 
-    // Appearance Inputs
-    const btnBgUpload = document.getElementById('btn-bg-upload');
-    const btnBgReset = document.getElementById('btn-bg-reset');
-    const bgUploadInput = document.getElementById('bg-upload-input');
+    // --- Right Panel Elements ---
+    const rightPanel = document.getElementById('right-panel');
+    const togglePanelBtn = document.getElementById('toggle-panel-btn');
+    const bgUrlInput = document.getElementById('bg-url-input');
+    const setBgBtn = document.getElementById('set-bg-btn');
+    const clearBgBtn = document.getElementById('clear-bg-btn');
+    const transparentToggle = document.getElementById('transparent-mode-toggle');
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
 
-    let currentUsername = '';
-    let currentAvatarBase64 = ''; 
-    let stagedImage = null; 
-    let typingTimeout = null;
+    // --- VC Elements ---
+    const joinVcBtn = document.getElementById('join-vc-btn');
+    const leaveVcBtn = document.getElementById('leave-vc-btn');
+    const muteVcBtn = document.getElementById('mute-vc-btn');
+    const vcParticipantsDiv = document.getElementById('vc-participants');
 
-    // Load Data
-    const storedUsername = localStorage.getItem('chatUsername');
-    const storedAvatar = localStorage.getItem('chatAvatar');
-    const savedBg = localStorage.getItem('custom-bg');
+    let currentImage = null;
+    let myUsername = localStorage.getItem('chat_username') || '';
+    let myAvatar = localStorage.getItem('chat_avatar') || 'placeholder-avatar.png';
+    let typingTimeout;
+    let localStream;
+    let isMuted = false;
 
-    if (savedBg) {
-        document.body.style.backgroundImage = `url(${savedBg})`;
+    if (myUsername) usernameInput.value = myUsername;
+    currentAvatarPreview.src = myAvatar;
+
+    // Load Settings
+    const savedBg = localStorage.getItem('chat_bg');
+    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+    const savedTransparent = localStorage.getItem('chat_transparent');
+    if (savedTransparent === 'true') {
         document.body.classList.add('transparent-mode');
-    }
-    if (storedAvatar) {
-        currentAvatarBase64 = storedAvatar;
-        currentAvatarPreview.src = storedAvatar;
-    }
-    if (storedUsername) {
-        usernameInput.value = storedUsername;
-        socket.emit('set-username', { username: storedUsername, avatar: currentAvatarBase64 });
-        currentUsername = storedUsername;
-        usernameInput.disabled = true; setUsernameBtn.disabled = true;
+        transparentToggle.checked = true;
     }
 
+    // --- Helper ---
+    function scrollToBottom() { messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+
+    // --- Event Listeners ---
     setUsernameBtn.addEventListener('click', () => {
-        const name = usernameInput.value.trim();
-        if (name) {
-            currentUsername = name;
-            localStorage.setItem('chatUsername', name);
-            socket.emit('set-username', { username: name, avatar: currentAvatarBase64 });
-            usernameInput.disabled = true; setUsernameBtn.disabled = true;
+        myUsername = usernameInput.value;
+        if (myUsername) {
+            localStorage.setItem('chat_username', myUsername);
+            socket.emit('set-username', { username: myUsername, avatar: myAvatar });
+            alert('Username set!');
         }
     });
 
-    function sendMessage() {
-        const text = messageInput.value.trim();
-        if ((!text && !stagedImage) || !currentUsername) return;
-        socket.emit('chat-message', { text, image: stagedImage });
-        messageInput.value = '';
-        stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
-        socket.emit('typing-stop');
-    }
-    sendButton.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }});
-
-    socket.on('chat-message', (msg) => {
-        const div = document.createElement('div');
-        div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
-        const imgHtml = msg.image ? `<img src="${msg.image}" class="message-image">` : '';
-        div.innerHTML = `<div class="bubble-content"><b>${msg.sender}</b>: ${msg.text}${imgHtml}</div>`;
-        messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-
-    socket.on('history', (msgs) => {
-        messagesDiv.innerHTML = '';
-        msgs.forEach(msg => {
-            const div = document.createElement('div');
-            div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
-            const imgHtml = msg.image ? `<img src="${msg.image}" class="message-image">` : '';
-            div.innerHTML = `<div class="bubble-content"><b>${msg.sender}</b>: ${msg.text}${imgHtml}</div>`;
-            messagesDiv.appendChild(div);
-        });
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-
-    socket.on('user-list-update', (users) => {
-        onlineUsersList.innerHTML = users.map(u => `<li>${u.username}</li>`).join('');
-    });
-
-    // Uploads
-    fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
-    hiddenFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (evt) => { stagedImage = evt.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; };
-            reader.readAsDataURL(file);
+    const sendMessage = () => {
+        const text = msgInput.value;
+        if (text.trim() || currentImage) {
+            socket.emit('chat-message', { text, image: currentImage });
+            msgInput.value = '';
+            currentImage = null;
+            imgPreviewArea.style.display = 'none';
+            socket.emit('typing-stop');
         }
-    });
-    removeImageBtn.addEventListener('click', () => { stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value=''; });
+    };
 
-    // Backgrounds
-    btnBgUpload.addEventListener('click', () => bgUploadInput.click());
-    bgUploadInput.addEventListener('change', (e) => {
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = (evt) => {
-                localStorage.setItem('custom-bg', evt.target.result);
-                document.body.style.backgroundImage = `url(${evt.target.result})`;
-                document.body.classList.add('transparent-mode');
+                currentImage = evt.target.result;
+                imgPreview.src = currentImage;
+                imgPreviewArea.style.display = 'flex';
             };
             reader.readAsDataURL(file);
         }
     });
-    btnBgReset.addEventListener('click', () => {
-        localStorage.removeItem('custom-bg');
-        document.body.style.backgroundImage = '';
-        document.body.classList.remove('transparent-mode');
+    removeImgBtn.addEventListener('click', () => {
+        currentImage = null;
+        imgPreviewArea.style.display = 'none';
+        fileInput.value = '';
     });
 
-    // Cloak Launcher (Your Original Logic)
-    if(btnCloakLauncher) {
+    // Simple Avatar Input
+    const avatarInput = document.createElement('input');
+    avatarInput.type = 'file'; avatarInput.accept = 'image/*'; avatarInput.style.display = 'none';
+    document.body.appendChild(avatarInput);
+    avatarUploadBtn.addEventListener('click', () => avatarInput.click());
+    avatarInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                myAvatar = evt.target.result;
+                currentAvatarPreview.src = myAvatar;
+                localStorage.setItem('chat_avatar', myAvatar);
+                if(myUsername) socket.emit('set-username', { username: myUsername, avatar: myAvatar });
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    msgInput.addEventListener('input', () => {
+        socket.emit('typing-start');
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => socket.emit('typing-stop'), 1000);
+    });
+
+    togglePanelBtn.addEventListener('click', () => {
+        rightPanel.classList.toggle('collapsed');
+        togglePanelBtn.innerHTML = rightPanel.classList.contains('collapsed') ? '⚙️' : '☰';
+    });
+
+    setBgBtn.addEventListener('click', () => {
+        const url = bgUrlInput.value;
+        if(url) { document.body.style.backgroundImage = `url('${url}')`; localStorage.setItem('chat_bg', url); }
+    });
+    clearBgBtn.addEventListener('click', () => {
+        document.body.style.backgroundImage = ''; localStorage.removeItem('chat_bg');
+    });
+    transparentToggle.addEventListener('change', (e) => {
+        if(e.target.checked) {
+            document.body.classList.add('transparent-mode');
+            localStorage.setItem('chat_transparent', 'true');
+        } else {
+            document.body.classList.remove('transparent-mode');
+            localStorage.setItem('chat_transparent', 'false');
+        }
+    });
+
+    // --- Socket Events ---
+    socket.on('connect', () => {
+        if (myUsername) socket.emit('set-username', { username: myUsername, avatar: myAvatar });
+    });
+
+    socket.on('update-user-list', (users) => {
+        onlineList.innerHTML = '';
+        users.forEach(u => {
+            const li = document.createElement('li');
+            li.innerHTML = `<img src="${u.avatar}" class="small-avatar"> ${u.username} ${u.isAdmin ? '👑' : ''}`;
+            onlineList.appendChild(li);
+        });
+    });
+
+    socket.on('chat-message', (msg) => {
+        const div = document.createElement('div');
+        div.classList.add('message');
+        if (msg.username === myUsername) div.classList.add('my-message');
+        
+        const avatarImg = `<img src="${msg.avatar}" class="msg-avatar">`;
+        let content = `<div class="bubble-content">`;
+        if (msg.username !== myUsername) content += `<div class="sender-name">${msg.username}</div>`;
+        
+        if (msg.type === 'image') {
+            content += `<img src="${msg.image}" class="chat-image"><br>${msg.text}`;
+        } else {
+            const linkified = msg.text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+            content += linkified;
+        }
+        content += `<span class="time">${msg.time}</span></div>`;
+
+        div.innerHTML = (msg.username === myUsername) ? `${content} ${avatarImg}` : `${avatarImg} ${content}`;
+        messagesDiv.appendChild(div);
+        scrollToBottom();
+    });
+
+    socket.on('history', (history) => {
+        messagesDiv.innerHTML = '';
+        history.forEach(msg => {
+            const div = document.createElement('div');
+            div.classList.add('message');
+            if (msg.username === myUsername) div.classList.add('my-message');
+            const avatarImg = `<img src="${msg.avatar}" class="msg-avatar">`;
+            let content = `<div class="bubble-content">`;
+            if (msg.username !== myUsername) content += `<div class="sender-name">${msg.username}</div>`;
+            if (msg.type === 'image') content += `<img src="${msg.image}" class="chat-image"><br>${msg.text}`;
+            else content += msg.text;
+            content += `</div>`;
+            div.innerHTML = (msg.username === myUsername) ? `${content} ${avatarImg}` : `${avatarImg} ${content}`;
+            messagesDiv.appendChild(div);
+        });
+        scrollToBottom();
+    });
+
+    socket.on('user-typing', (u) => typingIndicator.innerText = `${u} is typing...`);
+    socket.on('user-stopped-typing', () => typingIndicator.innerText = '');
+    socket.on('clear-chat', () => messagesDiv.innerHTML = '');
+
+    // --- Voice Chat ---
+    joinVcBtn.addEventListener('click', () => {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(stream => {
+                localStream = stream;
+                joinVcBtn.disabled = true; leaveVcBtn.disabled = false; muteVcBtn.disabled = false;
+                socket.emit('vc-join');
+            })
+            .catch(err => alert('Could not access microphone'));
+    });
+
+    leaveVcBtn.addEventListener('click', () => {
+        if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+        socket.emit('vc-leave');
+        joinVcBtn.disabled = false; leaveVcBtn.disabled = true; muteVcBtn.disabled = true;
+    });
+
+    muteVcBtn.addEventListener('click', () => {
+        if (localStream) {
+            isMuted = !isMuted;
+            localStream.getAudioTracks()[0].enabled = !isMuted;
+            muteVcBtn.innerText = isMuted ? 'Unmute' : 'Mute';
+            muteVcBtn.style.backgroundColor = isMuted ? 'var(--color-vc-red)' : '';
+            socket.emit('vc-mute-toggle', isMuted);
+        }
+    });
+
+    socket.on('vc-update-users', (users) => {
+        vcParticipantsDiv.innerHTML = '';
+        users.forEach(u => {
+            const div = document.createElement('div');
+            div.className = 'vc-user';
+            div.innerHTML = `<img src="${u.avatar}"> <span>${u.username}</span> ${u.isMuted ? '🔇' : '🎤'}`;
+            vcParticipantsDiv.appendChild(div);
+        });
+    });
+
+    // --- Whiteboard (Left) ---
+    const canvas = document.getElementById('wb-canvas');
+    const ctx = canvas.getContext('2d');
+    const wbColor = document.getElementById('wb-color');
+    const wbArea = document.getElementById('whiteboard-area');
+    let drawing = false;
+
+    function resizeCanvas() {
+        const rect = wbArea.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height - 40;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 500);
+
+    function drawLine(x0, y0, x1, y1, color, emit) {
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke(); ctx.closePath();
+        if (!emit) return;
+        socket.emit('drawing', { x0: x0/canvas.width, y0: y0/canvas.height, x1: x1/canvas.width, y1: y1/canvas.height, color });
+    }
+
+    let current = {x: 0, y: 0};
+    canvas.addEventListener('mousedown', (e) => { drawing = true; current.x = e.offsetX; current.y = e.offsetY; });
+    canvas.addEventListener('mouseup', (e) => { if (!drawing) return; drawing = false; drawLine(current.x, current.y, e.offsetX, e.offsetY, wbColor.value, true); });
+    canvas.addEventListener('mousemove', (e) => { 
+        if (!drawing) return; 
+        drawLine(current.x, current.y, e.offsetX, e.offsetY, wbColor.value, true); 
+        current.x = e.offsetX; current.y = e.offsetY; 
+    });
+
+    document.getElementById('wb-clear-btn').addEventListener('click', () => socket.emit('clear-board'));
+
+    socket.on('drawing', (data) => drawLine(data.x0*canvas.width, data.y0*canvas.height, data.x1*canvas.width, data.y1*canvas.height, data.color, false));
+    socket.on('clear-board', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+    socket.on('whiteboard-history', (history) => {
+        setTimeout(() => history.forEach(d => drawLine(d.x0*canvas.width, d.y0*canvas.height, d.x1*canvas.width, d.y1*canvas.height, d.color, false)), 500);
+    });
+
+    // --- Cloak Launcher ---
+    if (btnCloakLauncher) {
         btnCloakLauncher.addEventListener('click', () => {
             const win = window.open('about:blank', '_blank');
             if(win) {
-                win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="border:0; width:100vw; height:100vh;"></iframe>');
+                win.document.write(`<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="width:100vw;height:100vh;border:none;"></iframe>`);
                 win.document.close();
-            }
+            } else alert("Pop-up blocked");
         });
     }
-
-    // VC Logic Placeholder
-    document.getElementById('vc-btn-join').addEventListener('click', () => socket.emit('vc-join'));
-    socket.on('vc-user-list-update', (list) => {
-        document.getElementById('vc-user-list').innerHTML = list.map(u => `<li>${u.username}</li>`).join('');
-    });
 </script>
 </body>
 </html>
