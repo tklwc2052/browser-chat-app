@@ -29,7 +29,7 @@ html, body {
     color: var(--color-text);
     height: 100%; overflow: hidden; 
     
-    /* PREPARE FOR CUSTOM BACKGROUNDS */
+    /* Background Image Support */
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -42,14 +42,14 @@ html, body {
     margin: 0 auto;
     border-left: 1px solid #333; border-right: 1px solid #333;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    background-color: var(--bg-secondary); /* Default solid background */
+    background-color: var(--bg-secondary); 
     transition: background-color 0.3s ease;
 }
 
 #chat-container {
     flex: 1; display: flex; flex-direction: column;
     min-width: 0; 
-    background-color: transparent; /* Let wrapper bg show through */
+    background-color: transparent; 
 }
 
 /* Header Areas */
@@ -251,11 +251,9 @@ html, body {
 /* --- TRANSPARENT MODE & CUSTOM BG STYLES --- */
 /* ========================================= */
 
-/* When the "transparent-mode" class is active on BODY */
-
 body.transparent-mode #main-wrapper {
-    background-color: rgba(30, 30, 30, 0.75); /* Dark see-through */
-    backdrop-filter: blur(8px); /* Blur the background image behind it */
+    background-color: rgba(30, 30, 30, 0.75); 
+    backdrop-filter: blur(8px); 
     box-shadow: 0 0 30px rgba(0,0,0,0.8);
     border: 1px solid rgba(255,255,255,0.1);
 }
@@ -263,14 +261,14 @@ body.transparent-mode #main-wrapper {
 body.transparent-mode #right-panel,
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
-    background-color: rgba(30, 30, 30, 0.6); /* Slightly more transparent headers/panels */
+    background-color: rgba(30, 30, 30, 0.6); 
 }
 
 body.transparent-mode #online-users-area {
-    background-color: rgba(42, 56, 71, 0.7); /* See-through blue */
+    background-color: rgba(42, 56, 71, 0.7); 
 }
 
 body.transparent-mode .bubble-content {
-    opacity: 0.95; /* Keep text readable but allow slight blend */
+    opacity: 0.95; 
     backdrop-filter: blur(2px);
 }
