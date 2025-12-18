@@ -11,25 +11,20 @@ const users = {};
 const vcUsers = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
-
-// --- NEW: Persistent Avatar Cache ---
-// Maps Username -> Base64 Image string. 
-// Remembers avatars even if users disconnect.
 const userAvatarCache = {}; 
 
 const ADMIN_USERNAME = 'kl_'; 
 
 // --- Utility Functions ---
-function formatMessage(sender, text, avatar = null) {
+function formatMessage(sender, text, avatar = null, image = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     
-    // 1. Try to find avatar in the persistent cache if not provided
+    // Cache lookup for avatar
     let finalAvatar = avatar;
     if (!finalAvatar && userAvatarCache[sender]) {
         finalAvatar = userAvatarCache[sender];
     }
-    // 2. Fallback to placeholder
     if (!finalAvatar && sender !== 'System') {
         finalAvatar = 'placeholder-avatar.png';
     }
@@ -45,9 +40,10 @@ function formatMessage(sender, text, avatar = null) {
     }
     
     return {
-        text: text,
+        text: text, // Text caption (optional if image exists)
+        image: image, // Base64 Image string (optional if text exists)
         sender: sender,
-        avatar: finalAvatar, // This is now guaranteed to have data if available
+        avatar: finalAvatar, 
         time: time,
         type: 'general'
     };
@@ -89,14 +85,11 @@ io.on('connection', (socket) => {
         );
 
         if (isDuplicate) {
-            const errorMsg = formatMessage('System', `The username '${username}' is already taken.`);
-            socket.emit('chat-message', errorMsg);
+            socket.emit('chat-message', formatMessage('System', `The username '${username}' is already taken.`));
             return;
         }
 
-        // SAVE TO CACHE
         userAvatarCache[username] = newAvatar;
-
         users[socket.id] = { username, avatar: newAvatar, id: socket.id };
 
         if (vcUsers[socket.id]) {
@@ -110,18 +103,28 @@ io.on('connection', (socket) => {
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
         }
-        
         broadcastUserList();
     });
 
     // --- 2. Chat Messages ---
-    socket.on('chat-message', (msg) => {
+    socket.on('chat-message', (payload) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
 
-        // Command Handling
-        if (typeof msg === 'string' && msg.startsWith('/')) {
-            const parts = msg.trim().slice(1).split(/\s+/); 
+        let msgText = '';
+        let msgImage = null;
+
+        // Support both old string messages and new object messages
+        if (typeof payload === 'string') {
+            msgText = payload;
+        } else if (typeof payload === 'object') {
+            msgText = payload.text || '';
+            msgImage = payload.image || null;
+        }
+
+        // --- COMMANDS ---
+        if (msgText.startsWith('/')) {
+            const parts = msgText.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
             const args = parts.slice(1).join(' '); 
             
@@ -143,8 +146,6 @@ io.on('connection', (socket) => {
                 } else {
                     const now = new Date();
                     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-                    // Use cache for avatar consistency
                     const senderAvatar = userAvatarCache[sender] || userData.avatar;
 
                     const pmObject = {
@@ -168,8 +169,7 @@ io.on('connection', (socket) => {
                     io.emit('chat-message', serverMsg);
                     addToHistory(serverMsg);
                     return; 
-                } 
-                else if (command === 'clear') {
+                } else if (command === 'clear') {
                     messageHistory.length = 0; 
                     io.emit('clear-chat'); 
                     const clearMsg = formatMessage('System', `Chat history cleared by admin.`);
@@ -177,8 +177,8 @@ io.on('connection', (socket) => {
                     addToHistory(clearMsg);
                     return; 
                 }
-            } else if (msg.startsWith('/server') || msg.startsWith('/clear')) {
-                socket.emit('chat-message', formatMessage('System', `Unknown command or permission denied.`));
+            } else if (msgText.startsWith('/server') || msgText.startsWith('/clear')) {
+                socket.emit('chat-message', formatMessage('System', `Unknown command.`));
                 return;
             } else {
                 socket.emit('chat-message', formatMessage('System', `Unknown command: /${command}`));
@@ -186,36 +186,28 @@ io.on('connection', (socket) => {
             }
         } 
         
-        // Normal Message
-        else if (msg && msg.trim()) {
-            // Explicitly pass the avatar from our cache or current user state
+        // --- NORMAL MESSAGE ---
+        // Proceed if there is text OR an image
+        if (msgText.trim() || msgImage) {
             const currentAvatar = userAvatarCache[sender] || userData.avatar;
-            const msgObj = formatMessage(sender, msg, currentAvatar);
+            const msgObj = formatMessage(sender, msgText, currentAvatar, msgImage);
             
             io.emit('chat-message', msgObj);
             addToHistory(msgObj);
         }
     });
 
-    // --- 3. Voice Chat & Signaling ---
+    // --- 3. Voice Chat ---
     socket.on('vc-join', (isJoining) => {
         const userData = users[socket.id];
         if (!userData) return;
 
         if (isJoining) {
-            // Check cache just in case
             const bestAvatar = userAvatarCache[userData.username] || userData.avatar;
-            
-            vcUsers[socket.id] = { 
-                username: userData.username, 
-                avatar: bestAvatar, 
-                isMuted: false, 
-                id: socket.id
-            };
+            vcUsers[socket.id] = { username: userData.username, avatar: bestAvatar, isMuted: false, id: socket.id };
             const joinMsg = formatMessage('System', `**${userData.username}** joined Voice Chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
-            
             socket.broadcast.emit('vc-user-joined', socket.id);
         } else {
             if (vcUsers[socket.id]) {
