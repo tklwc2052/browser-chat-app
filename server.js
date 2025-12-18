@@ -6,12 +6,22 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// --- RENDER SPECIFIC FIX ---
+// This tells Express to trust the load balancer (Render/Heroku)
+// so we can see the real IP address of the user.
+app.set('trust proxy', 1); 
+
 // --- State Management ---
 const users = {}; 
 const vcUsers = {}; 
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 const userAvatarCache = {}; 
+
+// --- Admin State ---
+const mutedUsers = new Set(); // Stores usernames of muted people
+const bannedIPs = new Map();  // Stores IP -> Username mapping
+const bannedHistory = {};     // Helper to allow unbanning by username
 
 const ADMIN_USERNAME = 'kl_'; 
 
@@ -40,8 +50,8 @@ function formatMessage(sender, text, avatar = null, image = null) {
     }
     
     return {
-        text: text, // Text caption (optional if image exists)
-        image: image, // Base64 Image string (optional if text exists)
+        text: text, 
+        image: image, 
         sender: sender,
         avatar: finalAvatar, 
         time: time,
@@ -62,10 +72,36 @@ function addToHistory(msgObj) {
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
 }
 
+function findSocketIdByUsername(username) {
+    return Object.keys(users).find(id => 
+        users[id].username.toLowerCase() === username.toLowerCase()
+    );
+}
+
+// Helper to safely get IP behind Render's proxy
+function getClientIp(socket) {
+    const forwarded = socket.handshake.headers['x-forwarded-for'];
+    if (forwarded) {
+        // x-forwarded-for can be a list (e.g. "client, proxy1, proxy2"). We want the first one.
+        return forwarded.split(',')[0].trim();
+    }
+    return socket.handshake.address;
+}
+
 app.use(express.static('public'));
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+    // --- 0. Ban Check (Render Safe) ---
+    const clientIp = getClientIp(socket);
+    
+    if (bannedIPs.has(clientIp)) {
+        console.log(`Banned connection attempt from ${clientIp}`);
+        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
+        socket.disconnect(true);
+        return;
+    }
+
+    console.log(`User connected: ${socket.id} (IP: ${clientIp})`);
 
     socket.emit('history', messageHistory);
     broadcastUserList();
@@ -78,6 +114,11 @@ io.on('connection', (socket) => {
         const newAvatar = avatar || 'placeholder-avatar.png'; 
 
         if (!username) return;
+
+        // Prevent taking the Admin name if not authorized
+        if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase() && oldUsername !== ADMIN_USERNAME) {
+            // Note: In a real app, add password verification here.
+        }
 
         const usernameLower = username.toLowerCase();
         const isDuplicate = Object.keys(users).some(id => 
@@ -111,10 +152,15 @@ io.on('connection', (socket) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
 
+        // Mute Check
+        if (mutedUsers.has(sender)) {
+            socket.emit('chat-message', formatMessage('System', 'You are currently muted and cannot speak.'));
+            return;
+        }
+
         let msgText = '';
         let msgImage = null;
 
-        // Support both old string messages and new object messages
         if (typeof payload === 'string') {
             msgText = payload;
         } else if (typeof payload === 'object') {
@@ -126,8 +172,9 @@ io.on('connection', (socket) => {
         if (msgText.startsWith('/')) {
             const parts = msgText.trim().slice(1).split(/\s+/); 
             const command = parts[0].toLowerCase();
-            const args = parts.slice(1).join(' '); 
+            const args = parts.slice(1); 
             
+            // Standard /msg command
             if (command === 'msg') {
                 const targetUsername = parts[1];
                 const privateText = parts.slice(2).join(' ').trim();
@@ -137,9 +184,7 @@ io.on('connection', (socket) => {
                     return;
                 }
 
-                const recipientId = Object.keys(users).find(id => 
-                    users[id].username.toLowerCase() === targetUsername.toLowerCase()
-                );
+                const recipientId = findSocketIdByUsername(targetUsername);
 
                 if (!recipientId) {
                     socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`));
@@ -163,12 +208,17 @@ io.on('connection', (socket) => {
                 return; 
             } 
             
+            // --- ADMIN COMMANDS ---
             if (sender === ADMIN_USERNAME) {
-                if (command === 'server' && args) {
-                    const serverMsg = formatMessage('Announcement', `: **${args}**`);
+                const targetName = args[0];
+                const reason = args.slice(1).join(' ') || 'No reason provided';
+
+                if (command === 'server' && args.length > 0) {
+                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
                     io.emit('chat-message', serverMsg);
                     addToHistory(serverMsg);
                     return; 
+
                 } else if (command === 'clear') {
                     messageHistory.length = 0; 
                     io.emit('clear-chat'); 
@@ -176,9 +226,78 @@ io.on('connection', (socket) => {
                     io.emit('chat-message', clearMsg);
                     addToHistory(clearMsg);
                     return; 
+
+                // --- NEW COMMANDS ---
+
+                } else if (command === 'mute') {
+                    if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /mute <username> [reason]'));
+                    
+                    mutedUsers.add(targetName);
+                    const muteMsg = formatMessage('System', `**${targetName}** was muted by Admin. Reason: ${reason}`);
+                    io.emit('chat-message', muteMsg);
+                    return;
+
+                } else if (command === 'unmute') {
+                    if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /unmute <username>'));
+                    
+                    if (mutedUsers.has(targetName)) {
+                        mutedUsers.delete(targetName);
+                        socket.emit('chat-message', formatMessage('System', `User ${targetName} unmuted.`));
+                        io.to(findSocketIdByUsername(targetName)).emit('chat-message', formatMessage('System', 'You have been unmuted.'));
+                    } else {
+                        socket.emit('chat-message', formatMessage('System', `User ${targetName} is not muted.`));
+                    }
+                    return;
+
+                } else if (command === 'kick') {
+                    if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /kick <username> [reason]'));
+                    
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const kickMsg = formatMessage('System', `**${targetName}** was kicked. Reason: ${reason}`);
+                        io.emit('chat-message', kickMsg);
+                        io.sockets.sockets.get(targetId).disconnect(true);
+                    } else {
+                        socket.emit('chat-message', formatMessage('System', `User ${targetName} not found.`));
+                    }
+                    return;
+
+                } else if (command === 'ban') {
+                    if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /ban <username> [reason]'));
+                    
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const targetSocket = io.sockets.sockets.get(targetId);
+                        
+                        // RENDER FIX: Get IP from headers so we ban the real person, not the server proxy
+                        const targetIp = getClientIp(targetSocket);
+                        
+                        bannedIPs.set(targetIp, targetName);
+                        bannedHistory[targetName] = targetIp; 
+
+                        const banMsg = formatMessage('System', `**${targetName}** was BANNED. Reason: ${reason}`);
+                        io.emit('chat-message', banMsg);
+                        targetSocket.disconnect(true);
+                    } else {
+                        socket.emit('chat-message', formatMessage('System', `User ${targetName} not found (must be online to ban).`));
+                    }
+                    return;
+
+                } else if (command === 'unban') {
+                    if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /unban <username>'));
+                    
+                    const targetIp = bannedHistory[targetName];
+                    if (targetIp && bannedIPs.has(targetIp)) {
+                        bannedIPs.delete(targetIp);
+                        socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}** (IP: ${targetIp})`));
+                    } else {
+                        socket.emit('chat-message', formatMessage('System', `Could not find active ban for ${targetName}.`));
+                    }
+                    return;
                 }
-            } else if (msgText.startsWith('/server') || msgText.startsWith('/clear')) {
-                socket.emit('chat-message', formatMessage('System', `Unknown command.`));
+
+            } else if (msgText.startsWith('/server') || msgText.startsWith('/mute') || msgText.startsWith('/kick') || msgText.startsWith('/ban')) {
+                socket.emit('chat-message', formatMessage('System', `You do not have permission to use this command.`));
                 return;
             } else {
                 socket.emit('chat-message', formatMessage('System', `Unknown command: /${command}`));
@@ -187,7 +306,6 @@ io.on('connection', (socket) => {
         } 
         
         // --- NORMAL MESSAGE ---
-        // Proceed if there is text OR an image
         if (msgText.trim() || msgImage) {
             const currentAvatar = userAvatarCache[sender] || userData.avatar;
             const msgObj = formatMessage(sender, msgText, currentAvatar, msgImage);
@@ -201,6 +319,12 @@ io.on('connection', (socket) => {
     socket.on('vc-join', (isJoining) => {
         const userData = users[socket.id];
         if (!userData) return;
+
+        // Prevent VC join if banned or muted
+        if (mutedUsers.has(userData.username)) {
+            socket.emit('chat-message', formatMessage('System', 'You are muted and cannot join Voice Chat.'));
+            return;
+        }
 
         if (isJoining) {
             const bestAvatar = userAvatarCache[userData.username] || userData.avatar;
