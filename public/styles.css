@@ -141,10 +141,9 @@ html, body {
     padding: 15px;
     display: flex;
     flex-direction: column;
-    /* Pushes the top group and bottom group apart */
     justify-content: space-between; 
-    height: 100%; /* Ensures it fills the space properly */
-    box-sizing: border-box; /* Includes padding in height calc */
+    height: 100%; 
+    box-sizing: border-box; 
 }
 
 /* Groups within Right Panel */
@@ -159,8 +158,15 @@ html, body {
 }
 
 .panel-title { margin: 0 0 10px 0; color: var(--color-muted); text-transform: uppercase; font-size: 0.8em; letter-spacing: 1px; }
-.panel-btn { width: 100%; padding: 8px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px; }
+.panel-btn { width: 100%; padding: 8px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px; transition: opacity 0.2s, background-color 0.2s; }
 .panel-btn.active { background-color: var(--color-vc-red); }
+
+/* Disabled state for cooldown */
+.panel-btn.disabled-btn {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #555 !important;
+}
 
 #vc-user-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 #vc-user-list li {
