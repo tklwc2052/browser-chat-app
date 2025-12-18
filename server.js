@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const mongoose = require('mongoose'); // NEW: Database tool
 
 const app = express();
 const server = http.createServer(app);
@@ -9,19 +10,82 @@ const io = socketIo(server);
 // --- RENDER SPECIFIC FIX ---
 app.set('trust proxy', 1); 
 
+// --- DATABASE CONNECTION (NEW) ---
+// Connect to MongoDB using the Environment Variable 'MONGO_URI'
+const mongoURI = process.env.MONGO_URI || 'mongodb://localhost/chatapp';
+
+mongoose.connect(mongoURI)
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch(err => console.log('❌ MongoDB Error:', err));
+
+// --- Mongoose Schemas (Data Structure) ---
+const msgSchema = new mongoose.Schema({
+    text: String,
+    sender: String,
+    avatar: String,
+    image: String,
+    time: String,
+    type: String,
+    target: String, // For private messages
+    timestamp: { type: Date, default: Date.now }
+});
+const Message = mongoose.model('Message', msgSchema);
+
+const banSchema = new mongoose.Schema({
+    ip: String,
+    username: String,
+    reason: String,
+    bannedAt: { type: Date, default: Date.now }
+});
+const Ban = mongoose.model('Ban', banSchema);
+
 // --- State Management ---
 const users = {}; 
 const vcUsers = {}; 
-const messageHistory = []; 
+let messageHistory = []; // Now backed by DB
 const MAX_HISTORY = 50; 
 const userAvatarCache = {}; 
 
 // --- Admin State ---
-const mutedUsers = new Set(); // Stores LOWERCASE usernames
+const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
 const bannedHistory = {};     
 
 const ADMIN_USERNAME = 'kl_'; 
+
+// --- INITIAL DATA LOAD ---
+// Load bans and history from DB when server starts
+async function loadData() {
+    try {
+        // 1. Load Bans
+        const savedBans = await Ban.find({});
+        savedBans.forEach(b => {
+            bannedIPs.set(b.ip, b.username);
+            bannedHistory[b.username.toLowerCase()] = b.ip;
+        });
+        console.log(`Loaded ${savedBans.length} bans.`);
+
+        // 2. Load Last 50 Messages
+        const savedMsgs = await Message.find({ type: { $ne: 'private' } }) // Don't load old PMs
+            .sort({ timestamp: -1 })
+            .limit(MAX_HISTORY);
+        
+        // Reverse so they are in chronological order (Oldest -> Newest)
+        messageHistory = savedMsgs.reverse().map(m => ({
+            text: m.text,
+            sender: m.sender,
+            avatar: m.avatar,
+            image: m.image,
+            time: m.time,
+            type: m.type
+        }));
+        console.log(`Loaded ${messageHistory.length} messages.`);
+    } catch (err) {
+        console.error("Error loading data:", err);
+    }
+}
+loadData();
+
 
 // --- Utility Functions ---
 function formatMessage(sender, text, avatar = null, image = null) {
@@ -67,6 +131,18 @@ function broadcastVCUserList() {
 function addToHistory(msgObj) {
     messageHistory.push(msgObj);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
+
+    // SAVE TO DB
+    const newMsg = new Message({
+        text: msgObj.text,
+        sender: msgObj.sender,
+        avatar: msgObj.avatar,
+        image: msgObj.image,
+        time: msgObj.time,
+        type: msgObj.type,
+        target: msgObj.target || null
+    });
+    newMsg.save().catch(err => console.error("Save Msg Error:", err));
 }
 
 function findSocketIdByUsername(username) {
@@ -198,6 +274,7 @@ io.on('connection', (socket) => {
 
                     socket.emit('chat-message', pmObject);
                     io.to(recipientId).emit('chat-message', pmObject);
+                    // Note: We are usually NOT saving private messages to global DB history
                 }
                 return; 
             } 
@@ -214,6 +291,11 @@ io.on('connection', (socket) => {
                     return; 
 
                 } else if (command === 'clear') {
+                    // CLEAR DB HISTORY
+                    Message.deleteMany({})
+                        .then(() => console.log("DB History Cleared"))
+                        .catch(err => console.error(err));
+
                     messageHistory.length = 0; 
                     io.emit('clear-chat'); 
                     const clearMsg = formatMessage('System', `Chat history cleared by admin.`);
@@ -272,8 +354,13 @@ io.on('connection', (socket) => {
                         const targetIp = getClientIp(targetSocket);
                         const realName = users[targetId].username;
 
+                        // UPDATE MEMORY
                         bannedIPs.set(targetIp, realName);
                         bannedHistory[realName.toLowerCase()] = targetIp; 
+                        
+                        // UPDATE DATABASE
+                        const newBan = new Ban({ ip: targetIp, username: realName, reason: reason });
+                        newBan.save().then(() => console.log(`Banned ${realName} in DB`));
 
                         const banMsg = formatMessage('System', `**${realName}** was BANNED. Reason: ${reason}`);
                         io.emit('chat-message', banMsg);
@@ -287,11 +374,25 @@ io.on('connection', (socket) => {
                     if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /unban <username>'));
                     
                     const targetIp = bannedHistory[targetName.toLowerCase()];
+                    
                     if (targetIp && bannedIPs.has(targetIp)) {
+                        // REMOVE FROM MEMORY
                         bannedIPs.delete(targetIp);
+                        
+                        // REMOVE FROM DB
+                        Ban.deleteOne({ ip: targetIp })
+                           .then(() => console.log(`Unbanned ${targetName} in DB`));
+
                         socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}** (IP: ${targetIp})`));
                     } else {
-                        socket.emit('chat-message', formatMessage('System', `Could not find active ban for ${targetName}.`));
+                        // Fallback: Try to remove from DB by name even if not in memory cache
+                         Ban.deleteOne({ username: targetName }).then((res) => {
+                             if(res.deletedCount > 0) {
+                                socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}** (Found in DB)`));
+                             } else {
+                                socket.emit('chat-message', formatMessage('System', `Could not find active ban for ${targetName}.`));
+                             }
+                         });
                     }
                     return;
                 }
@@ -355,7 +456,7 @@ io.on('connection', (socket) => {
         io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
     });
 
-    // --- 4. Typing Indicators (NEW) ---
+    // --- 4. Typing Indicators ---
     socket.on('typing-start', () => {
         const user = users[socket.id];
         if (user) {
