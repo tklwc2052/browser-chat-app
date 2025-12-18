@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Chat App</title>
+<title>The Best Chat Ever</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -42,37 +42,46 @@
     </div>
     
     <div id="right-panel">
-        <h4 class="panel-title">other stuff</h4>
-        <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+        
+        <div class="panel-top-group">
+            <div>
+                <h4 class="panel-title">other stuff</h4>
+                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+            </div>
 
-        <h4 class="panel-title">voice chat</h4>
-        <button id="vc-btn-join" class="panel-btn">Join Call</button>
-        <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
-        <ul id="vc-user-list"></ul>
-        <div id="audio-container" style="display:none;"></div>
-
-        <br>
-        <h4 class="panel-title">notifications</h4>
-        <div class="settings-panel">
-            <ul class="settings-list">
-                <li class="setting-item">
-                    <span>Main Messages</span>
-                    <input type="checkbox" id="setting-main" checked>
-                </li>
-                <li class="setting-item">
-                    <span>Private Messages</span>
-                    <input type="checkbox" id="setting-pm" checked>
-                </li>
-                <li class="setting-item">
-                    <span>VC Joins/Leaves</span>
-                    <input type="checkbox" id="setting-vc" checked>
-                </li>
-                <li class="setting-item">
-                    <span>Sound</span>
-                    <input type="checkbox" id="setting-sound" checked>
-                </li>
-            </ul>
+            <div>
+                <h4 class="panel-title">voice chat</h4>
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <ul id="vc-user-list"></ul>
+                <div id="audio-container" style="display:none;"></div>
+            </div>
         </div>
+
+        <div class="panel-bottom-group">
+            <h4 class="panel-title">notifications</h4>
+            <div class="settings-panel">
+                <ul class="settings-list">
+                    <li class="setting-item">
+                        <span>Main Messages</span>
+                        <input type="checkbox" id="setting-main" checked>
+                    </li>
+                    <li class="setting-item">
+                        <span>Private Messages</span>
+                        <input type="checkbox" id="setting-pm" checked>
+                    </li>
+                    <li class="setting-item">
+                        <span>VC Joins/Leaves</span>
+                        <input type="checkbox" id="setting-vc" checked>
+                    </li>
+                    <li class="setting-item">
+                        <span>Sound</span>
+                        <input type="checkbox" id="setting-sound" checked>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
     </div>
     
 </div>
@@ -128,7 +137,6 @@
     // --- NOTIFICATION LOGIC ---
     // ==========================================
 
-    // 1. Load Settings
     const loadSetting = (key, checkbox) => {
         const saved = localStorage.getItem(key);
         if (saved !== null) checkbox.checked = (saved === 'true');
@@ -138,11 +146,9 @@
     loadSetting('notif-vc', settingVC);
     loadSetting('notif-sound', settingSound);
 
-    // 2. Save Settings & Request Permission
     const saveSetting = (key, checkbox) => {
         checkbox.addEventListener('change', () => {
             localStorage.setItem(key, checkbox.checked);
-            // Request permission on first interaction
             if (Notification.permission === 'default') {
                 Notification.requestPermission();
             }
@@ -153,7 +159,6 @@
     saveSetting('notif-vc', settingVC);
     saveSetting('notif-sound', settingSound);
 
-    // 3. Play Sound (Generated "Pop" - no file needed)
     function playNotificationSound() {
         if (!settingSound.checked) return;
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -169,14 +174,14 @@
         osc.stop(ctx.currentTime + 0.1);
     }
 
-    // 4. Trigger Notification
     function triggerNotification(title, body) {
-        // ONLY if tab is hidden and permission granted
         if (document.hidden && Notification.permission === 'granted') {
-            const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png' });
+            const n = new Notification(title, { 
+                body: body, 
+                icon: 'placeholder-avatar.png',
+                requireInteraction: true // Persistent
+            });
             playNotificationSound();
-            // Auto close after 3s
-            setTimeout(n.close.bind(n), 3000);
         }
     }
 
@@ -278,32 +283,24 @@
             .replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
 
-    // --- DISPLAY + NOTIFICATION HANDLER ---
     function displayMessage(msg) {
-        // --- NOTIFICATION LOGIC HOOK ---
-        if (msg.sender !== currentUsername) { // Don't notify myself
-            // 1. Private Message
+        if (msg.sender !== currentUsername) { 
             if (msg.type === 'private' && settingPM.checked) {
                 triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
             }
-            // 2. System / VC Message
             else if (msg.type === 'system' || msg.text.startsWith('**System**')) {
-                // Check if it is a VC Join/Leave event
                 const text = msg.text;
                 if (settingVC.checked && (text.includes('joined Voice Chat') || text.includes('left Voice Chat'))) {
-                    // Strip the **System** part for cleaner notif
                     let clean = text.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '').replace(/\*\*/g, '');
                     triggerNotification('Voice Chat Update', clean);
                 }
             }
-            // 3. General Message
             else if (msg.type === 'general' && settingMain.checked) {
                 const body = msg.image ? '[Image Attached]' : msg.text;
                 triggerNotification(`${msg.sender}`, body);
             }
         }
 
-        // --- RENDERING LOGIC ---
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
@@ -406,7 +403,6 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- VOICE CHAT ---
     function attachSpeakingDetector(stream, userId) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioCtx.createMediaStreamSource(stream);
