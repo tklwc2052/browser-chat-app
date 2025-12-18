@@ -27,6 +27,8 @@
         
         <div id="messages"></div>
 
+        <div id="typing-indicator"></div>
+
         <div id="message-input-area">
             <div id="image-preview-area" style="display:none;">
                 <img id="image-preview" src="" alt="Image Preview">
@@ -142,6 +144,9 @@
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
+    // NEW DOM Element
+    const typingIndicator = document.getElementById('typing-indicator');
+
     // Settings Inputs
     const settingMain = document.getElementById('setting-main');
     const settingPM = document.getElementById('setting-pm');
@@ -172,6 +177,10 @@
     let vcCooldownTimer = null;
     let vcCooldownEnd = 0;
     const VC_COOLDOWN_DURATION = 5000; 
+    
+    // --- TYPING VARS ---
+    let typingTimeout = null;
+    const typingUsers = new Set();
 
     // ==========================================
     // --- SETTINGS & APPEARANCE LOGIC ---
@@ -351,6 +360,10 @@
         socket.emit('chat-message', payload);
         messageInput.value = ''; stagedImage = null;
         imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
+        
+        // Immediately stop typing indicator when sent
+        socket.emit('typing-stop');
+        if (typingTimeout) clearTimeout(typingTimeout);
     }
 
     sendButton.addEventListener('click', sendMessage);
@@ -358,6 +371,39 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     
+    // --- TYPING LOGIC START ---
+    messageInput.addEventListener('input', () => {
+        if (!currentUsername) return;
+        
+        socket.emit('typing-start');
+        
+        if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            socket.emit('typing-stop');
+        }, 2000); // Stop indicator after 2s of inactivity
+    });
+
+    socket.on('user-typing', (username) => {
+        typingUsers.add(username);
+        updateTypingDisplay();
+    });
+
+    socket.on('user-stopped-typing', (username) => {
+        typingUsers.delete(username);
+        updateTypingDisplay();
+    });
+
+    function updateTypingDisplay() {
+        if (typingUsers.size > 0) {
+            const names = Array.from(typingUsers).join(', ');
+            typingIndicator.innerText = `${names} is typing...`;
+            typingIndicator.classList.add('active');
+        } else {
+            typingIndicator.classList.remove('active');
+        }
+    }
+    // --- TYPING LOGIC END ---
+
     function parseFormatting(text) {
         if (!text) return '';
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
