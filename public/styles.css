@@ -192,3 +192,21 @@ html, body {
     70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
     100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
 }
+
+/* --- Special White Launcher Button --- */
+.special-white-btn {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-weight: bold;
+    box-shadow: 0 4px 6px -1px rgba(255, 255, 255, 0.1), 0 2px 4px -1px rgba(255, 255, 255, 0.06);
+    transition: all 0.2s;
+}
+
+.special-white-btn:hover {
+    background-color: #e5e5e5 !important;
+    transform: translateY(-1px);
+}
+
+.special-white-btn:active {
+    transform: translateY(0);
+}
