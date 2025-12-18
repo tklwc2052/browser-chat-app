@@ -152,7 +152,7 @@ html, body {
     width: 250px; 
     background-color: var(--bg-primary);
     border-left: 1px solid #333;
-    padding: 15px;
+    padding: 15px 15px 0 15px;
     display: flex;
     flex-direction: column;
     height: 100vh; 
@@ -179,8 +179,9 @@ html, body {
 .panel-bottom-group {
     display: flex;
     flex-direction: column;
-    margin-top: 15px; 
-    flex-shrink: 0;  
+    margin-top: auto; 
+    flex-shrink: 0;
+    padding-bottom: 15px; 
 }
 
 .panel-title { margin: 0 0 10px 0; color: var(--color-muted); text-transform: uppercase; font-size: 0.8em; letter-spacing: 1px; }
@@ -226,9 +227,9 @@ html, body {
     animation: pulse-green 1s infinite;
 }
 
-/* Settings Panel */
+/* Settings Panel Generic */
 .settings-panel {
-    max-height: 200px; overflow-y: auto; 
+    max-height: 250px; overflow-y: auto; 
 }
 .settings-list {
     list-style: none; padding: 0; margin: 0;
@@ -246,6 +247,51 @@ html, body {
     70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
     100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
 }
+
+/* ========================================= */
+/* --- DROPDOWN BIN STYLES (UPDATED) --- */
+/* ========================================= */
+
+.dropdown-wrapper {
+    position: relative; /* Key for absolute positioning of content */
+    margin-top: 10px;
+}
+
+.dropdown-header {
+    display: flex; justify-content: space-between; align-items: center;
+    width: 100%; padding: 10px;
+    background-color: var(--bg-secondary); color: var(--color-text);
+    border: 1px solid #333; border-radius: 4px;
+    cursor: pointer; text-align: left; font-size: 0.9em;
+    box-sizing: border-box;
+    transition: background-color 0.2s;
+}
+.dropdown-header:hover { background-color: #333; }
+
+.dropdown-arrow { transition: transform 0.3s ease; font-size: 0.8em; }
+.dropdown-header.active .dropdown-arrow { transform: rotate(180deg); }
+
+.dropdown-content {
+    display: none; 
+    flex-direction: column; gap: 8px;
+    padding: 10px;
+    
+    /* ABSOLUTE POSITIONING TO "FLOAT OVER" */
+    position: absolute;
+    bottom: 100%; /* Sits directly on top of the header */
+    left: 0; 
+    width: 100%;
+    
+    background-color: var(--bg-secondary);
+    border: 1px solid #555;
+    border-radius: 4px;
+    z-index: 1000; /* Ensure it stays on top of everything */
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.5); /* Nice shadow */
+    box-sizing: border-box;
+    margin-bottom: 5px;
+}
+.dropdown-content.show { display: flex; }
+
 
 /* ========================================= */
 /* --- TRANSPARENT MODE & CUSTOM BG STYLES --- */
