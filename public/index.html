@@ -59,13 +59,26 @@
         </div>
 
         <div class="panel-bottom-group">
-            <h4 class="panel-title">Eagler</h4>
-            <button id="btn-cloak-launcher" class="panel-btn">Launch</button>
+            <h4 class="panel-title">Browser</h4>
+            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
             <div style="margin-bottom: 15px;"></div> 
 
-            <h4 class="panel-title">notifications</h4>
+            <h4 class="panel-title">Settings</h4>
             <div class="settings-panel">
                 <ul class="settings-list">
+                    <li class="setting-item">
+                        <span>Transparent Mode</span>
+                        <input type="checkbox" id="setting-transparent">
+                    </li>
+                    <li class="setting-item" style="flex-direction: column; gap: 5px; align-items: stretch;">
+                        <span>Custom Background</span>
+                        <div style="display: flex; gap: 5px;">
+                            <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0;">Upload</button>
+                            <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; background-color: var(--color-vc-red);">Reset</button>
+                        </div>
+                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
+                    </li>
+                    
                     <li class="setting-item">
                         <span>Main Messages</span>
                         <input type="checkbox" id="setting-main" checked>
@@ -120,11 +133,17 @@
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
-    // Notification Checkboxes
+    // Settings Inputs
     const settingMain = document.getElementById('setting-main');
     const settingPM = document.getElementById('setting-pm');
     const settingVC = document.getElementById('setting-vc');
     const settingSound = document.getElementById('setting-sound');
+    
+    // NEW APPEARANCE INPUTS
+    const settingTransparent = document.getElementById('setting-transparent');
+    const btnBgUpload = document.getElementById('btn-bg-upload');
+    const btnBgReset = document.getElementById('btn-bg-reset');
+    const bgUploadInput = document.getElementById('bg-upload-input');
 
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
@@ -140,11 +159,10 @@
     // --- COOLDOWN VARS ---
     let vcCooldownTimer = null;
     let vcCooldownEnd = 0;
-    // CHANGED: Reduced cooldown from 15000 to 5000 (5 seconds)
-    const VC_COOLDOWN_DURATION = 5000; 
+    const VC_COOLDOWN_DURATION = 5000; // 5 seconds
 
     // ==========================================
-    // --- NOTIFICATION LOGIC ---
+    // --- SETTINGS & APPEARANCE LOGIC ---
     // ==========================================
 
     const loadSetting = (key, checkbox) => {
@@ -155,6 +173,19 @@
     loadSetting('notif-pm', settingPM);
     loadSetting('notif-vc', settingVC);
     loadSetting('notif-sound', settingSound);
+
+    // Load Transparent Mode
+    const savedTransparent = localStorage.getItem('setting-transparent');
+    if (savedTransparent === 'true') {
+        settingTransparent.checked = true;
+        document.body.classList.add('transparent-mode');
+    }
+    
+    // Load Custom Background
+    const savedBg = localStorage.getItem('custom-bg');
+    if (savedBg) {
+        document.body.style.backgroundImage = `url(${savedBg})`;
+    }
 
     const saveSetting = (key, checkbox) => {
         checkbox.addEventListener('change', () => {
@@ -168,6 +199,38 @@
     saveSetting('notif-pm', settingPM);
     saveSetting('notif-vc', settingVC);
     saveSetting('notif-sound', settingSound);
+
+    // Save Transparent Mode
+    settingTransparent.addEventListener('change', () => {
+        localStorage.setItem('setting-transparent', settingTransparent.checked);
+        if (settingTransparent.checked) {
+            document.body.classList.add('transparent-mode');
+        } else {
+            document.body.classList.remove('transparent-mode');
+        }
+    });
+
+    // Handle Custom Background Upload
+    btnBgUpload.addEventListener('click', () => bgUploadInput.click());
+
+    bgUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bgData = evt.target.result;
+                localStorage.setItem('custom-bg', bgData);
+                document.body.style.backgroundImage = `url(${bgData})`;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Handle Reset Background
+    btnBgReset.addEventListener('click', () => {
+        localStorage.removeItem('custom-bg');
+        document.body.style.backgroundImage = '';
+    });
 
     function playNotificationSound() {
         if (!settingSound.checked) return;
@@ -226,6 +289,8 @@
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => {
         e.preventDefault();
+        // Check if dropping a background on the body vs an image in chat?
+        // For simplicity, we assume drops are for chat images unless triggered via settings
         if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]);
     });
 
@@ -451,7 +516,6 @@
         } catch (err) { 
             console.error(err); 
             alert('Microphone access denied or error occurred.'); 
-            // Reset cooldown if we failed to join
             resetVcCooldown();
         }
     }
@@ -513,11 +577,9 @@
         }
     });
 
-    // --- UPDATED VC BUTTON LOGIC ---
     vcBtnJoin.addEventListener('click', () => { 
         if (!currentUsername) return alert("Set username first.");
         
-        // Block actions if a cooldown is active (occurs after leaving)
         if (vcCooldownTimer) {
             const remaining = Math.ceil((vcCooldownEnd - Date.now()) / 1000);
             triggerNotification('System', `Please wait ${remaining}s before joining again.`);
@@ -525,16 +587,10 @@
         }
 
         if (isInVC) {
-            // LEAVING:
-            // 1. Leave immediately (No delay)
             leaveVC();
-            // 2. Start the cooldown NOW so you can't spam re-join
             startVcCooldown();
         } else {
-            // JOINING:
-            // 1. Join immediately
             startVC();
-            // 2. Do NOT start cooldown yet. This allows you to leave immediately if you want.
         }
     });
 
@@ -551,7 +607,6 @@
         vcCooldownTimer = null;
         vcBtnJoin.classList.remove('disabled-btn');
     }
-    // ----------------------------------
 
     vcBtnMute.addEventListener('click', () => {
         if (!localStream) return;
@@ -590,9 +645,7 @@
         window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
     });
 
-    // ==========================================
-    // --- CLOAKED LAUNCHER LOGIC ---
-    // ==========================================
+    // --- CLOAKED LAUNCHER ---
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const chromeIconSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236e6e6e' d='M6 6h3v3H6zm5 0h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3z'/%3E%3C/svg%3E`;
 
