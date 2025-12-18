@@ -7,8 +7,6 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // --- RENDER SPECIFIC FIX ---
-// This tells Express to trust the load balancer (Render/Heroku)
-// so we can see the real IP address of the user.
 app.set('trust proxy', 1); 
 
 // --- State Management ---
@@ -19,9 +17,9 @@ const MAX_HISTORY = 50;
 const userAvatarCache = {}; 
 
 // --- Admin State ---
-const mutedUsers = new Set(); // Stores usernames of muted people
-const bannedIPs = new Map();  // Stores IP -> Username mapping
-const bannedHistory = {};     // Helper to allow unbanning by username
+const mutedUsers = new Set(); // Stores LOWERCASE usernames
+const bannedIPs = new Map();  
+const bannedHistory = {};     
 
 const ADMIN_USERNAME = 'kl_'; 
 
@@ -30,7 +28,6 @@ function formatMessage(sender, text, avatar = null, image = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     
-    // Cache lookup for avatar
     let finalAvatar = avatar;
     if (!finalAvatar && userAvatarCache[sender]) {
         finalAvatar = userAvatarCache[sender];
@@ -78,11 +75,9 @@ function findSocketIdByUsername(username) {
     );
 }
 
-// Helper to safely get IP behind Render's proxy
 function getClientIp(socket) {
     const forwarded = socket.handshake.headers['x-forwarded-for'];
     if (forwarded) {
-        // x-forwarded-for can be a list (e.g. "client, proxy1, proxy2"). We want the first one.
         return forwarded.split(',')[0].trim();
     }
     return socket.handshake.address;
@@ -91,7 +86,7 @@ function getClientIp(socket) {
 app.use(express.static('public'));
 
 io.on('connection', (socket) => {
-    // --- 0. Ban Check (Render Safe) ---
+    // --- 0. Ban Check ---
     const clientIp = getClientIp(socket);
     
     if (bannedIPs.has(clientIp)) {
@@ -115,9 +110,8 @@ io.on('connection', (socket) => {
 
         if (!username) return;
 
-        // Prevent taking the Admin name if not authorized
         if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase() && oldUsername !== ADMIN_USERNAME) {
-            // Note: In a real app, add password verification here.
+             // In a real app, you'd password protect this.
         }
 
         const usernameLower = username.toLowerCase();
@@ -152,8 +146,9 @@ io.on('connection', (socket) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
 
-        // Mute Check
-        if (mutedUsers.has(sender)) {
+        // --- FIXED MUTE CHECK ---
+        // We check the lowercase version of the sender's name
+        if (mutedUsers.has(sender.toLowerCase())) {
             socket.emit('chat-message', formatMessage('System', 'You are currently muted and cannot speak.'));
             return;
         }
@@ -227,23 +222,34 @@ io.on('connection', (socket) => {
                     addToHistory(clearMsg);
                     return; 
 
-                // --- NEW COMMANDS ---
+                // --- NEW COMMANDS WITH FIXES ---
 
                 } else if (command === 'mute') {
                     if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /mute <username> [reason]'));
                     
-                    mutedUsers.add(targetName);
-                    const muteMsg = formatMessage('System', `**${targetName}** was muted by Admin. Reason: ${reason}`);
+                    // FIX: Find the REAL username if they are online to display it correctly, but store lowercase
+                    const targetId = findSocketIdByUsername(targetName);
+                    const realName = targetId ? users[targetId].username : targetName;
+
+                    mutedUsers.add(realName.toLowerCase());
+                    
+                    const muteMsg = formatMessage('System', `**${realName}** was muted by Admin. Reason: ${reason}`);
                     io.emit('chat-message', muteMsg);
                     return;
 
                 } else if (command === 'unmute') {
                     if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /unmute <username>'));
                     
-                    if (mutedUsers.has(targetName)) {
-                        mutedUsers.delete(targetName);
+                    if (mutedUsers.has(targetName.toLowerCase())) {
+                        mutedUsers.delete(targetName.toLowerCase());
+                        
+                        // Find user to notify them personally
+                        const targetId = findSocketIdByUsername(targetName);
+                        if (targetId) {
+                            io.to(targetId).emit('chat-message', formatMessage('System', 'You have been unmuted.'));
+                        }
+
                         socket.emit('chat-message', formatMessage('System', `User ${targetName} unmuted.`));
-                        io.to(findSocketIdByUsername(targetName)).emit('chat-message', formatMessage('System', 'You have been unmuted.'));
                     } else {
                         socket.emit('chat-message', formatMessage('System', `User ${targetName} is not muted.`));
                     }
@@ -254,7 +260,7 @@ io.on('connection', (socket) => {
                     
                     const targetId = findSocketIdByUsername(targetName);
                     if (targetId) {
-                        const kickMsg = formatMessage('System', `**${targetName}** was kicked. Reason: ${reason}`);
+                        const kickMsg = formatMessage('System', `**${users[targetId].username}** was kicked. Reason: ${reason}`);
                         io.emit('chat-message', kickMsg);
                         io.sockets.sockets.get(targetId).disconnect(true);
                     } else {
@@ -268,14 +274,13 @@ io.on('connection', (socket) => {
                     const targetId = findSocketIdByUsername(targetName);
                     if (targetId) {
                         const targetSocket = io.sockets.sockets.get(targetId);
-                        
-                        // RENDER FIX: Get IP from headers so we ban the real person, not the server proxy
                         const targetIp = getClientIp(targetSocket);
-                        
-                        bannedIPs.set(targetIp, targetName);
-                        bannedHistory[targetName] = targetIp; 
+                        const realName = users[targetId].username;
 
-                        const banMsg = formatMessage('System', `**${targetName}** was BANNED. Reason: ${reason}`);
+                        bannedIPs.set(targetIp, realName);
+                        bannedHistory[realName.toLowerCase()] = targetIp; 
+
+                        const banMsg = formatMessage('System', `**${realName}** was BANNED. Reason: ${reason}`);
                         io.emit('chat-message', banMsg);
                         targetSocket.disconnect(true);
                     } else {
@@ -286,7 +291,7 @@ io.on('connection', (socket) => {
                 } else if (command === 'unban') {
                     if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /unban <username>'));
                     
-                    const targetIp = bannedHistory[targetName];
+                    const targetIp = bannedHistory[targetName.toLowerCase()];
                     if (targetIp && bannedIPs.has(targetIp)) {
                         bannedIPs.delete(targetIp);
                         socket.emit('chat-message', formatMessage('System', `Unbanned **${targetName}** (IP: ${targetIp})`));
@@ -320,8 +325,8 @@ io.on('connection', (socket) => {
         const userData = users[socket.id];
         if (!userData) return;
 
-        // Prevent VC join if banned or muted
-        if (mutedUsers.has(userData.username)) {
+        // FIXED MUTE CHECK FOR VC
+        if (mutedUsers.has(userData.username.toLowerCase())) {
             socket.emit('chat-message', formatMessage('System', 'You are muted and cannot join Voice Chat.'));
             return;
         }
@@ -370,4 +375,5 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Listen on 0.0.0.0 to ensure Render can see the app
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
