@@ -6,20 +6,8 @@
     
     --color-bubble-self: #007acc; 
     --color-bubble-other: #3c3c3c; 
-    --color-bubble-pm: #512da8; 
-    --color-pm-text: #e1bee7;
-
-    --color-text: #f0f0f0;   
-    --color-muted: #aaaaaa;  
     --color-system: #ff8c00; 
-    
-    --color-accent-blue: #007acc;
-    --color-accent-green: #4caf50;
-    --color-vc-red: #dc3545;
-    --color-preview-bg: #4a4a4a;
-
-    --color-online-bg: #2a3847; 
-    --color-online-text: #90caf9; 
+    --color-text: #f0f0f0;
 }
 
 html, body {
@@ -27,312 +15,197 @@ html, body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--bg-primary);
     color: var(--color-text);
-    height: 100%; overflow: hidden; 
+    height: 100%; 
+    overflow: hidden; 
     
     /* Background Image Support */
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    transition: background-image 0.5s ease-in-out;
 }
 
-#main-wrapper {
-    display: flex; height: 100vh;
-    max-width: 900px; 
-    margin: 0 auto;
-    border-left: 1px solid #333; border-right: 1px solid #333;
-    box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    background-color: var(--bg-secondary); 
+/* --- SPLIT LAYOUT --- */
+#app-split-container {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* LEFT PANEL: WHITEBOARD */
+#whiteboard-panel {
+    flex: 1; /* Takes all available space */
+    position: relative;
+    background-color: #111;
+    border-right: 2px solid #444;
     transition: background-color 0.3s ease;
+}
+
+#whiteboard {
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    display: block;
+}
+
+#wb-toolbar {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: rgba(30, 30, 30, 0.9);
+    padding: 10px;
+    border-radius: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border: 1px solid #555;
+    z-index: 10;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+#wb-toolbar button {
+    background: #444;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+#wb-toolbar button:hover { background: #666; }
+
+/* RIGHT PANEL: CHAT */
+#main-wrapper {
+    width: 400px; /* Fixed width for chat */
+    min-width: 320px;
+    flex-shrink: 0; 
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border-left: 1px solid #444;
+    position: relative;
+    height: 100%;
 }
 
 #chat-container {
-    flex: 1; display: flex; flex-direction: column;
-    min-width: 0; 
-    background-color: transparent; 
+    display: flex; 
+    flex-direction: column; 
+    height: 100%; 
+    width: 100%;
 }
 
-/* Header Areas */
-#username-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-    transition: background-color 0.3s ease;
+/* --- Chat Elements Styling --- */
+#username-area, #online-users-area {
+    padding: 10px;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid #333;
 }
-#avatar-upload-btn { background: none; border: none; cursor: pointer; padding: 0; width: 40px; height: 40px; }
-#current-avatar-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #555; }
-#username-input { padding: 8px; border-radius: 4px; border: 1px solid #555; background-color: var(--bg-input); color: var(--color-text); }
-#set-username-btn { padding: 8px 15px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
 
-#online-users-area {
-    padding: 10px 15px; background-color: #2a3847;
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-    font-size: 0.9em; color: #90caf9; overflow-x: auto; 
-    transition: background-color 0.3s ease;
-}
-#online-users-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 15px; }
-#online-users-list li { display: flex; align-items: center; gap: 5px; }
-
-/* Messages Area */
 #messages {
-    flex-grow: 1; overflow-y: auto;
-    padding: 20px; display: flex; flex-direction: column; gap: 2px; 
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-#messages::-webkit-scrollbar { width: 8px; }
-#messages::-webkit-scrollbar-track { background: transparent; }
-#messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
 
-.message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
-.user-message { flex-direction: row-reverse; }
-
-.avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
-.avatar-spacer { width: 35px; margin: 0 10px; flex-shrink: 0; }
-
-.message-content-area { display: flex; flex-direction: column; max-width: 70%; }
-.user-message .message-content-area { align-items: flex-end; }
-
-.message-username { font-size: 0.8em; color: var(--color-muted); margin-bottom: 2px; margin-left: 5px; }
-.message-content-wrapper { display: flex; flex-direction: column; }
+.message { display: flex; flex-direction: column; max-width: 85%; }
+.message.self { align-self: flex-end; }
+.message.system { align-self: center; font-size: 0.8em; color: var(--color-system); }
 
 .bubble-content {
-    padding: 8px 12px; border-radius: 12px;
-    word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    background-color: var(--color-bubble-other);
+    padding: 8px 12px;
+    border-radius: 12px;
+    word-wrap: break-word;
 }
-.other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
-.user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
+.message.self .bubble-content { background-color: var(--color-bubble-self); }
 
-.message-image {
-    max-width: 100%;
-    border-radius: 8px;
-    margin-bottom: 5px;
-    display: block;
-    cursor: pointer; 
-}
-
-.message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
-.user-message .message-time { text-align: right; }
-
-.grouped-message { margin-bottom: 2px; margin-top: -12px; }
-
-.system-message {
-    align-self: center; color: var(--color-system);
-    font-style: italic; font-size: 0.85em; margin: 5px 0;
-    text-align: center; max-width: 90%;
-}
-
-.private-message-container {
-    background-color: transparent; border: 1px dashed var(--color-bubble-pm);
-    padding: 5px; border-radius: 8px; margin-bottom: 10px;
-}
-.bubble-private { background-color: var(--color-bubble-pm) !important; color: #fff; border: 1px solid #7c43bd; }
-.pm-label { font-size: 0.75em; font-weight: bold; color: var(--color-pm-text); margin-bottom: 2px; display: block; }
-
-/* Input Area */
 #message-input-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;
-    transition: background-color 0.3s ease;
+    padding: 10px;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid #333;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
 }
-#image-preview-area {
-    display: flex; flex-direction: column; align-items: flex-end;
-    padding: 5px; background: var(--color-preview-bg); border-radius: 4px;
-    gap: 5px; flex-basis: 150px; flex-shrink: 0;
-}
-#image-preview-area img { max-width: 140px; max-height: 140px; border-radius: 3px; object-fit: contain; }
-#remove-image-btn { background: var(--color-vc-red); color: white; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer; }
 
 #message-input {
-    flex-grow: 1; padding: 10px; border: 1px solid #555; border-radius: 4px;
-    resize: none; max-height: 80px; background: var(--bg-secondary); color: var(--color-text);
-}
-#send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-#file-upload-btn { background-color: #555; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-
-/* --- RIGHT PANEL LAYOUT --- */
-#right-panel {
-    width: 250px; 
-    background-color: var(--bg-primary);
-    border-left: 1px solid #333;
-    padding: 15px 15px 0 15px;
-    display: flex;
-    flex-direction: column;
-    height: 100vh; 
-    box-sizing: border-box; 
-    overflow: hidden; 
-    transition: background-color 0.3s ease;
-}
-
-.panel-top-group {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    flex: 1;        
-    min-height: 0;  
-}
-
-.panel-top-group > div:nth-child(2) {
-    display: flex;
-    flex-direction: column;
-    flex: 1;        
-    min-height: 0;  
-}
-
-.panel-bottom-group {
-    display: flex;
-    flex-direction: column;
-    margin-top: auto; 
-    flex-shrink: 0;
-    padding-bottom: 15px; 
-}
-
-.panel-title { margin: 0 0 10px 0; color: var(--color-muted); text-transform: uppercase; font-size: 0.8em; letter-spacing: 1px; }
-
-.panel-btn { 
-    width: 100%; padding: 8px; 
-    background-color: var(--color-accent-blue); color: white; 
-    border: none; border-radius: 4px; cursor: pointer; 
-    margin-bottom: 5px; transition: opacity 0.2s, background-color 0.2s; 
-}
-.panel-btn.active { background-color: var(--color-vc-red); }
-
-.panel-btn.disabled-btn {
-    opacity: 0.5; cursor: not-allowed; background-color: #555 !important;
-}
-
-#vc-user-list { 
-    list-style: none; padding: 0; margin: 0; 
-    display: flex; flex-direction: column; gap: 8px;
-    overflow-y: auto;  
-    flex: 1;           
-    padding-right: 5px; 
-    background: rgba(0,0,0,0.2);
-    border-radius: 4px;
-    padding: 5px;
-}
-
-#vc-user-list::-webkit-scrollbar { width: 6px; }
-#vc-user-list::-webkit-scrollbar-track { background: transparent; }
-#vc-user-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-
-#vc-user-list li {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.9em; padding: 5px; border-radius: 4px;
-    background: rgba(255,255,255,0.05); transition: all 0.2s;
-    flex-shrink: 0;
-}
-
-#vc-user-list img.list-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 2px solid transparent; }
-#vc-user-list li.speaking img.list-avatar {
-    border-color: var(--color-accent-green);
-    box-shadow: 0 0 8px var(--color-accent-green);
-    animation: pulse-green 1s infinite;
-}
-
-/* Settings Panel Generic */
-.settings-panel {
-    max-height: 250px; overflow-y: auto; 
-}
-.settings-list {
-    list-style: none; padding: 0; margin: 0;
-    display: flex; flex-direction: column; gap: 10px;
-}
-.setting-item {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 0.85em; color: #ccc; background: rgba(0,0,0,0.2);
-    padding: 8px; border-radius: 4px;
-}
-.setting-item input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--color-accent-blue); }
-
-@keyframes pulse-green {
-    0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
-    70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
-}
-
-/* ========================================= */
-/* --- DROPDOWN BIN STYLES (UPDATED) --- */
-/* ========================================= */
-
-.dropdown-wrapper {
-    position: relative; /* Key for absolute positioning of content */
-    margin-top: 10px;
-}
-
-.dropdown-header {
-    display: flex; justify-content: space-between; align-items: center;
-    width: 100%; padding: 10px;
-    background-color: var(--bg-secondary); color: var(--color-text);
-    border: 1px solid #333; border-radius: 4px;
-    cursor: pointer; text-align: left; font-size: 0.9em;
-    box-sizing: border-box;
-    transition: background-color 0.2s;
-}
-.dropdown-header:hover { background-color: #333; }
-
-.dropdown-arrow { transition: transform 0.3s ease; font-size: 0.8em; }
-.dropdown-header.active .dropdown-arrow { transform: rotate(180deg); }
-
-.dropdown-content {
-    display: none; 
-    flex-direction: column; gap: 8px;
-    padding: 10px;
-    
-    /* ABSOLUTE POSITIONING TO "FLOAT OVER" */
-    position: absolute;
-    bottom: 100%; /* Sits directly on top of the header */
-    left: 0; 
-    width: 100%;
-    
-    background-color: var(--bg-secondary);
+    flex: 1;
+    background-color: var(--bg-input);
     border: 1px solid #555;
+    color: white;
+    padding: 8px;
     border-radius: 4px;
-    z-index: 1000; /* Ensure it stays on top of everything */
-    box-shadow: 0 -5px 15px rgba(0,0,0,0.5); /* Nice shadow */
-    box-sizing: border-box;
-    margin-bottom: 5px;
-}
-.dropdown-content.show { display: flex; }
-
-
-/* ========================================= */
-/* --- TRANSPARENT MODE & CUSTOM BG STYLES --- */
-/* ========================================= */
-
-body.transparent-mode #main-wrapper {
-    background-color: rgba(30, 30, 30, 0.75); 
-    backdrop-filter: blur(8px); 
-    box-shadow: 0 0 30px rgba(0,0,0,0.8);
-    border: 1px solid rgba(255,255,255,0.1);
+    resize: none;
 }
 
-body.transparent-mode #right-panel,
-body.transparent-mode #username-area,
-body.transparent-mode #message-input-area {
-    background-color: rgba(30, 30, 30, 0.6); 
+button {
+    background-color: #007acc;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
 }
+button:hover { background-color: #005f9e; }
 
-body.transparent-mode #online-users-area {
-    background-color: rgba(42, 56, 71, 0.7); 
+/* --- DROPDOWN MENU --- */
+.dropdown { position: relative; display: inline-block; }
+.dropbtn { background-color: transparent; font-size: 1.2rem; padding: 0 5px; }
+.dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: var(--bg-secondary);
+    min-width: 160px;
+    box-shadow: 0px 8px 16px rgba(0,0,0,0.5);
+    z-index: 100;
+    flex-direction: column;
+    border: 1px solid #555;
 }
+.dropdown:hover .dropdown-content { display: flex; }
+.dropdown-content button {
+    text-align: left;
+    background: none;
+    width: 100%;
+    border-radius: 0;
+}
+.dropdown-content button:hover { background-color: #444; }
 
-body.transparent-mode .bubble-content {
-    opacity: 0.95; 
+/* --- TRANSPARENT MODE & GLASSMORPHISM --- */
+/* Makes the whiteboard allow the background image to show through */
+body.transparent-mode #whiteboard-panel {
+    background-color: rgba(0, 0, 0, 0.1); 
     backdrop-filter: blur(2px);
 }
 
-/* ========================================= */
-/* --- NEW: TYPING INDICATOR STYLES --- */
-/* ========================================= */
-#typing-indicator {
-    padding: 0 20px;
-    height: 20px;
-    font-size: 0.8em;
-    color: var(--color-accent-green);
-    font-style: italic;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    background: transparent;
-    pointer-events: none; /* Allows clicks to pass through if it overlaps anything */
+body.transparent-mode #main-wrapper {
+    background-color: rgba(30, 30, 30, 0.7);
+    backdrop-filter: blur(10px);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
-#typing-indicator.active {
-    opacity: 1;
+
+body.transparent-mode #username-area, 
+body.transparent-mode #message-input-area,
+body.transparent-mode #online-users-area {
+    background-color: rgba(30, 30, 30, 0.5);
+}
+
+/* --- MOBILE RESPONSIVENESS --- */
+@media (max-width: 768px) {
+    #app-split-container {
+        flex-direction: column;
+    }
+    
+    #whiteboard-panel {
+        height: 50vh;
+        border-right: none;
+        border-bottom: 2px solid #444;
+    }
+
+    #main-wrapper {
+        width: 100%;
+        height: 50vh;
+    }
 }
