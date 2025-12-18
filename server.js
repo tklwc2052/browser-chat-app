@@ -12,18 +12,31 @@ const vcUsers = {};
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 
-// --- CONFIGURATION ---
+// --- NEW: Persistent Avatar Cache ---
+// Maps Username -> Base64 Image string. 
+// Remembers avatars even if users disconnect.
+const userAvatarCache = {}; 
+
 const ADMIN_USERNAME = 'kl_'; 
 
 // --- Utility Functions ---
-function formatMessage(sender, text) {
+function formatMessage(sender, text, avatar = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     
-    // Standard wrapper for normal/system messages
+    // 1. Try to find avatar in the persistent cache if not provided
+    let finalAvatar = avatar;
+    if (!finalAvatar && userAvatarCache[sender]) {
+        finalAvatar = userAvatarCache[sender];
+    }
+    // 2. Fallback to placeholder
+    if (!finalAvatar && sender !== 'System') {
+        finalAvatar = 'placeholder-avatar.png';
+    }
+
     if (sender === 'System' || sender === 'Announcement') {
         return {
-            text: `**${sender}** ${text} [${time}]`, // Keep text format for system
+            text: `**${sender}** ${text} [${time}]`,
             sender: sender,
             avatar: null,
             time: time,
@@ -34,7 +47,7 @@ function formatMessage(sender, text) {
     return {
         text: text,
         sender: sender,
-        avatar: null, // Filled by route handler if available
+        avatar: finalAvatar, // This is now guaranteed to have data if available
         time: time,
         type: 'general'
     };
@@ -58,7 +71,6 @@ app.use(express.static('public'));
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Send history
     socket.emit('history', messageHistory);
     broadcastUserList();
     broadcastVCUserList(); 
@@ -72,7 +84,6 @@ io.on('connection', (socket) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
-        // Check duplicate, ignoring self
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -83,9 +94,11 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // SAVE TO CACHE
+        userAvatarCache[username] = newAvatar;
+
         users[socket.id] = { username, avatar: newAvatar, id: socket.id };
 
-        // Sync VC profile if active
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].username = username;
             vcUsers[socket.id].avatar = newAvatar;
@@ -101,7 +114,7 @@ io.on('connection', (socket) => {
         broadcastUserList();
     });
 
-    // --- 2. Chat Messages & Commands ---
+    // --- 2. Chat Messages ---
     socket.on('chat-message', (msg) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
@@ -112,7 +125,6 @@ io.on('connection', (socket) => {
             const command = parts[0].toLowerCase();
             const args = parts.slice(1).join(' '); 
             
-            // --- /MSG COMMAND (Private Message) ---
             if (command === 'msg') {
                 const targetUsername = parts[1];
                 const privateText = parts.slice(2).join(' ').trim();
@@ -132,24 +144,24 @@ io.on('connection', (socket) => {
                     const now = new Date();
                     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
+                    // Use cache for avatar consistency
+                    const senderAvatar = userAvatarCache[sender] || userData.avatar;
+
                     const pmObject = {
                         text: privateText,
                         type: 'private',
                         sender: sender,
                         target: users[recipientId].username,
                         time: time,
-                        avatar: userData.avatar
+                        avatar: senderAvatar
                     };
 
-                    // Send to Sender (So they see what they sent)
                     socket.emit('chat-message', pmObject);
-                    // Send to Receiver
                     io.to(recipientId).emit('chat-message', pmObject);
                 }
-                return; // Stop execution here
+                return; 
             } 
             
-            // --- ADMIN COMMANDS ---
             if (sender === ADMIN_USERNAME) {
                 if (command === 'server' && args) {
                     const serverMsg = formatMessage('Announcement', `: **${args}**`);
@@ -158,13 +170,8 @@ io.on('connection', (socket) => {
                     return; 
                 } 
                 else if (command === 'clear') {
-                    // 1. Clear Server History
                     messageHistory.length = 0; 
-                    
-                    // 2. Tell everyone to wipe their screens
                     io.emit('clear-chat'); 
-                    
-                    // 3. Send confirmation
                     const clearMsg = formatMessage('System', `Chat history cleared by admin.`);
                     io.emit('chat-message', clearMsg);
                     addToHistory(clearMsg);
@@ -181,8 +188,10 @@ io.on('connection', (socket) => {
         
         // Normal Message
         else if (msg && msg.trim()) {
-            const msgObj = formatMessage(sender, msg);
-            msgObj.avatar = userData.avatar;
+            // Explicitly pass the avatar from our cache or current user state
+            const currentAvatar = userAvatarCache[sender] || userData.avatar;
+            const msgObj = formatMessage(sender, msg, currentAvatar);
+            
             io.emit('chat-message', msgObj);
             addToHistory(msgObj);
         }
@@ -194,9 +203,12 @@ io.on('connection', (socket) => {
         if (!userData) return;
 
         if (isJoining) {
+            // Check cache just in case
+            const bestAvatar = userAvatarCache[userData.username] || userData.avatar;
+            
             vcUsers[socket.id] = { 
                 username: userData.username, 
-                avatar: userData.avatar, 
+                avatar: bestAvatar, 
                 isMuted: false, 
                 id: socket.id
             };
@@ -211,7 +223,6 @@ io.on('connection', (socket) => {
                 const leaveMsg = formatMessage('System', `**${userData.username}** left Voice Chat.`);
                 io.emit('chat-message', leaveMsg);
                 addToHistory(leaveMsg);
-                
                 socket.broadcast.emit('vc-user-left', socket.id);
             }
         }
