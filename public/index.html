@@ -32,8 +32,12 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
+            
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <button id="file-upload-btn">📁</button>
+            
+            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+            
+            <button id="file-upload-btn" title="Upload Image">📁</button>
             <button id="send-button">Send</button>
         </div>
     </div>
@@ -52,7 +56,6 @@
 </div>
 
 <script>
-    // --- Layout Mode ---
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
         document.getElementById('right-panel').style.display = 'none';
@@ -75,10 +78,18 @@
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
+    
+    // NEW: Image Handling Elements
+    const fileUploadBtn = document.getElementById('file-upload-btn');
+    const hiddenFileInput = document.getElementById('hidden-file-input');
+    const imagePreviewArea = document.getElementById('image-preview-area');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageBtn = document.getElementById('remove-image-btn');
 
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
     let lastMessageSender = ''; 
+    let stagedImage = null; // Holds the image data waiting to be sent
     
     // --- WebRTC State ---
     let localStream = null;
@@ -87,11 +98,63 @@
     let audioCtx; 
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- 1. Avatar & Username ---
+    // ==========================================
+    // --- 1. IMAGE HANDLING (Select -> Stage -> Send) ---
+    // ==========================================
+
+    // Helper: Read file and stage it
+    function handleFileSelection(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            stagedImage = e.target.result;
+            imagePreview.src = stagedImage;
+            imagePreviewArea.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // A. Button Click
+    fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
+    hiddenFileInput.addEventListener('change', (e) => handleFileSelection(e.target.files[0]));
+
+    // B. Paste Event (Ctrl+V)
+    messageInput.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let item of items) {
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                handleFileSelection(file);
+                e.preventDefault(); // Don't paste binary garbage into text area
+            }
+        }
+    });
+
+    // C. Drag & Drop
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    });
+
+    // D. Remove Staged Image
+    removeImageBtn.addEventListener('click', () => {
+        stagedImage = null;
+        imagePreview.src = '';
+        imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = ''; // Reset input
+    });
+
+    // ==========================================
+    // --- 2. LOGIC ---
+    // ==========================================
+
+    // --- Avatar ---
     avatarUploadBtn.addEventListener('click', () => {
         const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
+        fileInput.type = 'file'; fileInput.accept = 'image/*';
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -117,26 +180,36 @@
 
     setUsernameBtn.addEventListener('click', () => {
         const username = usernameInput.value.trim();
-        if (username) {
-            localStorage.setItem('chatUsername', username);
-            setUsername(username);
-        }
+        if (username) { localStorage.setItem('chatUsername', username); setUsername(username); }
     });
     
     function setUsername(username) {
         currentUsername = username;
         socket.emit('set-username', { username, avatar: currentAvatarBase64 || 'placeholder-avatar.png' }); 
-        usernameInput.disabled = true;
-        setUsernameBtn.disabled = true;
+        usernameInput.disabled = true; setUsernameBtn.disabled = true;
     }
 
-    // --- 2. Chat Logic ---
+    // --- Sending Messages (UPDATED) ---
     function sendMessage() {
-        let msg = messageInput.value.trim();
-        if (!msg || !currentUsername) return; 
-        socket.emit('chat-message', msg);
+        const text = messageInput.value.trim();
+        
+        // Don't send if empty AND no image
+        if ((!text && !stagedImage) || !currentUsername) return; 
+
+        const payload = {
+            text: text,
+            image: stagedImage // Send null if no image
+        };
+
+        socket.emit('chat-message', payload);
+        
+        // Reset UI
         messageInput.value = '';
+        stagedImage = null;
+        imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = '';
     }
+
     sendButton.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -154,30 +227,24 @@
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // --- TYPE: PRIVATE MESSAGE ---
+        // Private Msg
         if (msg.type === 'private') {
             const isMe = (msg.sender === currentUsername);
-            if (isMe) messageEl.classList.add('user-message');
-            else messageEl.classList.add('other-message');
-
+            isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
             const contentArea = document.createElement('div');
             contentArea.classList.add('message-content-area', 'private-message-container');
-
             const label = document.createElement('span');
             label.classList.add('pm-label');
             label.innerText = isMe ? `Private to ${msg.target}` : `Private from ${msg.sender}`;
             contentArea.appendChild(label);
-
             const bubble = document.createElement('div');
             bubble.classList.add('bubble-content', 'bubble-private');
             bubble.innerHTML = parseFormatting(msg.text);
             contentArea.appendChild(bubble);
-
             const time = document.createElement('div');
             time.classList.add('message-time');
             time.innerText = msg.time;
             contentArea.appendChild(time);
-
             messageEl.appendChild(contentArea);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -185,17 +252,12 @@
             return;
         }
 
-        // --- TYPE: SYSTEM MESSAGE ---
+        // System Msg
         if (msg.type === 'system' || msg.text.startsWith('**System**') || msg.text.startsWith('**Announcement**')) {
             messageEl.classList.add('system-message');
             let displayText = msg.text;
-            // Cleanup legacy format
-            if (displayText.startsWith('**System**')) {
-                displayText = displayText.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '');
-            }
-             if (displayText.startsWith('**Announcement**')) {
-                displayText = displayText.replace(/^\*\*Announcement\*\* /, '').replace(/ \[.*?\]$/, '');
-            }
+            if (displayText.startsWith('**System**')) displayText = displayText.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '');
+            if (displayText.startsWith('**Announcement**')) displayText = displayText.replace(/^\*\*Announcement\*\* /, '').replace(/ \[.*?\]$/, '');
             messageEl.innerHTML = parseFormatting(displayText);
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -203,12 +265,10 @@
             return;
         }
 
-        // --- TYPE: GENERAL MESSAGE ---
+        // General Msg
         const isUserMessage = (msg.sender === currentUsername);
-        if (isUserMessage) messageEl.classList.add('user-message');
-        else messageEl.classList.add('other-message');
+        isUserMessage ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
 
-        // Grouping
         let showAvatar = true;
         if (lastMessageSender === msg.sender) {
             showAvatar = false;
@@ -219,9 +279,7 @@
         if (!isUserMessage) {
             if (showAvatar) {
                 const img = document.createElement('img');
-                img.classList.add('avatar'); 
-                // SAFETY: Fallback to placeholder if missing from history object
-                img.src = msg.avatar || 'placeholder-avatar.png';
+                img.classList.add('avatar'); img.src = msg.avatar || 'placeholder-avatar.png';
                 messageEl.appendChild(img);
             } else {
                 const spacer = document.createElement('div');
@@ -242,7 +300,22 @@
 
         const bubble = document.createElement('div');
         bubble.classList.add('bubble-content');
-        bubble.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, '')); 
+        
+        // --- IMAGE RENDERING ---
+        if (msg.image) {
+            const imgEl = document.createElement('img');
+            imgEl.src = msg.image;
+            imgEl.classList.add('message-image');
+            imgEl.onclick = () => { /* Optional: Expand logic */ };
+            bubble.appendChild(imgEl);
+        }
+        
+        // Text rendering (if text exists)
+        if (msg.text) {
+             const textSpan = document.createElement('div');
+             textSpan.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, ''));
+             bubble.appendChild(textSpan);
+        }
         
         const time = document.createElement('div');
         time.classList.add('message-time');
@@ -375,15 +448,9 @@
         });
     });
 
-    // --- Standard Socket Listeners ---
     socket.on('chat-message', displayMessage);
     socket.on('history', (h) => { messagesDiv.innerHTML = ''; h.forEach(displayMessage); });
-    
-    socket.on('clear-chat', () => {
-        messagesDiv.innerHTML = '';
-        console.log("Chat cleared by server command.");
-    });
-    
+    socket.on('clear-chat', () => { messagesDiv.innerHTML = ''; console.log("Chat cleared."); });
     socket.on('user-list-update', (users) => {
         onlineUsersList.innerHTML = '';
         users.forEach(u => {
