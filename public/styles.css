@@ -318,3 +318,21 @@ body.transparent-mode .bubble-content {
     opacity: 0.95; 
     backdrop-filter: blur(2px);
 }
+
+/* ========================================= */
+/* --- NEW: TYPING INDICATOR STYLES --- */
+/* ========================================= */
+#typing-indicator {
+    padding: 0 20px;
+    height: 20px;
+    font-size: 0.8em;
+    color: var(--color-accent-green);
+    font-style: italic;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: transparent;
+    pointer-events: none; /* Allows clicks to pass through if it overlaps anything */
+}
+#typing-indicator.active {
+    opacity: 1;
+}
