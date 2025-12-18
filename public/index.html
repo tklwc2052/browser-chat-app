@@ -34,7 +34,6 @@
             </div>
             
             <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            
             <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
             
             <button id="file-upload-btn" title="Upload Image">📁</button>
@@ -51,6 +50,29 @@
         <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
         <ul id="vc-user-list"></ul>
         <div id="audio-container" style="display:none;"></div>
+
+        <br>
+        <h4 class="panel-title">notifications</h4>
+        <div class="settings-panel">
+            <ul class="settings-list">
+                <li class="setting-item">
+                    <span>Main Messages</span>
+                    <input type="checkbox" id="setting-main" checked>
+                </li>
+                <li class="setting-item">
+                    <span>Private Messages</span>
+                    <input type="checkbox" id="setting-pm" checked>
+                </li>
+                <li class="setting-item">
+                    <span>VC Joins/Leaves</span>
+                    <input type="checkbox" id="setting-vc" checked>
+                </li>
+                <li class="setting-item">
+                    <span>Sound</span>
+                    <input type="checkbox" id="setting-sound" checked>
+                </li>
+            </ul>
+        </div>
     </div>
     
 </div>
@@ -79,19 +101,23 @@
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
     
-    // NEW: Image Handling Elements
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const hiddenFileInput = document.getElementById('hidden-file-input');
     const imagePreviewArea = document.getElementById('image-preview-area');
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
+    // Notification Checkboxes
+    const settingMain = document.getElementById('setting-main');
+    const settingPM = document.getElementById('setting-pm');
+    const settingVC = document.getElementById('setting-vc');
+    const settingSound = document.getElementById('setting-sound');
+
     let currentUsername = '';
     let currentAvatarBase64 = ''; 
     let lastMessageSender = ''; 
-    let stagedImage = null; // Holds the image data waiting to be sent
+    let stagedImage = null; 
     
-    // --- WebRTC State ---
     let localStream = null;
     let peers = {}; 
     let isInVC = false;
@@ -99,10 +125,65 @@
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     // ==========================================
-    // --- 1. IMAGE HANDLING (Select -> Stage -> Send) ---
+    // --- NOTIFICATION LOGIC ---
     // ==========================================
 
-    // Helper: Read file and stage it
+    // 1. Load Settings
+    const loadSetting = (key, checkbox) => {
+        const saved = localStorage.getItem(key);
+        if (saved !== null) checkbox.checked = (saved === 'true');
+    };
+    loadSetting('notif-main', settingMain);
+    loadSetting('notif-pm', settingPM);
+    loadSetting('notif-vc', settingVC);
+    loadSetting('notif-sound', settingSound);
+
+    // 2. Save Settings & Request Permission
+    const saveSetting = (key, checkbox) => {
+        checkbox.addEventListener('change', () => {
+            localStorage.setItem(key, checkbox.checked);
+            // Request permission on first interaction
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        });
+    };
+    saveSetting('notif-main', settingMain);
+    saveSetting('notif-pm', settingPM);
+    saveSetting('notif-vc', settingVC);
+    saveSetting('notif-sound', settingSound);
+
+    // 3. Play Sound (Generated "Pop" - no file needed)
+    function playNotificationSound() {
+        if (!settingSound.checked) return;
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(500, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+    }
+
+    // 4. Trigger Notification
+    function triggerNotification(title, body) {
+        // ONLY if tab is hidden and permission granted
+        if (document.hidden && Notification.permission === 'granted') {
+            const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png' });
+            playNotificationSound();
+            // Auto close after 3s
+            setTimeout(n.close.bind(n), 3000);
+        }
+    }
+
+    // ==========================================
+    // --- CORE LOGIC ---
+    // ==========================================
+
     function handleFileSelection(file) {
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
@@ -114,44 +195,30 @@
         reader.readAsDataURL(file);
     }
 
-    // A. Button Click
     fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
     hiddenFileInput.addEventListener('change', (e) => handleFileSelection(e.target.files[0]));
-
-    // B. Paste Event (Ctrl+V)
     messageInput.addEventListener('paste', (e) => {
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
         for (let item of items) {
             if (item.kind === 'file' && item.type.startsWith('image/')) {
                 const file = item.getAsFile();
                 handleFileSelection(file);
-                e.preventDefault(); // Don't paste binary garbage into text area
+                e.preventDefault();
             }
         }
     });
 
-    // C. Drag & Drop
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => {
         e.preventDefault();
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]);
     });
 
-    // D. Remove Staged Image
     removeImageBtn.addEventListener('click', () => {
-        stagedImage = null;
-        imagePreview.src = '';
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = ''; // Reset input
+        stagedImage = null; imagePreview.src = '';
+        imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
     });
 
-    // ==========================================
-    // --- 2. LOGIC ---
-    // ==========================================
-
-    // --- Avatar ---
     avatarUploadBtn.addEventListener('click', () => {
         const fileInput = document.createElement('input');
         fileInput.type = 'file'; fileInput.accept = 'image/*';
@@ -189,25 +256,13 @@
         usernameInput.disabled = true; setUsernameBtn.disabled = true;
     }
 
-    // --- Sending Messages (UPDATED) ---
     function sendMessage() {
         const text = messageInput.value.trim();
-        
-        // Don't send if empty AND no image
         if ((!text && !stagedImage) || !currentUsername) return; 
-
-        const payload = {
-            text: text,
-            image: stagedImage // Send null if no image
-        };
-
+        const payload = { text: text, image: stagedImage };
         socket.emit('chat-message', payload);
-        
-        // Reset UI
-        messageInput.value = '';
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = '';
+        messageInput.value = ''; stagedImage = null;
+        imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
     }
 
     sendButton.addEventListener('click', sendMessage);
@@ -223,11 +278,35 @@
             .replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
 
+    // --- DISPLAY + NOTIFICATION HANDLER ---
     function displayMessage(msg) {
+        // --- NOTIFICATION LOGIC HOOK ---
+        if (msg.sender !== currentUsername) { // Don't notify myself
+            // 1. Private Message
+            if (msg.type === 'private' && settingPM.checked) {
+                triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
+            }
+            // 2. System / VC Message
+            else if (msg.type === 'system' || msg.text.startsWith('**System**')) {
+                // Check if it is a VC Join/Leave event
+                const text = msg.text;
+                if (settingVC.checked && (text.includes('joined Voice Chat') || text.includes('left Voice Chat'))) {
+                    // Strip the **System** part for cleaner notif
+                    let clean = text.replace(/^\*\*System\*\* /, '').replace(/ \[.*?\]$/, '').replace(/\*\*/g, '');
+                    triggerNotification('Voice Chat Update', clean);
+                }
+            }
+            // 3. General Message
+            else if (msg.type === 'general' && settingMain.checked) {
+                const body = msg.image ? '[Image Attached]' : msg.text;
+                triggerNotification(`${msg.sender}`, body);
+            }
+        }
+
+        // --- RENDERING LOGIC ---
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
 
-        // Private Msg
         if (msg.type === 'private') {
             const isMe = (msg.sender === currentUsername);
             isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
@@ -252,7 +331,6 @@
             return;
         }
 
-        // System Msg
         if (msg.type === 'system' || msg.text.startsWith('**System**') || msg.text.startsWith('**Announcement**')) {
             messageEl.classList.add('system-message');
             let displayText = msg.text;
@@ -265,7 +343,6 @@
             return;
         }
 
-        // General Msg
         const isUserMessage = (msg.sender === currentUsername);
         isUserMessage ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
 
@@ -301,7 +378,6 @@
         const bubble = document.createElement('div');
         bubble.classList.add('bubble-content');
         
-        // --- IMAGE RENDERING ---
         if (msg.image) {
             const imgEl = document.createElement('img');
             imgEl.src = msg.image;
@@ -309,8 +385,6 @@
             imgEl.onclick = () => { /* Optional: Expand logic */ };
             bubble.appendChild(imgEl);
         }
-        
-        // Text rendering (if text exists)
         if (msg.text) {
              const textSpan = document.createElement('div');
              textSpan.innerHTML = parseFormatting(msg.text.replace(`**${msg.sender}**: `, '').replace(/ \[.*?\]$/, ''));
@@ -332,7 +406,7 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- 3. VOICE CHAT ---
+    // --- VOICE CHAT ---
     function attachSpeakingDetector(stream, userId) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioCtx.createMediaStreamSource(stream);
