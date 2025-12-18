@@ -16,24 +16,14 @@ mongoose.connect(mongoURI)
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(err => console.log('❌ MongoDB Error:', err));
 
-// --- Mongoose Schemas ---
+// --- SCHEMAS ---
 const msgSchema = new mongoose.Schema({
-    text: String,
-    sender: String,
-    avatar: String,
-    image: String,
-    time: String,
-    type: String,
-    target: String,
-    timestamp: { type: Date, default: Date.now }
+    text: String, sender: String, avatar: String, image: String, time: String, type: String, target: String, timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', msgSchema);
 
 const banSchema = new mongoose.Schema({
-    ip: String,
-    username: String,
-    reason: String,
-    bannedAt: { type: Date, default: Date.now }
+    ip: String, username: String, reason: String, bannedAt: { type: Date, default: Date.now }
 });
 const Ban = mongoose.model('Ban', banSchema);
 
@@ -44,7 +34,7 @@ const whiteboardSchema = new mongoose.Schema({
 });
 const Whiteboard = mongoose.model('Whiteboard', whiteboardSchema);
 
-// --- State Management ---
+// --- STATE ---
 const users = {}; 
 const vcUsers = {}; 
 let messageHistory = []; 
@@ -55,7 +45,7 @@ const bannedIPs = new Map();
 const bannedHistory = {};     
 const ADMIN_USERNAME = 'kl_'; 
 
-// --- INITIAL DATA LOAD ---
+// --- LOAD DATA ---
 async function loadData() {
     try {
         const savedBans = await Ban.find({});
@@ -64,10 +54,7 @@ async function loadData() {
             bannedHistory[b.username.toLowerCase()] = b.ip;
         });
 
-        const savedMsgs = await Message.find({ type: { $ne: 'private' } }) 
-            .sort({ timestamp: -1 })
-            .limit(MAX_HISTORY);
-        
+        const savedMsgs = await Message.find({ type: { $ne: 'private' } }).sort({ timestamp: -1 }).limit(MAX_HISTORY);
         messageHistory = savedMsgs.reverse().map(m => ({
             text: m.text, sender: m.sender, avatar: m.avatar, image: m.image, time: m.time, type: m.type
         }));
@@ -75,11 +62,13 @@ async function loadData() {
 }
 loadData();
 
-// --- Utility Functions ---
+// --- UTILS ---
 function formatMessage(sender, text, avatar = null, image = null) {
-    const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     let finalAvatar = avatar || userAvatarCache[sender] || 'placeholder-avatar.png';
+    
+    if (sender === 'System') return { text: `**${sender}** ${text} [${time}]`, sender, avatar: null, time, type: 'system' };
+    
     return { text, image, sender, avatar: finalAvatar, time, type: 'general' };
 }
 
@@ -89,10 +78,9 @@ function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vc
 function addToHistory(msgObj) {
     messageHistory.push(msgObj);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
-    const newMsg = new Message({
+    new Message({
         text: msgObj.text, sender: msgObj.sender, avatar: msgObj.avatar, image: msgObj.image, time: msgObj.time, type: msgObj.type
-    });
-    newMsg.save().catch(err => console.error("Save Msg Error:", err));
+    }).save().catch(e => console.log(e));
 }
 
 function getClientIp(socket) {
@@ -135,7 +123,7 @@ io.on('connection', async (socket) => {
         io.emit('wb-redraw-all', []);
     });
 
-    // --- CHAT EVENTS ---
+    // --- USER EVENTS ---
     socket.on('set-username', ({ username, avatar }) => {
         if (!username) return;
         userAvatarCache[username] = avatar || 'placeholder-avatar.png';
@@ -161,7 +149,7 @@ io.on('connection', async (socket) => {
              if (cmd === '/clear') {
                  messageHistory = [];
                  Message.deleteMany({}).exec();
-                 io.emit('history', []); // Clear client side
+                 io.emit('history', []); 
                  return;
              }
              if (cmd === '/ban' && target) {
