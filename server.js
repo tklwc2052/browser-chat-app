@@ -146,8 +146,7 @@ io.on('connection', (socket) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
 
-        // --- FIXED MUTE CHECK ---
-        // We check the lowercase version of the sender's name
+        // Check Mute
         if (mutedUsers.has(sender.toLowerCase())) {
             socket.emit('chat-message', formatMessage('System', 'You are currently muted and cannot speak.'));
             return;
@@ -222,12 +221,9 @@ io.on('connection', (socket) => {
                     addToHistory(clearMsg);
                     return; 
 
-                // --- NEW COMMANDS WITH FIXES ---
-
                 } else if (command === 'mute') {
                     if (!targetName) return socket.emit('chat-message', formatMessage('System', 'Usage: /mute <username> [reason]'));
                     
-                    // FIX: Find the REAL username if they are online to display it correctly, but store lowercase
                     const targetId = findSocketIdByUsername(targetName);
                     const realName = targetId ? users[targetId].username : targetName;
 
@@ -243,7 +239,6 @@ io.on('connection', (socket) => {
                     if (mutedUsers.has(targetName.toLowerCase())) {
                         mutedUsers.delete(targetName.toLowerCase());
                         
-                        // Find user to notify them personally
                         const targetId = findSocketIdByUsername(targetName);
                         if (targetId) {
                             io.to(targetId).emit('chat-message', formatMessage('System', 'You have been unmuted.'));
@@ -325,7 +320,6 @@ io.on('connection', (socket) => {
         const userData = users[socket.id];
         if (!userData) return;
 
-        // FIXED MUTE CHECK FOR VC
         if (mutedUsers.has(userData.username.toLowerCase())) {
             socket.emit('chat-message', formatMessage('System', 'You are muted and cannot join Voice Chat.'));
             return;
@@ -361,6 +355,21 @@ io.on('connection', (socket) => {
         io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
     });
 
+    // --- 4. Typing Indicators (NEW) ---
+    socket.on('typing-start', () => {
+        const user = users[socket.id];
+        if (user) {
+            socket.broadcast.emit('user-typing', user.username);
+        }
+    });
+
+    socket.on('typing-stop', () => {
+        const user = users[socket.id];
+        if (user) {
+            socket.broadcast.emit('user-stopped-typing', user.username);
+        }
+    });
+
     socket.on('disconnect', () => {
         if (users[socket.id]) {
             delete users[socket.id];
@@ -375,5 +384,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Listen on 0.0.0.0 to ensure Render can see the app
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
