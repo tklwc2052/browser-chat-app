@@ -10,6 +10,10 @@ const io = socketIo(server);
 // --- RENDER SPECIFIC FIX ---
 app.set('trust proxy', 1);
 
+// --- IMPORTANT: SERVE STATIC FILES ---
+// This was missing! It tells the server to use index.html and styles.css
+app.use(express.static(__dirname));
+
 // --- DATABASE CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost/chatapp';
 
@@ -38,7 +42,7 @@ const banSchema = new mongoose.Schema({
 });
 const Ban = mongoose.model('Ban', banSchema);
 
-// --- WHITEBOARD SCHEMA (New) ---
+// --- WHITEBOARD SCHEMA ---
 const whiteboardSchema = new mongoose.Schema({
     _id: { type: String, default: 'main_board' },
     lines: { type: Array, default: [] } 
@@ -52,7 +56,7 @@ let messageHistory = [];
 const MAX_HISTORY = 50;
 
 // --- Admin State ---
-const ADMIN_USERNAME = "kl_"; // CHANGE THIS for better security!
+const ADMIN_USERNAME = "kl_"; 
 
 // --- HELPER FUNCTIONS ---
 function formatMessage(username, text, avatar = null, image = null, type = 'chat', target = null) {
@@ -64,7 +68,6 @@ async function addToHistory(msg) {
     messageHistory.push(msg);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
 
-    // Save to DB
     try {
         const newMsg = new Message(msg);
         await newMsg.save();
@@ -109,10 +112,7 @@ io.on('connection', async (socket) => {
 
     // --- WHITEBOARD EVENTS ---
     socket.on('wb-draw', async (data) => {
-        // Broadcast drawing to others immediately
         socket.broadcast.emit('wb-draw', data);
-        
-        // Save to DB
         await Whiteboard.findByIdAndUpdate('main_board', { 
             $push: { lines: data } 
         }, { upsert: true });
@@ -121,9 +121,9 @@ io.on('connection', async (socket) => {
     socket.on('wb-undo', async () => {
         const board = await Whiteboard.findById('main_board');
         if (board && board.lines.length > 0) {
-            board.lines.pop(); // Remove last line
+            board.lines.pop(); 
             await board.save();
-            io.emit('wb-redraw-all', board.lines); // Tell everyone to redraw
+            io.emit('wb-redraw-all', board.lines); 
         }
     });
 
@@ -188,7 +188,6 @@ io.on('connection', async (socket) => {
             }
         }
 
-        // Normal Message
         const messageData = formatMessage(user.username, msg, user.avatar);
         io.emit('chat-message', messageData);
         addToHistory(messageData);
@@ -227,7 +226,6 @@ io.on('connection', async (socket) => {
 
     socket.on('signal', (data) => io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }));
     
-    // --- TYPING ---
     socket.on('typing-start', () => {
         const user = users[socket.id];
         if (user) socket.broadcast.emit('user-typing', user.username);
@@ -238,7 +236,6 @@ io.on('connection', async (socket) => {
         if (user) socket.broadcast.emit('user-stopped-typing', user.username);
     });
 
-    // --- DISCONNECT ---
     socket.on('disconnect', () => {
         if (users[socket.id]) {
             delete users[socket.id];
