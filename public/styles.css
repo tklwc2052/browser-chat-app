@@ -1,16 +1,19 @@
-/* --- ORIGINAL VARIABLES --- */
 :root {
     --bg-primary: #1e1e1e;
     --bg-secondary: #252526;
     --bg-input: #3c3c3c;
     --color-text: #f0f0f0;   
-    --color-accent-blue: #007acc;
-    --color-vc-red: #dc3545;
-    --color-online-bg: #2a3847; 
+    --color-muted: #aaaaaa;  
+    
     --color-bubble-self: #007acc; 
     --color-bubble-other: #3c3c3c; 
-    --color-muted: #aaaaaa;
-    --color-system: #ff8c00; 
+
+    --color-accent-blue: #007acc;
+    --color-accent-green: #4caf50;
+    --color-vc-red: #dc3545;
+    --color-preview-bg: #4a4a4a;
+    --color-online-bg: #2a3847; 
+    --color-online-text: #90caf9; 
 }
 
 html, body {
@@ -23,123 +26,105 @@ html, body {
     transition: background-image 0.5s ease-in-out;
 }
 
-/* --- MODIFIED MAIN WRAPPER --- */
-/* Changed max-width to 98% so 3 columns fit comfortably */
 #main-wrapper {
-    display: flex; height: 100vh;
-    max-width: 98%; 
+    display: flex; height: 100vh; width: 95vw; max-width: 1400px;
     margin: 0 auto;
     border-left: 1px solid #333; border-right: 1px solid #333;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
     background-color: var(--bg-secondary); 
-    transition: background-color 0.3s ease;
 }
 
-/* --- [NEW] WHITEBOARD PANEL --- */
-#whiteboard-panel {
-    flex: 1.5; /* Takes more space than chat */
-    min-width: 300px;
+/* --- LEFT COLUMN: WHITEBOARD --- */
+#whiteboard-area {
+    width: 300px;
+    background-color: var(--bg-primary);
+    border-right: 1px solid #333; /* CHANGED: was border-left */
     display: flex; flex-direction: column;
-    border-right: 1px solid #333;
-    background: var(--bg-secondary);
 }
 
-.panel-header {
-    padding: 10px; background: var(--bg-primary);
-    border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;
+.wb-header {
+    padding: 10px; background-color: #2a3847;
+    border-bottom: 1px solid #333;
+    display: flex; justify-content: space-between; align-items: center;
+    color: #90caf9; font-size: 0.9em;
 }
-.wb-controls { display: flex; gap: 5px; align-items: center; }
-#canvas-container {
-    flex: 1; position: relative;
-    background: #fff; 
-    cursor: crosshair; overflow: hidden;
-}
+.wb-controls { display: flex; align-items: center; gap: 5px; }
+#wb-color { border: none; width: 25px; height: 25px; padding: 0; background: none; cursor: pointer; }
+#wb-clear-btn { background: var(--color-vc-red); color: white; border: none; border-radius: 4px; padding: 2px 6px; cursor: pointer; }
+#wb-canvas { flex: 1; cursor: crosshair; display: block; background: transparent; }
 
-/* --- EXISTING CHAT CONTAINER --- */
+/* --- MIDDLE COLUMN: CHAT --- */
 #chat-container {
     flex: 1; display: flex; flex-direction: column;
-    min-width: 320px; 
-    background-color: transparent; 
-    border-right: 1px solid #333;
+    min-width: 300px;
 }
 
-/* --- EXISTING RIGHT PANEL --- */
-#right-panel {
-    width: 280px; flex-shrink: 0;
-    background-color: var(--bg-primary);
-    display: flex; flex-direction: column;
-    padding: 15px; gap: 20px; overflow-y: auto;
-}
-
-/* --- YOUR ORIGINAL ELEMENT STYLES --- */
 #username-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
+    padding: 10px; background-color: var(--bg-primary); border-bottom: 1px solid #333;
+    display: flex; align-items: center; gap: 10px;
 }
+#avatar-upload-btn { background: none; border: none; padding: 0; cursor: pointer; }
+#current-avatar-preview { width: 35px; height: 35px; border-radius: 50%; border: 2px solid var(--color-accent-blue); }
+#username-input { background-color: var(--bg-input); color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; flex-grow: 1; }
+#set-username-btn { background-color: var(--color-accent-blue); color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+
 #online-users-area {
-    padding: 10px 15px; background-color: var(--color-online-bg);
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-    font-size: 0.9em; color: #90caf9; overflow-x: auto; 
+    padding: 5px 10px; background-color: var(--color-online-bg); border-bottom: 1px solid #333;
+    font-size: 0.9em; color: var(--color-online-text);
 }
-#online-users-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 15px; }
+#online-users-list { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.small-avatar { width: 20px; height: 20px; border-radius: 50%; }
 
-#messages {
-    flex-grow: 1; overflow-y: auto;
-    padding: 20px; display: flex; flex-direction: column; gap: 5px; 
-}
-
-.message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
-.user-message { flex-direction: row-reverse; }
-.bubble-content {
-    padding: 8px 12px; border-radius: 12px;
-    word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
-.other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
-.user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; color: white; }
-.message-image { max-width: 200px; border-radius: 8px; margin-bottom: 5px; }
+#messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.message { display: flex; align-items: flex-end; gap: 10px; max-width: 80%; }
+.message.my-message { align-self: flex-end; flex-direction: row-reverse; }
+.msg-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.bubble-content { background-color: var(--color-bubble-other); padding: 10px 15px; border-radius: 15px; }
+.message.my-message .bubble-content { background-color: var(--color-bubble-self); }
+.sender-name { font-size: 0.75em; color: var(--color-muted); }
+.time { font-size: 0.7em; color: #ccc; margin-left: 5px; }
+.chat-image { max-width: 100%; border-radius: 8px; margin-top: 5px; }
+#typing-indicator { height: 20px; font-size: 0.8em; color: #888; padding-left: 20px; }
 
 #message-input-area {
-    padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;
+    padding: 10px; background-color: var(--bg-primary); border-top: 1px solid #333;
+    display: flex; align-items: center; gap: 10px; position: relative;
 }
-#message-input { flex: 1; background-color: var(--bg-input); border: 1px solid #555; color: white; padding: 10px; border-radius: 4px; resize: none; }
-button { cursor: pointer; }
+#message-input { flex: 1; background-color: var(--bg-input); color: white; border: 1px solid #555; border-radius: 20px; padding: 10px 15px; resize: none; outline: none; }
+#send-btn, #upload-btn { background-color: var(--color-accent-green); color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; }
+#upload-btn { background-color: #555; padding: 8px 12px; }
+#image-preview-area { position: absolute; bottom: 60px; left: 10px; background-color: var(--color-preview-bg); padding: 5px; border-radius: 8px; display: flex; gap: 5px; }
+#image-preview { max-height: 100px; }
 
-/* Right Panel Components */
-.panel-title { color: var(--color-muted); font-size: 0.85em; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
-.panel-btn {
-    width: 100%; padding: 8px; margin-bottom: 8px;
-    background-color: var(--bg-secondary); color: var(--color-text);
-    border: 1px solid #444; border-radius: 4px; transition: all 0.2s;
+/* --- RIGHT COLUMN: SETTINGS/VC --- */
+#right-panel {
+    width: 250px; background-color: var(--bg-primary);
+    border-left: 1px solid #333; /* CHANGED: was border-right (in middle) */
+    display: flex; flex-direction: column; transition: width 0.3s ease; overflow: hidden;
 }
-.panel-btn:hover { background-color: #444; }
+#right-panel.collapsed { width: 50px; }
+#toggle-panel-btn { width: 100%; background: #333; border: none; color: white; padding: 10px; cursor: pointer; font-size: 1.2em; }
+#panel-content { padding: 10px; overflow-y: auto; flex: 1; }
+#right-panel.collapsed #panel-content { display: none; }
+.panel-section input[type="text"] { width: 90%; background: #333; border: 1px solid #555; color: white; padding: 5px; margin-bottom: 5px; }
+.panel-section button { width: 100%; margin-top: 5px; padding: 5px; background: #444; color: white; border: none; cursor: pointer; }
+.vc-user { display: flex; align-items: center; gap: 10px; background: #333; padding: 5px; border-radius: 4px; }
+.vc-user img { width: 24px; height: 24px; border-radius: 50%; }
 
-/* --- UPDATED TRANSPARENT MODE --- */
-/* Includes #whiteboard-panel now */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #1e1e1e; }
+::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+/* --- TRANSPARENT MODE --- */
 body.transparent-mode #main-wrapper {
-    background-color: transparent; 
-    box-shadow: none; border: none;
+    background-color: rgba(30, 30, 30, 0.75); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1);
 }
-
-body.transparent-mode #whiteboard-panel,
-body.transparent-mode #chat-container,
-body.transparent-mode #right-panel {
-    background-color: rgba(30, 30, 30, 0.85); 
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
-    margin: 5px; /* Spacing between glass panels */
+body.transparent-mode #right-panel,
+body.transparent-mode #username-area,
+body.transparent-mode #message-input-area,
+body.transparent-mode #whiteboard-area {
+    background-color: rgba(30, 30, 30, 0.6); 
 }
-
-/* Make canvas slightly see-through in glass mode */
-body.transparent-mode #canvas-container {
-    opacity: 0.9;
-}
-
-/* --- MOBILE RESPONSIVENESS --- */
-@media (max-width: 800px) {
-    #main-wrapper { flex-direction: column; max-width: 100%; height: auto; overflow-y: auto; }
-    #whiteboard-panel { width: 100%; height: 50vh; border-right: none; border-bottom: 1px solid #333; }
-    #chat-container { width: 100%; height: 60vh; border-right: none; }
-    #right-panel { width: 100%; height: auto; border-left: none; border-top: 1px solid #333; }
-}
+body.transparent-mode #online-users-area, 
+body.transparent-mode .wb-header { background-color: rgba(42, 56, 71, 0.7); }
+body.transparent-mode .bubble-content { opacity: 0.95; backdrop-filter: blur(2px); }
