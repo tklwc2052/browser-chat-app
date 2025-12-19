@@ -196,7 +196,7 @@ html, body {
 #send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #file-upload-btn { background-color: #555; color: white; padding: 10px; border-radius: 4px; border: none; cursor: pointer; }
 
-/* Right Panel Layout Fix */
+/* Right Panel Layout */
 #right-panel { 
     width: 250px; 
     background-color: var(--bg-primary); 
@@ -258,19 +258,16 @@ body.transparent-mode #main-wrapper {
     border: 1px solid rgba(255,255,255,0.1);
 }
 
-/* By setting these to transparent, they reveal the #main-wrapper background (0.75) 
-   beneath them, making all 3 panels look exactly the same.
-*/
 body.transparent-mode #dm-sidebar, 
 body.transparent-mode #right-panel {
     background-color: transparent; 
-    backdrop-filter: none; /* Avoid double-blur */
+    backdrop-filter: none;
     border-color: rgba(255,255,255,0.1);
 }
 
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
-    background-color: rgba(30, 30, 30, 0.3); /* Slight tint for text readability */
+    background-color: rgba(30, 30, 30, 0.3);
 }
 
 body.transparent-mode #online-users-area {
