@@ -48,7 +48,7 @@ const vcUsers = {};
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 const userAvatarCache = {}; 
-// NEW: Store the MOTD in memory (resets if server restarts)
+// Default MOTD
 let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
 
 const mutedUsers = new Set(); 
@@ -115,12 +115,18 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // NEW: Send MOTD specifically to this user on connection
-    socket.emit('motd', serverMOTD);
-
+    // 1. Send History FIRST (because this clears the screen on the client)
     socket.emit('history', messageHistory);
+    
+    // 2. Send other data
     broadcastVCUserList(); 
     broadcastSidebarRefresh(); 
+
+    // 3. Send MOTD LAST (so it appends to the bottom)
+    // We add a tiny delay (100ms) to ensure the client has finished rendering the history
+    setTimeout(() => {
+        socket.emit('motd', serverMOTD);
+    }, 100);
 
     socket.on('get-history', () => { socket.emit('history', messageHistory); });
 
@@ -280,13 +286,10 @@ io.on('connection', async (socket) => {
                         io.emit('chat-message', formatMessage('System', `All users (except Admin) have been wiped.`));
                     } catch(e) { console.error(e); }
                     return;
-                }
-                // NEW: Admin MOTD Command
-                else if (command === 'motd') {
+                } else if (command === 'motd') {
                     const newMotd = args.join(' ');
                     if (newMotd) {
                         serverMOTD = newMotd;
-                        // Confirm to admin that it changed
                         socket.emit('chat-message', formatMessage('System', `MOTD updated to: ${serverMOTD}`));
                     } else {
                         socket.emit('chat-message', formatMessage('System', `Current MOTD: ${serverMOTD}`));
