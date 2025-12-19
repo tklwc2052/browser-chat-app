@@ -420,28 +420,18 @@
 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
-        // NOTE: we don't add 'grouped-tight' here by default, that's done dynamically 
-        // to the PREVIOUS message or via batch logic
 
-        if (msg.type === 'private' || msg.type === 'pm') {
-            const isMe = (msg.sender === currentUsername);
-            isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
-            messageEl.classList.add('dm-message-item'); 
-        } else {
-             const isMe = (msg.sender === currentUsername);
-             isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
-        }
+        const isMe = (msg.sender === currentUsername);
+        isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
         
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
-        if (msg.type === 'private' || msg.type === 'pm') contentArea.classList.add('private-message-container');
         
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
         const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
-        if (msg.type === 'private' || msg.type === 'pm') bubbleContent.classList.add('bubble-private');
         
         if (msg.image) {
             const img = document.createElement('img');
@@ -466,14 +456,13 @@
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
         
-        // Only append Avatar if this is NOT a continuation (i.e. it's the start of a block)
+        // Only append Avatar if this is NOT a continuation
         if (!isContinuation && msg.avatar) {
             const avatarImg = document.createElement('img');
             avatarImg.src = msg.avatar; 
             avatarImg.classList.add('avatar');
             messageEl.appendChild(avatarImg);
         } else if (isContinuation) {
-            // Add a spacer invisible avatar to keep alignment
             const spacer = document.createElement('div');
             spacer.classList.add('avatar-spacer');
             messageEl.appendChild(spacer);
@@ -490,7 +479,6 @@
         let prevMsg = null;
 
         recentMessages.forEach((msg, index) => {
-            // Check if this message continues the previous one (for avatar spacer)
             let isContinuation = false;
             if (prevMsg && shouldGroupMessage(msg, prevMsg)) {
                 isContinuation = true; 
@@ -498,7 +486,6 @@
 
             const el = createMessageElement(msg, isContinuation);
             
-            // NEW: Check if NEXT message continues this one (for gap/timestamp)
             const nextMsg = recentMessages[index + 1];
             if (nextMsg && shouldGroupMessage(nextMsg, msg)) {
                 el.classList.add('grouped-tight'); // Tighten bottom margin
@@ -530,25 +517,22 @@
             else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
         }
         
-        // 1. Check if this is a continuation of the previous message
         let isContinuation = false;
         if (lastMessageSender === msg.sender && (msg.type === 'general' || msg.type === 'pm')) {
             isContinuation = true;
             
-            // NEW: Modify the PREVIOUS message (which is currently the last element)
+            // Modify previous message
             const prevEl = messagesDiv.lastElementChild;
             if (prevEl && prevEl.classList.contains('message')) {
-                prevEl.classList.add('grouped-tight'); // Remove its bottom gap
+                prevEl.classList.add('grouped-tight');
                 const timeEl = prevEl.querySelector('.message-time');
-                if (timeEl) timeEl.style.display = 'none'; // Hide its timestamp
+                if (timeEl) timeEl.style.display = 'none';
             }
         }
 
-        // 2. Create the new element (timestamp visible by default)
         const el = createMessageElement(msg, isContinuation);
         messagesDiv.appendChild(el);
         
-        // Update state
         if (msg.type === 'general' || msg.type === 'pm') {
             lastMessageSender = msg.sender;
         } else {
