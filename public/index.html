@@ -59,7 +59,10 @@
             <div>
                 <h4 class="panel-title">voice chat</h4>
                 <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <div style="display: flex; gap: 5px;">
+                    <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
+                    <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
+                </div>
                 <ul id="vc-user-list"></ul>
                 <div id="audio-container"></div>
             </div>
@@ -120,10 +123,14 @@
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
+    
+    // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcBtnLeave = document.getElementById('vc-btn-leave'); // NEW
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
+    
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const hiddenFileInput = document.getElementById('hidden-file-input');
     const imagePreviewArea = document.getElementById('image-preview-area');
@@ -137,7 +144,7 @@
     const onlineUsersArea = document.getElementById('online-users-area');
 
     // Settings & Panels
-    const btnCloakLauncher = document.getElementById('btn-cloak-launcher'); // FIXED: Was missing!
+    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const settingMain = document.getElementById('setting-main');
     const settingPM = document.getElementById('setting-pm');
     const settingVC = document.getElementById('setting-vc');
@@ -169,29 +176,23 @@
     // --- SIDEBAR LOGIC ---
     function renderSidebar() {
         dmList.innerHTML = '';
-        
         const mainChatCard = document.createElement('div');
         mainChatCard.className = 'dm-user-card';
         if (currentChatMode === 'global') mainChatCard.classList.add('active');
-        
         const mainWrapper = document.createElement('div');
         mainWrapper.className = 'dm-avatar-wrapper';
         const mainImg = document.createElement('img');
         mainImg.src = 'placeholder-avatar.png'; 
         const mainStatus = document.createElement('div');
         mainStatus.className = 'status-bubble status-online';
-        
         mainWrapper.appendChild(mainImg);
         mainWrapper.appendChild(mainStatus);
-        
         const mainName = document.createElement('div');
         mainName.className = 'dm-username';
         mainName.innerText = "Main Chat";
-        
         mainChatCard.appendChild(mainWrapper);
         mainChatCard.appendChild(mainName);
         mainChatCard.onclick = () => switchToGlobal();
-        
         dmList.appendChild(mainChatCard);
 
         const sortedUsers = [...allUsersCache].sort((a, b) => {
@@ -299,7 +300,6 @@
         if (typingTimeout) clearTimeout(typingTimeout);
     }
     
-    // Typing
     messageInput.addEventListener('input', () => { 
         if (!currentUsername) return; 
         const scope = currentChatMode === 'global' ? 'global' : currentDmTarget;
@@ -408,6 +408,7 @@
             isInVC = true;
             vcBtnJoin.style.display = 'none';
             vcBtnMute.style.display = 'inline-block';
+            vcBtnLeave.style.display = 'inline-block'; // SHOW LEAVE BTN
             vcBtnMute.innerText = "Mute";
         } catch (err) {
             alert("Could not access microphone.");
@@ -420,8 +421,40 @@
             isMuted = !isMuted;
             localStream.getAudioTracks()[0].enabled = !isMuted;
             vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
-            vcBtnMute.style.backgroundColor = isMuted ? "grey" : "var(--color-vc-red)";
+            // User requested blue buttons, but mute state usually indicates grey/red.
+            // Preserving "grey when muted" logic from turn 10 request or user can customize.
+            vcBtnMute.style.backgroundColor = isMuted ? "grey" : "var(--color-accent-blue)";
             socket.emit('vc-mute-toggle', isMuted);
+        }
+    };
+
+    // --- NEW: LEAVE BUTTON LOGIC ---
+    vcBtnLeave.onclick = () => {
+        if (isInVC) {
+            socket.emit('vc-leave');
+            isInVC = false;
+            
+            // Stop Local Stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            // Close Peer Connections
+            Object.keys(peers).forEach(id => {
+                peers[id].close();
+                delete peers[id];
+            });
+            
+            // Reset UI
+            document.getElementById('audio-container').innerHTML = ''; // Remove remote audio
+            vcBtnJoin.style.display = 'inline-block';
+            vcBtnMute.style.display = 'none';
+            vcBtnLeave.style.display = 'none';
+            
+            isMuted = false;
+            vcBtnMute.innerText = "Mute";
+            vcBtnMute.style.backgroundColor = ""; // Reset to default CSS
         }
     };
 
