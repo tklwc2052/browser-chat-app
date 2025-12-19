@@ -7,60 +7,35 @@
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
 <style>
-    /* SIDEBAR STYLES (Basic Layout) */
+    /* SIDEBAR & LAYOUT */
     body { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
     
     #sidebar {
-        width: 220px;
-        background-color: var(--bg-secondary);
-        border-right: 1px solid #333;
-        display: flex; flex-direction: column;
-        padding: 10px; overflow-y: auto; flex-shrink: 0;
+        width: 220px; background-color: var(--bg-secondary); border-right: 1px solid #333;
+        display: flex; flex-direction: column; padding: 10px; overflow-y: auto; flex-shrink: 0;
     }
-
-    #main-wrapper {
-        flex-grow: 1; display: flex;
-        overflow: hidden; /* Prevent double scrollbars */
-    }
-
-    #chat-container {
-        flex-grow: 1; display: flex; flex-direction: column;
-        border-right: 1px solid #333; /* Separator from right panel */
-    }
-
+    #main-wrapper { flex-grow: 1; display: flex; overflow: hidden; }
+    #chat-container { flex-grow: 1; display: flex; flex-direction: column; border-right: 1px solid #333; }
     #right-panel {
-        width: 250px; flex-shrink: 0;
-        background-color: var(--bg-secondary);
-        padding: 10px; overflow-y: auto;
-        display: flex; flex-direction: column; gap: 10px;
+        width: 250px; flex-shrink: 0; background-color: var(--bg-secondary);
+        padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
     }
 
-    /* Sidebar Buttons */
+    /* Buttons & Users */
     .sidebar-btn {
-        background: none; border: none; color: #aaa;
-        text-align: left; padding: 10px; cursor: pointer;
-        border-radius: 5px; font-size: 1em; width: 100%;
-        display: flex; align-items: center; gap: 10px;
+        background: none; border: none; color: #aaa; text-align: left; padding: 10px; cursor: pointer;
+        border-radius: 5px; font-size: 1em; width: 100%; display: flex; align-items: center; gap: 10px;
     }
     .sidebar-btn:hover { background-color: rgba(255,255,255,0.05); color: #fff; }
     .sidebar-btn.active { background-color: var(--color-accent-blue); color: white; }
-    
     .sidebar-section { font-size: 0.75em; text-transform: uppercase; color: #666; margin: 20px 0 5px 5px; font-weight: bold; }
-    
-    .user-item {
-        display: flex; align-items: center; padding: 8px;
-        cursor: pointer; border-radius: 4px; color: #ccc;
-    }
+    .user-item { display: flex; align-items: center; padding: 8px; cursor: pointer; border-radius: 4px; color: #ccc; }
     .user-item:hover { background-color: rgba(255,255,255,0.05); }
     .user-item.active { background-color: rgba(255,255,255,0.1); color: #fff; border-left: 3px solid var(--color-accent-blue); }
-    
     .user-status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #666; margin-right: 10px; }
     .user-status-dot.online { background-color: var(--color-accent-green); box-shadow: 0 0 5px var(--color-accent-green); }
-    
     .unread-badge { background-color: var(--color-vc-red); color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 10px; margin-left: auto; display: none; }
     .unread-badge.show { display: block; }
-    
-    /* Hide old online list inside chat */
     #online-users-area { display: none !important; }
 </style>
 </head>
@@ -73,9 +48,7 @@
             </button>
             <div id="my-username-label" style="font-weight: bold; margin-top: 5px; color: white;">Guest</div>
         </div>
-
         <button id="btn-global-chat" class="sidebar-btn active"><span>🌐</span> Global Chat</button>
-
         <div class="sidebar-section">Direct Messages</div>
         <div id="dm-user-list"></div>
     </div>
@@ -88,10 +61,8 @@
             </div>
             <div id="chat-header" style="font-weight: bold; margin-top:5px;"># Global Chat</div>
         </div>
-        
         <div id="messages" style="flex-grow: 1; overflow-y: auto; padding: 10px;"></div>
         <div id="typing-indicator"></div>
-
         <div id="message-input-area">
             <div id="image-preview-area" style="display:none;">
                 <img id="image-preview" src="" alt="Image Preview">
@@ -105,40 +76,24 @@
     </div>
 
     <div id="right-panel">
-        
         <div class="panel-top-group">
-            <div>
-                <h4 class="panel-title">other stuff</h4>
-                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-            </div>
-
-            <div>
-                <h4 class="panel-title">voice chat</h4>
-                <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
-                <div id="audio-container" style="display:none;"></div>
-            </div>
+            <h4 class="panel-title">Voice Chat</h4>
+            <button id="vc-btn-join" class="panel-btn">Join Call</button>
+            <div id="audio-container" style="display:none;"></div>
+            <div style="margin-top: 15px;"></div>
+            <h4 class="panel-title">Other</h4>
+            <button id="launch-custom-window-btn" class="panel-btn">Resizable Window</button>
+            <button id="btn-cloak-launcher" class="panel-btn" style="margin-top:5px;">Cloak Launcher</button>
         </div>
 
         <div class="panel-bottom-group">
-            <h4 class="panel-title">Browser</h4>
-            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
-            <div style="margin-bottom: 15px;"></div> 
-
             <h4 class="panel-title">Appearance</h4>
             <div class="settings-panel">
-                <ul class="settings-list">
-                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
-                            <div style="display: flex; gap: 5px;">
-                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
-                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
-                            </div>
-                        </div>
-                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
-                    </li>
-                </ul>
+                <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                    <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin:0;">Upload BG</button>
+                    <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin:0; background-color: var(--color-vc-red);">Reset</button>
+                </div>
+                <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
             </div>
 
             <div class="dropdown-wrapper">
@@ -148,18 +103,9 @@
                 </div>
                 <div class="dropdown-content" id="notif-dropdown-content">
                     <ul class="settings-list">
-                        <li class="setting-item">
-                            <span>Main Messages</span>
-                            <input type="checkbox" id="setting-main" checked>
-                        </li>
-                        <li class="setting-item">
-                            <span>Private Messages</span>
-                            <input type="checkbox" id="setting-pm" checked>
-                        </li>
-                        <li class="setting-item">
-                            <span>Sound</span>
-                            <input type="checkbox" id="setting-sound" checked>
-                        </li>
+                        <li class="setting-item"><span>Messages</span><input type="checkbox" id="setting-main" checked></li>
+                        <li class="setting-item"><span>VC Alerts</span><input type="checkbox" id="setting-vc" checked></li>
+                        <li class="setting-item"><span>Sound</span><input type="checkbox" id="setting-sound" checked></li>
                     </ul>
                 </div>
             </div>
@@ -168,29 +114,28 @@
 
 <script>
     const socket = io();
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- ELEMENTS ---
+    // DOM
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const btnGlobalChat = document.getElementById('btn-global-chat');
     const dmUserList = document.getElementById('dm-user-list');
     const chatHeader = document.getElementById('chat-header');
-    
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const usernameSetupDiv = document.getElementById('username-setup-div');
     const myUsernameLabel = document.getElementById('my-username-label');
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
-
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const hiddenFileInput = document.getElementById('hidden-file-input');
     const imagePreviewArea = document.getElementById('image-preview-area');
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
-    // Right Panel Elements
+    // Right Panel
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const btnBgUpload = document.getElementById('btn-bg-upload');
@@ -199,8 +144,10 @@
     const notifHeader = document.getElementById('notif-dropdown-header');
     const notifContent = document.getElementById('notif-dropdown-content');
     const settingMain = document.getElementById('setting-main');
-    const settingPM = document.getElementById('setting-pm');
+    const settingVC = document.getElementById('setting-vc');
     const settingSound = document.getElementById('setting-sound');
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const audioContainer = document.getElementById('audio-container');
 
     // State
     let currentUsername = '';
@@ -211,25 +158,29 @@
     let dmMessages = {}; 
     let knownUsers = []; 
     let unreadCounts = {}; 
+    let audioContext = null;
+    
+    // VC State
+    let localStream = null; 
+    let peers = {}; 
+    let isInVC = false;
 
     // --- INIT ---
     document.addEventListener('DOMContentLoaded', () => {
         const storedUser = localStorage.getItem('chatUsername');
         const storedAvatar = localStorage.getItem('chatAvatar');
         const storedBg = localStorage.getItem('custom-bg');
+        if (storedAvatar) { currentAvatarBase64 = storedAvatar; currentAvatarPreview.src = storedAvatar; }
+        if (storedBg) { document.body.style.backgroundImage = `url(${storedBg})`; document.body.classList.add('transparent-mode'); }
+        if (storedUser) { usernameInput.value = storedUser; joinChat(storedUser); }
 
-        if (storedAvatar) { 
-            currentAvatarBase64 = storedAvatar; 
-            currentAvatarPreview.src = storedAvatar; 
-        }
-        if (storedBg) {
-            document.body.style.backgroundImage = `url(${storedBg})`;
-            document.body.classList.add('transparent-mode');
-        }
-        if (storedUser) { 
-            usernameInput.value = storedUser; 
-            joinChat(storedUser);
-        }
+        const enableAudio = () => {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume();
+            if (Notification.permission !== "granted") Notification.requestPermission();
+            document.body.removeEventListener('click', enableAudio);
+        };
+        document.body.addEventListener('click', enableAudio);
     });
 
     setUsernameBtn.addEventListener('click', () => joinChat(usernameInput.value));
@@ -238,25 +189,16 @@
         if (!username.trim()) return;
         currentUsername = username.trim();
         localStorage.setItem('chatUsername', currentUsername);
-        
         usernameSetupDiv.style.display = 'none';
         myUsernameLabel.innerText = currentUsername;
-
-        socket.emit('set-username', { 
-            username: currentUsername, 
-            avatar: currentAvatarBase64 || 'placeholder-avatar.png' 
-        });
+        socket.emit('set-username', { username: currentUsername, avatar: currentAvatarBase64 || 'placeholder-avatar.png' });
     }
 
     // --- NAVIGATION ---
-    function getDmKey(userA, userB) {
-        return [userA, userB].sort().join(':');
-    }
-
+    function getDmKey(userA, userB) { return [userA, userB].sort().join(':'); }
     function switchChat(target) {
         activeChat = target;
         messagesDiv.innerHTML = '';
-        
         if (target === 'global') {
             btnGlobalChat.classList.add('active');
             chatHeader.innerText = "# Global Chat";
@@ -267,7 +209,6 @@
             btnGlobalChat.classList.remove('active');
             chatHeader.innerText = `@ ${target}`;
             messageInput.placeholder = `Message @${target}...`;
-            
             document.querySelectorAll('.user-item').forEach(el => {
                 el.classList.remove('active');
                 if (el.dataset.username === target) {
@@ -277,77 +218,62 @@
                     if(badge) badge.classList.remove('show');
                 }
             });
-
             const key = getDmKey(currentUsername, target);
             if (dmMessages[key]) renderMessages(dmMessages[key]);
         }
     }
-
     btnGlobalChat.addEventListener('click', () => switchChat('global'));
 
-    // --- USERS LIST ---
-    socket.on('user-list-update', (users) => {
-        knownUsers = users;
-        renderSidebarUsers();
-    });
-
+    socket.on('user-list-update', (users) => { knownUsers = users; renderSidebarUsers(); });
     function renderSidebarUsers() {
         dmUserList.innerHTML = '';
         knownUsers.forEach(u => {
             if (u.username === currentUsername) return;
-
             const div = document.createElement('div');
             div.className = 'user-item';
             div.dataset.username = u.username;
             if (activeChat === u.username) div.classList.add('active');
-            
             const isOnline = (new Date() - new Date(u.lastSeen)) < 60000; 
-
             div.innerHTML = `
                 <div class="user-status-dot ${isOnline ? 'online' : ''}"></div>
                 <img src="${u.avatar || 'placeholder-avatar.png'}" style="width:30px; height:30px; border-radius:50%; margin-right:10px; object-fit:cover;">
                 <span style="flex-grow:1; overflow:hidden; text-overflow:ellipsis;">${u.username}</span>
                 <span class="unread-badge ${unreadCounts[u.username] > 0 ? 'show' : ''}">${unreadCounts[u.username] || ''}</span>
             `;
-
             div.addEventListener('click', () => switchChat(u.username));
             dmUserList.appendChild(div);
         });
     }
 
     // --- MESSAGING ---
-    socket.on('history', (msgs) => {
-        globalMessages = msgs;
-        if (activeChat === 'global') renderMessages(globalMessages);
-    });
-
-    socket.on('dm-history-sync', (dms) => {
-        dmMessages = dms;
-    });
-
+    socket.on('history', (msgs) => { globalMessages = msgs; if (activeChat === 'global') renderMessages(globalMessages); });
+    socket.on('dm-history-sync', (dms) => { dmMessages = dms; });
     socket.on('chat-message', (msg) => {
         if (msg.type === 'general' || msg.type === 'system') {
             globalMessages.push(msg);
-            if (activeChat === 'global') {
-                displaySingleMessage(msg);
-                if (settingMain.checked) playSound();
-            }
-        }
-        else if (msg.type === 'private') {
+            if (activeChat === 'global') displaySingleMessage(msg);
+        } else if (msg.type === 'private') {
             const otherPerson = (msg.sender === currentUsername) ? msg.target : msg.sender;
             const key = getDmKey(currentUsername, otherPerson);
-            
             if (!dmMessages[key]) dmMessages[key] = [];
             dmMessages[key].push(msg);
-
-            if (activeChat === otherPerson) {
-                displaySingleMessage(msg);
-            } else {
-                if (msg.sender !== currentUsername) {
-                    unreadCounts[msg.sender] = (unreadCounts[msg.sender] || 0) + 1;
-                    renderSidebarUsers();
-                    if (settingPM.checked) playSound();
-                }
+            if (activeChat === otherPerson) displaySingleMessage(msg);
+            else if (msg.sender !== currentUsername) {
+                unreadCounts[msg.sender] = (unreadCounts[msg.sender] || 0) + 1;
+                renderSidebarUsers();
+            }
+        }
+        if (msg.sender !== currentUsername) {
+            let shouldNotify = false;
+            let title = '';
+            if (msg.type === 'general' && settingMain.checked) { shouldNotify = true; title = `#Global: ${msg.sender}`; }
+            if (msg.type === 'private') { shouldNotify = true; title = `DM from ${msg.sender}`; }
+            if (msg.type === 'system' && (msg.text.includes('joined Voice Chat') || msg.text.includes('left Voice Chat'))) {
+                if (settingVC.checked) { shouldNotify = true; title = 'Voice Chat Update'; }
+            }
+            if (shouldNotify) {
+                if (settingSound.checked) playSound();
+                if (document.hidden && Notification.permission === "granted") new Notification(title, { body: msg.text || 'Sent an image' });
             }
         }
     });
@@ -355,159 +281,135 @@
     function sendMessage() {
         const text = messageInput.value.trim();
         if ((!text && !stagedImage) || !currentUsername) return;
-
-        socket.emit('chat-message', { 
-            text, 
-            image: stagedImage,
-            avatar: currentAvatarBase64, 
-            type: activeChat === 'global' ? 'general' : 'private',
-            target: activeChat === 'global' ? null : activeChat
-        });
-        
-        messageInput.value = '';
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = '';
+        socket.emit('chat-message', { text, image: stagedImage, avatar: currentAvatarBase64, type: activeChat === 'global' ? 'general' : 'private', target: activeChat === 'global' ? null : activeChat });
+        messageInput.value = ''; stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
     }
-
     sendButton.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    });
-
-    // --- RENDER UTILS ---
-    function renderMessages(list) {
-        messagesDiv.innerHTML = '';
-        list.forEach(msg => displaySingleMessage(msg));
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
+    messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    function renderMessages(list) { messagesDiv.innerHTML = ''; list.forEach(displaySingleMessage); messagesDiv.scrollTop = messagesDiv.scrollHeight; }
     function displaySingleMessage(msg) {
         const div = document.createElement('div');
         div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
         if (msg.type === 'system') div.className = 'message system-message';
-
         let contentHtml = '';
         if (msg.image) contentHtml += `<img src="${msg.image}" class="message-image" onclick="window.open('${msg.image}')">`;
         if (msg.text) contentHtml += `<div>${formatText(msg.text)}</div>`;
-        
         div.innerHTML = `
             ${(msg.sender !== currentUsername && msg.type !== 'system') ? `<img src="${msg.avatar || 'placeholder-avatar.png'}" class="avatar">` : ''}
             <div class="message-content-area">
                 ${(msg.sender !== currentUsername && msg.type !== 'system') ? `<div class="message-username">${msg.sender}</div>` : ''}
                 <div class="bubble-content ${msg.type === 'private' ? 'bubble-private' : ''}">${contentHtml}</div>
                 <div class="message-time">${msg.time || ''}</div>
-            </div>
-        `;
+            </div>`;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
-
     function formatText(text) {
         let safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const urlRegex = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gim;
-        safeText = safeText.replace(urlRegex, url => `<a href="${url}" target="_blank" style="color: #4da6ff; text-decoration: underline;">${url}</a>`);
-        return safeText;
+        return safeText.replace(urlRegex, url => `<a href="${url}" target="_blank" style="color: #4da6ff; text-decoration: underline;">${url}</a>`);
     }
 
-    // --- NOTIFICATIONS & SETTINGS ---
-    notifHeader.addEventListener('click', () => {
-        notifHeader.classList.toggle('active');
-        notifContent.classList.toggle('show');
+    // --- VOICE CHAT LOGIC (RESTORED) ---
+    async function startVC() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            isInVC = true;
+            vcBtnJoin.textContent = 'Leave Call';
+            vcBtnJoin.style.backgroundColor = 'var(--color-vc-red)';
+            socket.emit('vc-join');
+        } catch (err) { alert('Microphone denied.'); }
+    }
+    function leaveVC() {
+        socket.emit('vc-leave');
+        if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+        Object.values(peers).forEach(p => p.close());
+        peers = {};
+        isInVC = false;
+        vcBtnJoin.textContent = 'Join Call';
+        vcBtnJoin.style.backgroundColor = '';
+        audioContainer.innerHTML = '';
+    }
+    function createPeer(targetId, initiator) {
+        if (peers[targetId]) return;
+        const peer = new RTCPeerConnection(rtcConfig);
+        peers[targetId] = peer;
+        if (localStream) localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+        peer.ontrack = (e) => {
+            const audio = document.createElement('audio');
+            audio.srcObject = e.streams[0];
+            audio.autoplay = true;
+            audioContainer.appendChild(audio);
+        };
+        peer.onicecandidate = (e) => { if (e.candidate) socket.emit('signal', { target: targetId, signal: e.candidate }); };
+        if (initiator) peer.createOffer().then(o => peer.setLocalDescription(o)).then(() => socket.emit('signal', { target: targetId, signal: peer.localDescription }));
+        return peer;
+    }
+    vcBtnJoin.addEventListener('click', () => { if (!isInVC) startVC(); else leaveVC(); });
+    socket.on('vc-user-joined', (id) => { if (isInVC) createPeer(id, true); });
+    socket.on('vc-user-left', (id) => { if (peers[id]) { peers[id].close(); delete peers[id]; } });
+    socket.on('signal', async ({ sender, signal }) => {
+        if (!isInVC) return;
+        const peer = peers[sender] || createPeer(sender, false);
+        if (signal.type === 'offer') {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.emit('signal', { target: sender, signal: answer });
+        } else if (signal.type === 'answer') await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        else if (signal.candidate) await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
     });
 
+    // --- OTHER ---
+    notifHeader.addEventListener('click', () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); });
     function playSound() {
-        if (!settingSound.checked || document.hidden) return;
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(440, ctx.currentTime);
-        gain.gain.setValueAtTime(0.05, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') audioContext.resume();
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain); gain.connect(audioContext.destination);
+        osc.frequency.setValueAtTime(440, audioContext.currentTime);
+        gain.gain.setValueAtTime(0.05, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.1);
+        osc.start(); osc.stop(audioContext.currentTime + 0.1);
     }
-
-    // --- BUTTON ACTIONS (RESTORED) ---
-    if (launchCustomWindowBtn) launchCustomWindowBtn.addEventListener('click', () => {
-        window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
-    });
-
-    if(btnCloakLauncher) btnCloakLauncher.addEventListener('click', () => {
+    if (launchCustomWindowBtn) launchCustomWindowBtn.addEventListener('click', () => { window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=400,height=600,resizable=yes'); });
+    if (btnCloakLauncher) btnCloakLauncher.addEventListener('click', () => {
         const win = window.open('about:blank', '_blank');
-        if (win) {
-            win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="width:100vw;height:100vh;border:none;"></iframe>');
-            win.document.close();
-        }
+        if (win) { win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="width:100vw;height:100vh;border:none;"></iframe>'); win.document.close(); }
     });
-
-    // --- FILE UPLOAD (GIF FIX) ---
     function handleFileSelection(file) {
         if (!file || !file.type.startsWith('image/')) return;
         if (file.type === 'image/gif') {
-            const reader = new FileReader();
-            reader.onload = (e) => { stagedImage = e.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; };
-            reader.readAsDataURL(file);
-            return; 
+            const reader = new FileReader(); reader.onload = (e) => { stagedImage = e.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; }; reader.readAsDataURL(file); return;
         }
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+        const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = (event) => {
+            const img = new Image(); img.src = event.target.result; img.onload = () => {
+                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
                 const scale = Math.min(800 / img.width, 800 / img.height, 1);
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
+                canvas.width = img.width * scale; canvas.height = img.height * scale;
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                stagedImage = canvas.toDataURL('image/jpeg', 0.7);
-                imagePreview.src = stagedImage;
-                imagePreviewArea.style.display = 'flex';
+                stagedImage = canvas.toDataURL('image/jpeg', 0.7); imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex';
             };
         };
     }
-
     fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
     hiddenFileInput.addEventListener('change', (e) => handleFileSelection(e.target.files[0]));
-    
     avatarUploadBtn.addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file'; input.accept = 'image/*';
+        const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
         input.onchange = (e) => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                currentAvatarBase64 = evt.target.result;
-                currentAvatarPreview.src = currentAvatarBase64;
-                localStorage.setItem('chatAvatar', currentAvatarBase64);
-                if(currentUsername) socket.emit('set-username', { username: currentUsername, avatar: currentAvatarBase64 });
-            };
+            const file = e.target.files[0]; const reader = new FileReader();
+            reader.onload = (evt) => { currentAvatarBase64 = evt.target.result; currentAvatarPreview.src = currentAvatarBase64; localStorage.setItem('chatAvatar', currentAvatarBase64); if (currentUsername) socket.emit('set-username', { username: currentUsername, avatar: currentAvatarBase64 }); };
             reader.readAsDataURL(file);
-        };
-        input.click();
+        }; input.click();
     });
-
     btnBgUpload.addEventListener('click', () => bgUploadInput.click());
     bgUploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            localStorage.setItem('custom-bg', evt.target.result);
-            document.body.style.backgroundImage = `url(${evt.target.result})`;
-            document.body.classList.add('transparent-mode');
-        };
+        const file = e.target.files[0]; const reader = new FileReader();
+        reader.onload = (evt) => { localStorage.setItem('custom-bg', evt.target.result); document.body.style.backgroundImage = `url(${evt.target.result})`; document.body.classList.add('transparent-mode'); };
         reader.readAsDataURL(file);
     });
-    btnBgReset.addEventListener('click', () => {
-        localStorage.removeItem('custom-bg');
-        document.body.style.backgroundImage = '';
-        document.body.classList.remove('transparent-mode');
-    });
-
+    btnBgReset.addEventListener('click', () => { localStorage.removeItem('custom-bg'); document.body.style.backgroundImage = ''; document.body.classList.remove('transparent-mode'); });
 </script>
 </body>
 </html>
