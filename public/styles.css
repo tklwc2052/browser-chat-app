@@ -125,14 +125,7 @@ html, body {
 #username-input { padding: 8px; border-radius: 4px; border: 1px solid #555; background-color: var(--bg-input); color: var(--color-text); }
 #set-username-btn { padding: 8px 15px; background-color: var(--color-accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer; }
 
-#online-users-area {
-    padding: 10px 15px; background-color: #2a3847;
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
-    font-size: 0.9em; color: #90caf9; overflow-x: auto; 
-    transition: background-color 0.3s ease;
-}
-#online-users-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 15px; }
-#online-users-list li { display: flex; align-items: center; gap: 5px; }
+/* REMOVED ONLINE USERS AREA CSS */
 
 #messages {
     flex-grow: 1; overflow-y: auto;
@@ -267,9 +260,7 @@ body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
     background-color: rgba(30, 30, 30, 0.3);
 }
-body.transparent-mode #online-users-area {
-    background-color: rgba(42, 56, 71, 0.7); 
-}
+/* REMOVED TRANSPARENT MODE OVERRIDE FOR ONLINE USERS */
 body.transparent-mode .bubble-content {
     opacity: 0.95; 
     backdrop-filter: blur(2px);
