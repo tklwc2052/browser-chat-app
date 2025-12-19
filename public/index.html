@@ -30,11 +30,6 @@
             </div>
         </div>
 
-        <div id="online-users-area">
-            <h4>whos online:</h4>
-            <ul id="online-users-list"></ul>
-        </div>
-        
         <div id="messages"></div>
         <div id="typing-indicator"></div>
 
@@ -113,21 +108,13 @@
 
     const socket = io();
 
-    // --- FORCE RESET HANDLER (THE PURGE) ---
-    // This listens for the server rejecting a bad username
-    socket.on('force-reset', (reason) => {
-        alert("SYSTEM NOTICE: " + reason);
-        localStorage.removeItem('chatUsername'); // Delete bad name
-        window.location.reload(); // Reload to login screen
-    });
-
     // DOM Elements
     const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const onlineUsersList = document.getElementById('online-users-list');
+    // Removed onlineUsersList reference
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
@@ -149,7 +136,7 @@
     // Sidebar
     const dmList = document.getElementById('dm-list');
     const chatHeaderLabel = document.querySelector('#username-area h3');
-    const onlineUsersArea = document.getElementById('online-users-area');
+    // Removed onlineUsersArea reference
 
     // Settings & Panels
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
@@ -252,7 +239,7 @@
         renderSidebar();
         
         chatHeaderLabel.innerText = `Chat with ${targetUser}`;
-        onlineUsersArea.style.display = 'none';
+        // Removed onlineUsersArea display toggle logic
         
         messagesDiv.innerHTML = '';
         if (dmMessagesCache[targetUser]) {
@@ -270,7 +257,7 @@
         renderSidebar();
         
         chatHeaderLabel.innerText = 'username:';
-        onlineUsersArea.style.display = 'flex';
+        // Removed onlineUsersArea display toggle logic
         
         messagesDiv.innerHTML = '';
         if (globalMessagesCache.length > 0) {
@@ -488,7 +475,7 @@
     // --- GENERIC UI ---
     if (btnCloakLauncher) btnCloakLauncher.onclick = () => { const newWindow = window.open('about:blank', '_blank'); if (!newWindow) return; newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/"></iframe></body></html>`); };
     if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
-    socket.on('update-user-list', (users) => { onlineUsersList.innerHTML = ''; users.forEach(user => { const li = document.createElement('li'); li.innerHTML = `<span style="width:10px;height:10px;background:#4caf50;border-radius:50%;display:inline-block;"></span> ${user.username}`; onlineUsersList.appendChild(li); }); });
+    // Removed old user list update handler
     notifHeader.onclick = () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); };
     const loadSetting = (key, checkbox) => { const saved = localStorage.getItem(key); if (saved !== null) checkbox.checked = (saved === 'true'); }; loadSetting('notif-main', settingMain); loadSetting('notif-pm', settingPM); loadSetting('notif-vc', settingVC); loadSetting('notif-sound', settingSound);
     const savedBg = localStorage.getItem('custom-bg'); if (savedBg) { document.body.style.backgroundImage = `url(${savedBg})`; document.body.classList.add('transparent-mode'); }
@@ -544,27 +531,7 @@
     avatarUploadBtn.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = (e) => { const f = e.target.files[0]; if(f){ compressImage(f, (res) => { currentAvatarBase64 = res; currentAvatarPreview.src = res; if(currentUsername) socket.emit('set-username', {username: currentUsername, avatar: currentAvatarBase64}); localStorage.setItem('chatAvatar', currentAvatarBase64); }); } }; i.click(); };
     
     document.addEventListener('DOMContentLoaded', () => { const u = localStorage.getItem('chatUsername'); const a = localStorage.getItem('chatAvatar'); if(a) { currentAvatarBase64 = a; currentAvatarPreview.src = a; } if(u) { usernameInput.value = u; socket.emit('set-username', {username: u, avatar: a}); currentUsername = u; usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
-    
-    // --- UPDATED CLIENT-SIDE VALIDATION ---
-    setUsernameBtn.onclick = () => { 
-        const u = usernameInput.value.trim();
-        const nameRegex = /^[a-zA-Z0-9_]+$/;
-
-        if(!u) return;
-        
-        if (!nameRegex.test(u)) {
-            alert("Invalid Username!\nNo spaces, special characters, or emojis allowed.\nOnly letters (A-Z), numbers (0-9), and underscores (_).");
-            return;
-        }
-
-        if(u) { 
-            localStorage.setItem('chatUsername', u); 
-            currentUsername = u; 
-            socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); 
-            usernameInput.disabled = true; 
-            setUsernameBtn.disabled = true; 
-        } 
-    };
+    setUsernameBtn.onclick = () => { const u = usernameInput.value.trim(); if(u) { localStorage.setItem('chatUsername', u); currentUsername = u; socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); usernameInput.disabled = true; setUsernameBtn.disabled = true; } };
     sendButton.onclick = sendMessage; messageInput.onkeydown = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 </script>
 </body>
