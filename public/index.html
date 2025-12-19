@@ -29,7 +29,7 @@
                 <button id="set-username-btn">Save</button>
             </div>
         </div>
-
+        
         <div id="messages"></div>
         <div id="typing-indicator"></div>
 
@@ -114,7 +114,6 @@
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    // Removed onlineUsersList reference
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
@@ -136,7 +135,6 @@
     // Sidebar
     const dmList = document.getElementById('dm-list');
     const chatHeaderLabel = document.querySelector('#username-area h3');
-    // Removed onlineUsersArea reference
 
     // Settings & Panels
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
@@ -164,7 +162,7 @@
     // Cache
     let globalMessagesCache = [];
     let dmMessagesCache = {}; 
-    const MAX_VISIBLE_MESSAGES = 100; // LAG PREVENTION CAP
+    const MAX_VISIBLE_MESSAGES = 100;
 
     // VC State
     let localStream = null;
@@ -237,10 +235,7 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
-        
         chatHeaderLabel.innerText = `Chat with ${targetUser}`;
-        // Removed onlineUsersArea display toggle logic
-        
         messagesDiv.innerHTML = '';
         if (dmMessagesCache[targetUser]) {
             renderMessageBatch(dmMessagesCache[targetUser]);
@@ -255,10 +250,7 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
-        
         chatHeaderLabel.innerText = 'username:';
-        // Removed onlineUsersArea display toggle logic
-        
         messagesDiv.innerHTML = '';
         if (globalMessagesCache.length > 0) {
             renderMessageBatch(globalMessagesCache);
@@ -281,7 +273,6 @@
         else { allUsersCache.push({ username: data.username, online: data.online, avatar: data.avatar }); }
         renderSidebar();
     });
-    
     socket.on('dm-history', (data) => {
         dmMessagesCache[data.target] = data.messages;
         if (currentChatMode === 'dm' && currentDmTarget === data.target) {
@@ -289,7 +280,6 @@
             renderMessageBatch(data.messages);
         }
     });
-    
     socket.on('history', (history) => {
         globalMessagesCache = history; 
         if (currentChatMode === 'global') {
@@ -297,7 +287,6 @@
             renderMessageBatch(history);
         }
     });
-
     socket.on('dm-received', (data) => {
         const partner = (data.from === currentUsername) ? data.to : data.from;
         if (!dmMessagesCache[partner]) dmMessagesCache[partner] = [];
@@ -311,10 +300,20 @@
             renderSidebar();
         }
     });
-
     socket.on('chat-message', (msg) => { 
         globalMessagesCache.push(msg);
         if (currentChatMode === 'global') appendMessageToUI(msg); 
+    });
+
+    // NEW: Handle MOTD specifically
+    socket.on('motd', (motdText) => {
+        const msg = {
+            type: 'motd',
+            text: motdText,
+            sender: 'System',
+            time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        };
+        appendMessageToUI(msg);
     });
 
     // --- CHAT LOGIC ---
@@ -352,6 +351,14 @@
     function parseFormatting(text) { if (!text) return ''; return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>'); }
     
     function createMessageElement(msg) {
+        // NEW: Formatted MOTD style
+        if (msg.type === 'motd') {
+            const div = document.createElement('div');
+            div.className = 'system-message motd-message';
+            div.innerHTML = parseFormatting(msg.text); // Allow **bold** inside motd too
+            return div;
+        }
+
         if (msg.type === 'system') {
             const sysDiv = document.createElement('div');
             sysDiv.className = 'system-message';
@@ -415,9 +422,7 @@
     }
 
     function renderMessageBatch(messages) {
-        // PERFORMANCE: Only render last 100 messages
         const recentMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
-        
         const fragment = document.createDocumentFragment();
         recentMessages.forEach(msg => {
             fragment.appendChild(createMessageElement(msg));
@@ -427,7 +432,6 @@
     }
 
     function appendMessageToUI(msg) {
-        // Notifications
         if (msg.sender !== currentUsername && currentChatMode === 'global') {
             if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
             else if (msg.type === 'system' && settingVC.checked && msg.text.includes('Voice Chat')) triggerNotification('Voice Chat', msg.text);
@@ -440,7 +444,6 @@
         const el = createMessageElement(msg);
         messagesDiv.appendChild(el);
 
-        // PERFORMANCE: Remove oldest message if over limit
         if (messagesDiv.childElementCount > MAX_VISIBLE_MESSAGES) {
             messagesDiv.removeChild(messagesDiv.firstElementChild);
         }
@@ -475,7 +478,6 @@
     // --- GENERIC UI ---
     if (btnCloakLauncher) btnCloakLauncher.onclick = () => { const newWindow = window.open('about:blank', '_blank'); if (!newWindow) return; newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/"></iframe></body></html>`); };
     if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
-    // Removed old user list update handler
     notifHeader.onclick = () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); };
     const loadSetting = (key, checkbox) => { const saved = localStorage.getItem(key); if (saved !== null) checkbox.checked = (saved === 'true'); }; loadSetting('notif-main', settingMain); loadSetting('notif-pm', settingPM); loadSetting('notif-vc', settingVC); loadSetting('notif-sound', settingSound);
     const savedBg = localStorage.getItem('custom-bg'); if (savedBg) { document.body.style.backgroundImage = `url(${savedBg})`; document.body.classList.add('transparent-mode'); }
@@ -508,7 +510,7 @@
                     canvas.height = img.height;
                 }
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                // Compress to JPEG with 70% quality
+                // Compress to JPEG
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
                 callback(dataUrl);
             }
@@ -518,17 +520,56 @@
     function handleFileSelection(file) { 
         if (!file || !file.type.startsWith('image/')) return; 
         
-        // Use the compressor!
-        compressImage(file, (base64) => {
-            stagedImage = base64; 
-            imagePreview.src = stagedImage; 
-            imagePreviewArea.style.display = 'flex'; 
-        });
+        // Check if GIF
+        if (file.type === 'image/gif') {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                stagedImage = e.target.result;
+                imagePreview.src = stagedImage;
+                imagePreviewArea.style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            // Use compressor for non-GIFs
+            compressImage(file, (base64) => {
+                stagedImage = base64; 
+                imagePreview.src = stagedImage; 
+                imagePreviewArea.style.display = 'flex'; 
+            });
+        }
     }
 
     messageInput.onpaste = (e) => { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let item of items) if (item.kind === 'file' && item.type.startsWith('image/')) handleFileSelection(item.getAsFile()); };
     removeImageBtn.onclick = () => { stagedImage = null; imagePreview.src = ''; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = ''; };
-    avatarUploadBtn.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = (e) => { const f = e.target.files[0]; if(f){ compressImage(f, (res) => { currentAvatarBase64 = res; currentAvatarPreview.src = res; if(currentUsername) socket.emit('set-username', {username: currentUsername, avatar: currentAvatarBase64}); localStorage.setItem('chatAvatar', currentAvatarBase64); }); } }; i.click(); };
+    
+    avatarUploadBtn.onclick = () => { 
+        const i = document.createElement('input'); 
+        i.type = 'file'; 
+        i.accept = 'image/*'; 
+        i.onchange = (e) => { 
+            const f = e.target.files[0]; 
+            if(f){ 
+                if (f.type === 'image/gif') {
+                     const reader = new FileReader();
+                     reader.onload = (e) => {
+                         currentAvatarBase64 = e.target.result;
+                         currentAvatarPreview.src = currentAvatarBase64;
+                         if(currentUsername) socket.emit('set-username', {username: currentUsername, avatar: currentAvatarBase64});
+                         localStorage.setItem('chatAvatar', currentAvatarBase64);
+                     };
+                     reader.readAsDataURL(f);
+                } else {
+                    compressImage(f, (res) => { 
+                        currentAvatarBase64 = res; 
+                        currentAvatarPreview.src = res; 
+                        if(currentUsername) socket.emit('set-username', {username: currentUsername, avatar: currentAvatarBase64}); 
+                        localStorage.setItem('chatAvatar', currentAvatarBase64); 
+                    }); 
+                }
+            } 
+        }; 
+        i.click(); 
+    };
     
     document.addEventListener('DOMContentLoaded', () => { const u = localStorage.getItem('chatUsername'); const a = localStorage.getItem('chatAvatar'); if(a) { currentAvatarBase64 = a; currentAvatarPreview.src = a; } if(u) { usernameInput.value = u; socket.emit('set-username', {username: u, avatar: a}); currentUsername = u; usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
     setUsernameBtn.onclick = () => { const u = usernameInput.value.trim(); if(u) { localStorage.setItem('chatUsername', u); currentUsername = u; socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); usernameInput.disabled = true; setUsernameBtn.disabled = true; } };
