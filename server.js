@@ -21,6 +21,15 @@ const User = mongoose.model('User', userSchema);
 
 app.use(express.static(__dirname));
 
+// --- ADD THIS BLOCK ---
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/index.html');
+});
+// ----------------------
+
+
+
+
 const users = {}; 
 const vcUsers = {};
 const userAvatarCache = {};
