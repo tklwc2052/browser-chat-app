@@ -158,7 +158,12 @@ html, body {
 }
 #typing-indicator.active { display: block; }
 
-.message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
+/* PERFORMANCE FIX */
+.message { 
+    display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; 
+    content-visibility: auto; /* Browser Optimization */
+    contain-intrinsic-size: 50px; /* Placeholder size */
+}
 .user-message { flex-direction: row-reverse; }
 
 .avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
@@ -196,7 +201,7 @@ html, body {
 #send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #file-upload-btn { background-color: #555; color: white; padding: 10px; border-radius: 4px; border: none; cursor: pointer; }
 
-/* Right Panel Layout */
+/* Right Panel */
 #right-panel { 
     width: 250px; 
     background-color: var(--bg-primary); 
@@ -247,33 +252,26 @@ html, body {
 .settings-list { list-style: none; padding: 10px; margin: 0; width: 100%; box-sizing: border-box; }
 .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid #333; }
 
-/* ========================================= */
-/* --- TRANSPARENT MODE & CUSTOM BG STYLES --- */
-/* ========================================= */
-
+/* TRANSPARENT MODE */
 body.transparent-mode #main-wrapper {
     background-color: rgba(30, 30, 30, 0.75); 
     backdrop-filter: blur(8px); 
     box-shadow: 0 0 30px rgba(0,0,0,0.8);
     border: 1px solid rgba(255,255,255,0.1);
 }
-
 body.transparent-mode #dm-sidebar, 
 body.transparent-mode #right-panel {
     background-color: transparent; 
     backdrop-filter: none;
     border-color: rgba(255,255,255,0.1);
 }
-
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
     background-color: rgba(30, 30, 30, 0.3);
 }
-
 body.transparent-mode #online-users-area {
     background-color: rgba(42, 56, 71, 0.7); 
 }
-
 body.transparent-mode .bubble-content {
     opacity: 0.95; 
     backdrop-filter: blur(2px);
