@@ -7,59 +7,64 @@
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
 <style>
-    /* SIDEBAR STYLES (Added here so you don't have to edit styles.css yet) */
+    /* SIDEBAR STYLES (Basic Layout) */
+    body { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
+    
     #sidebar {
         width: 220px;
-        background-color: #252526;
+        background-color: var(--bg-secondary);
         border-right: 1px solid #333;
-        display: flex;
-        flex-direction: column;
-        padding: 10px;
-        overflow-y: auto;
-        flex-shrink: 0;
+        display: flex; flex-direction: column;
+        padding: 10px; overflow-y: auto; flex-shrink: 0;
     }
+
+    #main-wrapper {
+        flex-grow: 1; display: flex;
+        overflow: hidden; /* Prevent double scrollbars */
+    }
+
+    #chat-container {
+        flex-grow: 1; display: flex; flex-direction: column;
+        border-right: 1px solid #333; /* Separator from right panel */
+    }
+
+    #right-panel {
+        width: 250px; flex-shrink: 0;
+        background-color: var(--bg-secondary);
+        padding: 10px; overflow-y: auto;
+        display: flex; flex-direction: column; gap: 10px;
+    }
+
+    /* Sidebar Buttons */
     .sidebar-btn {
         background: none; border: none; color: #aaa;
         text-align: left; padding: 10px; cursor: pointer;
         border-radius: 5px; font-size: 1em; width: 100%;
         display: flex; align-items: center; gap: 10px;
-        transition: background 0.2s;
     }
     .sidebar-btn:hover { background-color: rgba(255,255,255,0.05); color: #fff; }
-    .sidebar-btn.active { background-color: #007acc; color: white; }
+    .sidebar-btn.active { background-color: var(--color-accent-blue); color: white; }
     
-    .sidebar-section {
-        font-size: 0.75em; text-transform: uppercase; color: #666;
-        margin-top: 20px; margin-bottom: 5px; padding-left: 5px; font-weight: bold;
-    }
-
+    .sidebar-section { font-size: 0.75em; text-transform: uppercase; color: #666; margin: 20px 0 5px 5px; font-weight: bold; }
+    
     .user-item {
         display: flex; align-items: center; padding: 8px;
         cursor: pointer; border-radius: 4px; color: #ccc;
-        position: relative;
     }
     .user-item:hover { background-color: rgba(255,255,255,0.05); }
-    .user-item.active { background-color: rgba(255,255,255,0.1); color: #fff; border-left: 3px solid #007acc; }
+    .user-item.active { background-color: rgba(255,255,255,0.1); color: #fff; border-left: 3px solid var(--color-accent-blue); }
     
-    .user-status-dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        background-color: #666; margin-right: 10px;
-    }
-    .user-status-dot.online { background-color: #4caf50; box-shadow: 0 0 5px #4caf50; }
-
-    .unread-badge {
-        background-color: #dc3545; color: white; font-size: 0.7em;
-        padding: 2px 6px; border-radius: 10px; margin-left: auto;
-        display: none;
-    }
+    .user-status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #666; margin-right: 10px; }
+    .user-status-dot.online { background-color: var(--color-accent-green); box-shadow: 0 0 5px var(--color-accent-green); }
+    
+    .unread-badge { background-color: var(--color-vc-red); color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 10px; margin-left: auto; display: none; }
     .unread-badge.show { display: block; }
-
-    #chat-container { display: flex; flex-direction: column; flex-grow: 1; }
-    #online-users-area { display: none; } /* Hide old user list */
+    
+    /* Hide old online list inside chat */
+    #online-users-area { display: none !important; }
 </style>
 </head>
 <body>
-<div id="main-wrapper" style="display: flex; height: 100vh;">
 
     <div id="sidebar">
         <div id="username-display" style="margin-bottom: 20px; text-align: center;">
@@ -69,17 +74,13 @@
             <div id="my-username-label" style="font-weight: bold; margin-top: 5px; color: white;">Guest</div>
         </div>
 
-        <button id="btn-global-chat" class="sidebar-btn active">
-            <span>🌐</span> Global Chat
-        </button>
+        <button id="btn-global-chat" class="sidebar-btn active"><span>🌐</span> Global Chat</button>
 
         <div class="sidebar-section">Direct Messages</div>
-        <div id="dm-user-list">
-            </div>
+        <div id="dm-user-list"></div>
     </div>
 
     <div id="chat-container">
-        
         <div id="username-area" style="padding: 10px; border-bottom: 1px solid #333;">
             <div id="username-setup-div">
                 <input type="text" id="username-input" placeholder="Enter username..." style="padding: 5px;">
@@ -96,35 +97,79 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
-            
             <textarea id="message-input" placeholder="Message #global..." rows="1"></textarea>
             <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-            
             <button id="file-upload-btn">📁</button>
             <button id="send-button">Send</button>
         </div>
     </div>
-    
+
     <div id="right-panel">
+        
         <div class="panel-top-group">
-            <h4 class="panel-title">Voice Chat</h4>
-            <button id="vc-btn-join" class="panel-btn">Join Call</button>
-            <div id="audio-container"></div>
+            <div>
+                <h4 class="panel-title">other stuff</h4>
+                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+            </div>
+
+            <div>
+                <h4 class="panel-title">voice chat</h4>
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <div id="audio-container" style="display:none;"></div>
+            </div>
         </div>
 
         <div class="panel-bottom-group">
+            <h4 class="panel-title">Browser</h4>
+            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
+            <div style="margin-bottom: 15px;"></div> 
+
             <h4 class="panel-title">Appearance</h4>
-            <button id="btn-bg-upload" class="panel-btn">Change BG</button>
-            <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
-            <button id="btn-bg-reset" class="panel-btn" style="background-color: #dc3545;">Reset BG</button>
+            <div class="settings-panel">
+                <ul class="settings-list">
+                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
+                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
+                            </div>
+                        </div>
+                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
+                    </li>
+                </ul>
+            </div>
+
+            <div class="dropdown-wrapper">
+                <div class="dropdown-header" id="notif-dropdown-header">
+                    <span>Notifications</span>
+                    <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="dropdown-content" id="notif-dropdown-content">
+                    <ul class="settings-list">
+                        <li class="setting-item">
+                            <span>Main Messages</span>
+                            <input type="checkbox" id="setting-main" checked>
+                        </li>
+                        <li class="setting-item">
+                            <span>Private Messages</span>
+                            <input type="checkbox" id="setting-pm" checked>
+                        </li>
+                        <li class="setting-item">
+                            <span>Sound</span>
+                            <input type="checkbox" id="setting-sound" checked>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
 <script>
     const socket = io();
 
-    // Elements
+    // --- ELEMENTS ---
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
@@ -145,10 +190,17 @@
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
-    // BG Upload Elements
+    // Right Panel Elements
+    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const btnBgUpload = document.getElementById('btn-bg-upload');
-    const bgUploadInput = document.getElementById('bg-upload-input');
     const btnBgReset = document.getElementById('btn-bg-reset');
+    const bgUploadInput = document.getElementById('bg-upload-input');
+    const notifHeader = document.getElementById('notif-dropdown-header');
+    const notifContent = document.getElementById('notif-dropdown-content');
+    const settingMain = document.getElementById('setting-main');
+    const settingPM = document.getElementById('setting-pm');
+    const settingSound = document.getElementById('setting-sound');
 
     // State
     let currentUsername = '';
@@ -249,7 +301,6 @@
             div.dataset.username = u.username;
             if (activeChat === u.username) div.classList.add('active');
             
-            // Basic "is online" check (last seen within 60s)
             const isOnline = (new Date() - new Date(u.lastSeen)) < 60000; 
 
             div.innerHTML = `
@@ -277,7 +328,10 @@
     socket.on('chat-message', (msg) => {
         if (msg.type === 'general' || msg.type === 'system') {
             globalMessages.push(msg);
-            if (activeChat === 'global') displaySingleMessage(msg);
+            if (activeChat === 'global') {
+                displaySingleMessage(msg);
+                if (settingMain.checked) playSound();
+            }
         }
         else if (msg.type === 'private') {
             const otherPerson = (msg.sender === currentUsername) ? msg.target : msg.sender;
@@ -292,6 +346,7 @@
                 if (msg.sender !== currentUsername) {
                     unreadCounts[msg.sender] = (unreadCounts[msg.sender] || 0) + 1;
                     renderSidebarUsers();
+                    if (settingPM.checked) playSound();
                 }
             }
         }
@@ -304,7 +359,7 @@
         socket.emit('chat-message', { 
             text, 
             image: stagedImage,
-            avatar: currentAvatarBase64, // Send current avatar with msg
+            avatar: currentAvatarBase64, 
             type: activeChat === 'global' ? 'general' : 'private',
             target: activeChat === 'global' ? null : activeChat
         });
@@ -330,40 +385,73 @@
     function displaySingleMessage(msg) {
         const div = document.createElement('div');
         div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : 'other-message');
-        
+        if (msg.type === 'system') div.className = 'message system-message';
+
         let contentHtml = '';
         if (msg.image) contentHtml += `<img src="${msg.image}" class="message-image" onclick="window.open('${msg.image}')">`;
-        if (msg.text) contentHtml += `<div>${msg.text}</div>`;
+        if (msg.text) contentHtml += `<div>${formatText(msg.text)}</div>`;
         
         div.innerHTML = `
-            ${msg.sender !== currentUsername ? `<img src="${msg.avatar || 'placeholder-avatar.png'}" class="avatar">` : ''}
+            ${(msg.sender !== currentUsername && msg.type !== 'system') ? `<img src="${msg.avatar || 'placeholder-avatar.png'}" class="avatar">` : ''}
             <div class="message-content-area">
-                ${msg.sender !== currentUsername ? `<div class="message-username">${msg.sender}</div>` : ''}
+                ${(msg.sender !== currentUsername && msg.type !== 'system') ? `<div class="message-username">${msg.sender}</div>` : ''}
                 <div class="bubble-content ${msg.type === 'private' ? 'bubble-private' : ''}">${contentHtml}</div>
-                <div class="message-time">${msg.time}</div>
+                <div class="message-time">${msg.time || ''}</div>
             </div>
         `;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // --- FILE UPLOAD (WITH GIF FIX) ---
+    function formatText(text) {
+        let safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const urlRegex = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gim;
+        safeText = safeText.replace(urlRegex, url => `<a href="${url}" target="_blank" style="color: #4da6ff; text-decoration: underline;">${url}</a>`);
+        return safeText;
+    }
+
+    // --- NOTIFICATIONS & SETTINGS ---
+    notifHeader.addEventListener('click', () => {
+        notifHeader.classList.toggle('active');
+        notifContent.classList.toggle('show');
+    });
+
+    function playSound() {
+        if (!settingSound.checked || document.hidden) return;
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+    }
+
+    // --- BUTTON ACTIONS (RESTORED) ---
+    if (launchCustomWindowBtn) launchCustomWindowBtn.addEventListener('click', () => {
+        window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
+    });
+
+    if(btnCloakLauncher) btnCloakLauncher.addEventListener('click', () => {
+        const win = window.open('about:blank', '_blank');
+        if (win) {
+            win.document.write('<iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/" style="width:100vw;height:100vh;border:none;"></iframe>');
+            win.document.close();
+        }
+    });
+
+    // --- FILE UPLOAD (GIF FIX) ---
     function handleFileSelection(file) {
         if (!file || !file.type.startsWith('image/')) return;
-
-        // GIF FIX: Skip resizing for GIFs
         if (file.type === 'image/gif') {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                stagedImage = e.target.result;
-                imagePreview.src = stagedImage;
-                imagePreviewArea.style.display = 'flex';
-            };
+            reader.onload = (e) => { stagedImage = e.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; };
             reader.readAsDataURL(file);
             return; 
         }
-
-        // Resize others
         const reader = new FileReader();
         reader.readAsDataURL(file);
         reader.onload = (event) => {
@@ -372,12 +460,10 @@
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                // Simple resize logic
                 const scale = Math.min(800 / img.width, 800 / img.height, 1);
                 canvas.width = img.width * scale;
                 canvas.height = img.height * scale;
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                
                 stagedImage = canvas.toDataURL('image/jpeg', 0.7);
                 imagePreview.src = stagedImage;
                 imagePreviewArea.style.display = 'flex';
@@ -388,23 +474,6 @@
     fileUploadBtn.addEventListener('click', () => hiddenFileInput.click());
     hiddenFileInput.addEventListener('change', (e) => handleFileSelection(e.target.files[0]));
     
-    // Paste Support
-    window.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let item of items) {
-            if (item.kind === 'file' && item.type.startsWith('image/')) {
-                handleFileSelection(item.getAsFile());
-            }
-        }
-    });
-
-    removeImageBtn.addEventListener('click', () => {
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = '';
-    });
-
-    // --- AVATAR UPLOAD ---
     avatarUploadBtn.addEventListener('click', () => {
         const input = document.createElement('input');
         input.type = 'file'; input.accept = 'image/*';
@@ -422,7 +491,6 @@
         input.click();
     });
 
-    // --- BG UPLOAD ---
     btnBgUpload.addEventListener('click', () => bgUploadInput.click());
     bgUploadInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -439,10 +507,6 @@
         document.body.style.backgroundImage = '';
         document.body.classList.remove('transparent-mode');
     });
-
-    // --- VC BUTTONS (Logic truncated for brevity, but buttons exist) ---
-    const vcBtnJoin = document.getElementById('vc-btn-join');
-    vcBtnJoin.addEventListener('click', () => alert("VC is currently just a placeholder in this update! Focus on DMs first."));
 
 </script>
 </body>
