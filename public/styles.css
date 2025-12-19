@@ -105,6 +105,7 @@ html, body {
     flex: 1; display: flex; flex-direction: column;
     min-width: 0; 
     background-color: transparent; 
+    position: relative; /* Needed for Scroll Button positioning */
 }
 
 #username-area {
@@ -136,6 +137,29 @@ html, body {
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
 
+/* Scroll Down Button */
+#scroll-down-btn {
+    display: none; /* Hidden by default */
+    position: absolute;
+    bottom: 90px; /* Just above input area */
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--color-accent-blue);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    z-index: 100;
+    font-weight: bold;
+    font-size: 0.85em;
+    transition: background 0.2s;
+}
+#scroll-down-btn:hover {
+    background-color: #005fa3;
+}
+
 /* System Message Style */
 .system-message {
     text-align: center;
@@ -146,13 +170,23 @@ html, body {
     width: 100%;
 }
 
-/* NEW MOTD STYLE */
+/* MOTD STYLE */
 .motd-message {
     color: #ffffff !important;
     font-weight: bold;
     text-shadow: 0 0 5px rgba(0,0,0,0.5); /* Pop against background */
     margin-bottom: 15px; 
     font-size: 1.1em;
+}
+
+/* CLICKABLE LINKS */
+.chat-link {
+    color: #4db8ff;
+    text-decoration: underline;
+    word-break: break-all;
+}
+.chat-link:hover {
+    color: #80d4ff;
 }
 
 /* Typing Indicator */
