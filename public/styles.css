@@ -195,11 +195,16 @@ html, body {
 }
 #typing-indicator.active { display: block; }
 
-.message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
+.message { 
+    display: flex; 
+    align-items: flex-start; 
+    margin-bottom: 15px; /* Default margin for single messages or last in group */
+    max-width: 100%; 
+}
 
-/* GROUPED MESSAGE REDUCES GAP */
-.grouped-message {
-    margin-bottom: 2px; /* Much tighter spacing */
+/* GROUPED MESSAGE (Internal to group) */
+.grouped-tight {
+    margin-bottom: 1px !important; /* Forces the gap to disappear */
 }
 
 .user-message { flex-direction: row-reverse; }
@@ -215,12 +220,6 @@ html, body {
 }
 .other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
 .user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
-
-/* Admin Highlight */
-.admin-message .bubble-content {
-    border: 1px solid #ffd700;
-    box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
-}
 
 .message-image { max-width: 100%; border-radius: 8px; margin-bottom: 5px; display: block; cursor: pointer; }
 .message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
