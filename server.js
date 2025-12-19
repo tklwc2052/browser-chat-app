@@ -2,13 +2,14 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
+const path = require('path'); // <--- Added this to handle folders correctly
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 // --- MONGO DB CONNECTION ---
-// Paste your connection string here if it's different!
+// Paste your connection string here!
 // mongoose.connect('YOUR_MONGODB_URI_HERE', { useNewUrlParser: true, useUnifiedTopology: true });
 
 // Basic User Schema
@@ -19,16 +20,15 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
-app.use(express.static(__dirname));
+// --- FIX FOR "CANNOT GET /" ---
+// This tells the server: "Look inside the 'public' folder for files"
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ADD THIS BLOCK ---
+// This forces the server to send index.html when you go to the homepage
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-// ----------------------
-
-
-
+// ------------------------------
 
 const users = {}; 
 const vcUsers = {};
@@ -43,17 +43,16 @@ function formatMessage(sender, text, type = 'general', image = null, avatar = nu
 
 function addToHistory(msg) {
     history.push(msg);
-    if (history.length > 200) history.shift(); // Keep server memory clean
+    if (history.length > 200) history.shift(); 
 }
 
 io.on('connection', (socket) => {
     
-    // Send history on join
     socket.emit('history', history);
     socket.emit('sidebar-user-list', Object.values(users));
     socket.emit('vc-user-list-update', Object.values(vcUsers));
 
-    // --- CRITICAL UPDATE: SET USERNAME WITH REGEX CHECK ---
+    // --- USERNAME LOGIC WITH REGEX CHECK ---
     socket.on('set-username', async ({ username, avatar }) => {
         const oldUserData = users[socket.id] || {};
         const oldUsername = oldUserData.username;
@@ -62,13 +61,11 @@ io.on('connection', (socket) => {
         if (!username) return;
 
         // 1. REGEX CHECK (The Police)
-        // Only allows A-Z, 0-9, and Underscores. No spaces.
         const nameRegex = /^[a-zA-Z0-9_]+$/;
 
         if (!nameRegex.test(username)) {
-            // Kick them back to the login screen
             socket.emit('force-reset', 'Your username has invalid characters (spaces/symbols). Please pick a new one.');
-            return; // STOP. Do not save to DB.
+            return; 
         }
 
         const usernameLower = username.toLowerCase();
@@ -84,7 +81,6 @@ io.on('connection', (socket) => {
         userAvatarCache[username] = newAvatar;
         users[socket.id] = { username, avatar: newAvatar, id: socket.id, online: true };
 
-        // Save to DB (Kept your logic)
         try {
             await User.findOneAndUpdate(
                 { username: username },
@@ -124,7 +120,6 @@ io.on('connection', (socket) => {
         const targetSocketId = Object.keys(users).find(id => users[id].username === data.target);
         const msg = formatMessage(user.username, data.message, 'private', data.image, user.avatar);
         
-        // Save to DM History (Memory only for now)
         if (!dmHistory[user.username]) dmHistory[user.username] = {};
         if (!dmHistory[user.username][data.target]) dmHistory[user.username][data.target] = [];
         dmHistory[user.username][data.target].push(msg);
@@ -133,10 +128,8 @@ io.on('connection', (socket) => {
         if (!dmHistory[data.target][user.username]) dmHistory[data.target][user.username] = [];
         dmHistory[data.target][user.username].push(msg);
 
-        // Send to Sender (so they see it)
         socket.emit('dm-received', { from: user.username, to: data.target, message: msg });
         
-        // Send to Receiver
         if (targetSocketId) {
             io.to(targetSocketId).emit('dm-received', { from: user.username, to: data.target, message: msg });
         }
@@ -161,15 +154,12 @@ io.on('connection', (socket) => {
         if (user) io.emit('user-stopped-typing', { username: user.username });
     });
 
-    // --- VOICE CHAT LOGIC ---
     socket.on('vc-join', () => {
         const user = users[socket.id];
         if (user) {
             vcUsers[socket.id] = { ...user, isMuted: false };
             io.emit('vc-user-list-update', Object.values(vcUsers));
             io.emit('chat-message', formatMessage('System', `${user.username} joined Voice Chat.`, 'system'));
-            
-            // Tell everyone else to prepare a connection for this new user
             socket.broadcast.emit('vc-prepare-connection', socket.id);
         }
     });
@@ -179,7 +169,7 @@ io.on('connection', (socket) => {
         if (user && vcUsers[socket.id]) {
             delete vcUsers[socket.id];
             io.emit('vc-user-list-update', Object.values(vcUsers));
-            io.emit('vc-user-left', socket.id); // Tell clients to remove audio element
+            io.emit('vc-user-left', socket.id); 
         }
     });
 
