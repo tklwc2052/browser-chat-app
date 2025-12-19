@@ -127,7 +127,7 @@
     // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
-    const vcBtnLeave = document.getElementById('vc-btn-leave'); // NEW
+    const vcBtnLeave = document.getElementById('vc-btn-leave'); 
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
     
@@ -168,7 +168,7 @@
 
     // VC State
     let localStream = null;
-    let peers = {}; // socketId: RTCPeerConnection
+    let peers = {}; 
     let isInVC = false;
     let isMuted = false;
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -263,13 +263,35 @@
         else { allUsersCache.push({ username: data.username, online: data.online, avatar: data.avatar }); }
         renderSidebar();
     });
+    
+    // --- OPTIMIZED HISTORY LOADING ---
     socket.on('dm-history', (data) => {
         if (currentChatMode === 'dm' && currentDmTarget === data.target) {
             messagesDiv.innerHTML = '';
-            data.messages.forEach(msg => displayMessage(msg));
+            // Use DocumentFragment for Batch Insertion
+            const fragment = document.createDocumentFragment();
+            data.messages.forEach(msg => {
+                const el = createMessageElement(msg);
+                fragment.appendChild(el);
+            });
+            messagesDiv.appendChild(fragment);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
     });
+    
+    socket.on('history', (history) => {
+        if (currentChatMode === 'global') {
+            messagesDiv.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            history.forEach(msg => {
+                const el = createMessageElement(msg);
+                fragment.appendChild(el);
+            });
+            messagesDiv.appendChild(fragment);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    });
+
     socket.on('dm-received', (data) => {
         if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
             displayMessage(data.message);
@@ -280,13 +302,6 @@
         }
     });
     socket.on('chat-message', (msg) => { if (currentChatMode === 'global') displayMessage(msg); });
-    socket.on('history', (history) => {
-        if (currentChatMode === 'global') {
-            messagesDiv.innerHTML = '';
-            history.forEach(displayMessage);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-    });
 
     // --- CHAT LOGIC ---
     function sendMessage() {
@@ -319,22 +334,15 @@
         else { typingIndicator.classList.remove('active'); } 
     }
 
-    // --- DISPLAY MESSAGE ---
+    // --- DISPLAY MESSAGE LOGIC (Refactored) ---
     function parseFormatting(text) { if (!text) return ''; return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>'); }
-    function displayMessage(msg) {
-        if (msg.sender !== currentUsername && currentChatMode === 'global') {
-            if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
-            else if (msg.type === 'system' && settingVC.checked && msg.text.includes('Voice Chat')) triggerNotification('Voice Chat', msg.text);
-            else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
-        }
-
+    
+    function createMessageElement(msg) {
         if (msg.type === 'system') {
             const sysDiv = document.createElement('div');
             sysDiv.className = 'system-message';
             sysDiv.innerText = msg.text;
-            messagesDiv.appendChild(sysDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            return;
+            return sysDiv;
         }
 
         const messageEl = document.createElement('div');
@@ -347,38 +355,59 @@
              const isMe = (msg.sender === currentUsername);
              isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
         }
+        
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         if (msg.type === 'private' || msg.type === 'pm') contentArea.classList.add('private-message-container');
+        
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
+        
         const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
         if (msg.type === 'private' || msg.type === 'pm') bubbleContent.classList.add('bubble-private');
+        
         if (msg.image) {
             const img = document.createElement('img');
             img.src = msg.image; img.classList.add('message-image');
             img.onclick = () => { const w = window.open(""); w.document.write(`<img src="${msg.image}" style="width:100%">`); };
             bubbleContent.appendChild(img);
         }
+        
         if (msg.text) {
             const textSpan = document.createElement('span');
             textSpan.innerHTML = parseFormatting(msg.text);
             bubbleContent.appendChild(textSpan);
         }
+        
         const timeDiv = document.createElement('div');
         timeDiv.classList.add('message-time');
         timeDiv.textContent = msg.time;
+        
         contentWrapper.appendChild(bubbleContent);
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
+        
         if (msg.avatar) {
             const avatarImg = document.createElement('img');
             avatarImg.src = msg.avatar; avatarImg.classList.add('avatar');
             messageEl.appendChild(avatarImg);
         }
+        
         messageEl.appendChild(contentArea);
-        messagesDiv.appendChild(messageEl);
+        return messageEl;
+    }
+
+    function displayMessage(msg) {
+        // Notifications Logic
+        if (msg.sender !== currentUsername && currentChatMode === 'global') {
+            if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
+            else if (msg.type === 'system' && settingVC.checked && msg.text.includes('Voice Chat')) triggerNotification('Voice Chat', msg.text);
+            else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
+        }
+
+        const el = createMessageElement(msg);
+        messagesDiv.appendChild(el);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
@@ -408,7 +437,7 @@
             isInVC = true;
             vcBtnJoin.style.display = 'none';
             vcBtnMute.style.display = 'inline-block';
-            vcBtnLeave.style.display = 'inline-block'; // SHOW LEAVE BTN
+            vcBtnLeave.style.display = 'inline-block'; 
             vcBtnMute.innerText = "Mute";
         } catch (err) {
             alert("Could not access microphone.");
@@ -421,40 +450,24 @@
             isMuted = !isMuted;
             localStream.getAudioTracks()[0].enabled = !isMuted;
             vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
-            // User requested blue buttons, but mute state usually indicates grey/red.
-            // Preserving "grey when muted" logic from turn 10 request or user can customize.
             vcBtnMute.style.backgroundColor = isMuted ? "grey" : "var(--color-accent-blue)";
             socket.emit('vc-mute-toggle', isMuted);
         }
     };
 
-    // --- NEW: LEAVE BUTTON LOGIC ---
     vcBtnLeave.onclick = () => {
         if (isInVC) {
             socket.emit('vc-leave');
             isInVC = false;
-            
-            // Stop Local Stream
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-            
-            // Close Peer Connections
-            Object.keys(peers).forEach(id => {
-                peers[id].close();
-                delete peers[id];
-            });
-            
-            // Reset UI
-            document.getElementById('audio-container').innerHTML = ''; // Remove remote audio
+            if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+            Object.keys(peers).forEach(id => { peers[id].close(); delete peers[id]; });
+            document.getElementById('audio-container').innerHTML = ''; 
             vcBtnJoin.style.display = 'inline-block';
             vcBtnMute.style.display = 'none';
             vcBtnLeave.style.display = 'none';
-            
             isMuted = false;
             vcBtnMute.innerText = "Mute";
-            vcBtnMute.style.backgroundColor = ""; // Reset to default CSS
+            vcBtnMute.style.backgroundColor = ""; 
         }
     };
 
