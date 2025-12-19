@@ -31,6 +31,9 @@
         </div>
         
         <div id="messages"></div>
+        
+        <button id="scroll-down-btn">↓ New Messages</button>
+
         <div id="typing-indicator"></div>
 
         <div id="message-input-area">
@@ -110,6 +113,7 @@
 
     // DOM Elements
     const messagesDiv = document.getElementById('messages');
+    const scrollDownBtn = document.getElementById('scroll-down-btn'); // NEW
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
@@ -259,7 +263,28 @@
         }
     }
 
-    // --- SCROLL HELPER ---
+    // --- SCROLL HELPER & LOGIC ---
+    let userScrolledUp = false;
+
+    // Detect when user manually scrolls up
+    messagesDiv.addEventListener('scroll', () => {
+        // Threshold: 50px from bottom is considered "at bottom"
+        const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 50;
+        
+        if (isAtBottom) {
+            userScrolledUp = false;
+            scrollDownBtn.style.display = 'none'; // Hide button if we are at bottom
+        } else {
+            userScrolledUp = true;
+        }
+    });
+
+    scrollDownBtn.onclick = () => {
+        forceScrollToBottom();
+        scrollDownBtn.style.display = 'none';
+        userScrolledUp = false;
+    };
+
     function forceScrollToBottom() {
         setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 10);
         setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 100);
@@ -288,31 +313,23 @@
         }
     });
     
-    // --- UPDATED DM HANDLER ---
     socket.on('dm-received', (data) => {
         const partner = (data.from === currentUsername) ? data.to : data.from;
         if (!dmMessagesCache[partner]) dmMessagesCache[partner] = [];
         dmMessagesCache[partner].push(data.message);
 
-        // Case 1: We are currently looking at this DM
         if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
             appendMessageToUI(data.message);
-            // Even if we are looking at it, if window is minimized, notify
             if (document.hidden && settingPM.checked) {
                 triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image');
             }
         } 
-        // Case 2: We are NOT looking at this DM (Global chat or other DM)
         else if (data.from !== currentUsername) {
             if (!unreadCounts[data.from]) unreadCounts[data.from] = 0;
             unreadCounts[data.from]++;
             renderSidebar();
-            
-            // TRIGGER NOTIFICATION
             if (settingPM.checked) {
-                // Play sound regardless of focus (if enabled)
                 playNotificationSound();
-                // Show popup if hidden
                 if (document.hidden) {
                     triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image', true);
                 }
@@ -367,7 +384,29 @@
     }
 
     // --- RENDER HELPERS ---
-    function parseFormatting(text) { if (!text) return ''; return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>'); }
+    
+    // NEW: UPDATED PARSER WITH CLICKABLE LINKS
+    function parseFormatting(text) {
+        if (!text) return '';
+        
+        // 1. Escape HTML
+        let temp = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // 2. Linkify URLs
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        temp = temp.replace(urlRegex, function(url) {
+            return `<a href="${url}" target="_blank" class="chat-link">${url}</a>`;
+        });
+
+        // 3. Styles
+        return temp
+            .replace(/~~(.*?)~~/g, '<del>$1</del>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    }
     
     function createMessageElement(msg) {
         if (msg.type === 'motd') {
@@ -411,7 +450,8 @@
             img.src = msg.image; 
             img.classList.add('message-image');
             img.onclick = () => { const w = window.open(""); w.document.write(`<img src="${msg.image}" style="width:100%">`); };
-            img.onload = () => forceScrollToBottom();
+            // Ensure image load doesn't mess up scroll if we are reading history
+            img.onload = () => { if(!userScrolledUp) forceScrollToBottom(); };
             bubbleContent.appendChild(img);
         }
         
@@ -447,17 +487,18 @@
         });
         messagesDiv.appendChild(fragment);
         forceScrollToBottom();
+        // Reset scroll state on full render
+        userScrolledUp = false;
+        scrollDownBtn.style.display = 'none';
     }
 
+    // NEW: UPDATED APPEND LOGIC FOR BUTTON
     function appendMessageToUI(msg) {
         if (msg.sender !== currentUsername && currentChatMode === 'global') {
             if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
             else if (msg.type === 'system' && settingVC.checked && msg.text.includes('Voice Chat')) triggerNotification('Voice Chat', msg.text);
             else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
         }
-
-        const threshold = 100;
-        const isNearBottom = (messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight) < threshold;
         
         const el = createMessageElement(msg);
         messagesDiv.appendChild(el);
@@ -466,8 +507,19 @@
             messagesDiv.removeChild(messagesDiv.firstElementChild);
         }
 
-        if (msg.sender === currentUsername || isNearBottom) {
+        // Logic: 
+        // 1. If I sent the message, always scroll down.
+        // 2. If I'm already at the bottom, stay at the bottom.
+        // 3. If I am scrolled up reading history, DON'T scroll, show button instead.
+        if (msg.sender === currentUsername) {
             forceScrollToBottom();
+            userScrolledUp = false;
+            scrollDownBtn.style.display = 'none';
+        } else if (!userScrolledUp) {
+            forceScrollToBottom();
+        } else {
+            // User is scrolled up, show the button!
+            scrollDownBtn.style.display = 'block';
         }
     }
 
