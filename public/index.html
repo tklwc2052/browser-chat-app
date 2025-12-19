@@ -536,7 +536,29 @@
     avatarUploadBtn.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = (e) => { const f = e.target.files[0]; if(f){ compressImage(f, (res) => { currentAvatarBase64 = res; currentAvatarPreview.src = res; if(currentUsername) socket.emit('set-username', {username: currentUsername, avatar: currentAvatarBase64}); localStorage.setItem('chatAvatar', currentAvatarBase64); }); } }; i.click(); };
     
     document.addEventListener('DOMContentLoaded', () => { const u = localStorage.getItem('chatUsername'); const a = localStorage.getItem('chatAvatar'); if(a) { currentAvatarBase64 = a; currentAvatarPreview.src = a; } if(u) { usernameInput.value = u; socket.emit('set-username', {username: u, avatar: a}); currentUsername = u; usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
-    setUsernameBtn.onclick = () => { const u = usernameInput.value.trim(); if(u) { localStorage.setItem('chatUsername', u); currentUsername = u; socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); usernameInput.disabled = true; setUsernameBtn.disabled = true; } };
+    
+    // --- UPDATED USERNAME VALIDATION ---
+    setUsernameBtn.onclick = () => { 
+        const u = usernameInput.value.trim();
+        
+        // Regex: Only Letters, Numbers, Underscores. No spaces.
+        const nameRegex = /^[a-zA-Z0-9_]+$/;
+
+        if(!u) return;
+        
+        if (!nameRegex.test(u)) {
+            alert("Invalid Username!\nNo spaces, special characters, or emojis allowed.\nOnly letters (A-Z), numbers (0-9), and underscores (_).");
+            return;
+        }
+
+        if(u) { 
+            localStorage.setItem('chatUsername', u); 
+            currentUsername = u; 
+            socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); 
+            usernameInput.disabled = true; 
+            setUsernameBtn.disabled = true; 
+        } 
+    };
     sendButton.onclick = sendMessage; messageInput.onkeydown = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 </script>
 </body>
