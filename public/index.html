@@ -1,396 +1,509 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const mongoose = require('mongoose');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The C&C Corp chat</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+<div id="main-wrapper">
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
+    <div id="dm-sidebar">
+        <div id="dm-header">Contacts</div>
+        <div id="dm-list"></div>
+    </div>
 
-app.set('trust proxy', 1); 
+    <div id="chat-container">
+        <div id="username-area">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button id="avatar-upload-btn" title="Set Avatar">
+                    <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
+                </button>
+                <h3 id="chat-header-label">username:</h3>
+            </div>
+            
+            <div id="username-controls">
+                <input type="text" id="username-input" placeholder="whatr we callin ya">
+                <button id="set-username-btn">Save</button>
+            </div>
+        </div>
 
-// --- MONGODB CONNECTION ---
-const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
-mongoose.connect(mongoURI)
-    .then(() => console.log('MongoDB Connected'))
-    .catch(err => console.log('MongoDB Connection Error:', err));
+        <div id="online-users-area">
+            <h4>whos online:</h4>
+            <ul id="online-users-list"></ul>
+        </div>
+        
+        <div id="messages"></div>
+        <div id="typing-indicator"></div>
 
-// --- SCHEMAS ---
-const userSchema = new mongoose.Schema({
-    username: { type: String, unique: true },
-    avatar: String,
-    lastSeen: { type: Date, default: Date.now }
-});
-const User = mongoose.model('User', userSchema);
-
-const dmSchema = new mongoose.Schema({
-    participants: [String], 
-    messages: [{
-        sender: String,
-        text: String,
-        image: String,
-        avatar: String,
-        time: String,
-        timestamp: { type: Date, default: Date.now }
-    }]
-});
-const DM = mongoose.model('DM', dmSchema);
-
-// --- State Management ---
-const users = {}; 
-const vcUsers = {}; 
-const messageHistory = []; 
-const MAX_HISTORY = 50; 
-const userAvatarCache = {}; 
-
-const mutedUsers = new Set(); 
-const bannedIPs = new Map();  
-const ADMIN_USERNAME = 'kl_'; 
-
-// --- Utility Functions ---
-function formatMessage(sender, text, avatar = null, image = null, isPm = false) {
-    const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        <div id="message-input-area">
+            <div id="image-preview-area" style="display:none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <button id="remove-image-btn">X</button>
+            </div>
+            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+            <button id="file-upload-btn" title="Upload Image">📁</button>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
     
-    let finalAvatar = avatar;
-    if (!finalAvatar && userAvatarCache[sender]) finalAvatar = userAvatarCache[sender];
-    if (!finalAvatar && sender !== 'System') finalAvatar = 'placeholder-avatar.png';
+    <div id="right-panel">
+        <div class="panel-top-group">
+            <div>
+                <h4 class="panel-title">other stuff</h4>
+                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+            </div>
+            <div>
+                <h4 class="panel-title">voice chat</h4>
+                <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                <button id="vc-btn-mute" class="panel-btn" style="display: none;">Mute</button>
+                <ul id="vc-user-list"></ul>
+                <div id="audio-container"></div>
+            </div>
+        </div>
+        <div class="panel-bottom-group">
+            <h4 class="panel-title">Browser</h4>
+            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
+            <div style="margin-bottom: 15px;"></div> 
+            <h4 class="panel-title">Appearance</h4>
+            <div class="settings-panel">
+                <ul class="settings-list">
+                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
+                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
+                            </div>
+                        </div>
+                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
+                    </li>
+                </ul>
+            </div>
+            <div class="dropdown-wrapper">
+                <div class="dropdown-header" id="notif-dropdown-header">
+                    <span>Notifications</span>
+                    <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="dropdown-content" id="notif-dropdown-content">
+                    <ul class="settings-list">
+                        <li class="setting-item"><span>Main Messages</span><input type="checkbox" id="setting-main" checked></li>
+                        <li class="setting-item"><span>Private Messages</span><input type="checkbox" id="setting-pm" checked></li>
+                        <li class="setting-item"><span>VC Joins/Leaves</span><input type="checkbox" id="setting-vc" checked></li>
+                        <li class="setting-item"><span>Sound</span><input type="checkbox" id="setting-sound" checked></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    if (sender === 'System' || sender === 'Announcement') {
-        return {
-            text: text, 
-            sender: sender,
-            avatar: null,
-            time: time,
-            type: 'system'
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('mode') === 'popup') {
+        document.getElementById('right-panel').style.display = 'none';
+        document.getElementById('main-wrapper').style.maxWidth = '100%';
+    }
+
+    const socket = io();
+
+    // DOM Elements
+    const messagesDiv = document.getElementById('messages');
+    const usernameInput = document.getElementById('username-input');
+    const setUsernameBtn = document.getElementById('set-username-btn');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const onlineUsersList = document.getElementById('online-users-list');
+    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    const avatarUploadBtn = document.getElementById('avatar-upload-btn');
+    const currentAvatarPreview = document.getElementById('current-avatar-preview');
+    const vcBtnJoin = document.getElementById('vc-btn-join');
+    const vcBtnMute = document.getElementById('vc-btn-mute');
+    const vcUserList = document.getElementById('vc-user-list');
+    const audioContainer = document.getElementById('audio-container');
+    const fileUploadBtn = document.getElementById('file-upload-btn');
+    const hiddenFileInput = document.getElementById('hidden-file-input');
+    const imagePreviewArea = document.getElementById('image-preview-area');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageBtn = document.getElementById('remove-image-btn');
+    const typingIndicator = document.getElementById('typing-indicator');
+
+    // Sidebar
+    const dmList = document.getElementById('dm-list');
+    const chatHeaderLabel = document.querySelector('#username-area h3');
+    const onlineUsersArea = document.getElementById('online-users-area');
+
+    // Settings & Panels
+    const btnCloakLauncher = document.getElementById('btn-cloak-launcher'); // FIXED: Was missing!
+    const settingMain = document.getElementById('setting-main');
+    const settingPM = document.getElementById('setting-pm');
+    const settingVC = document.getElementById('setting-vc');
+    const settingSound = document.getElementById('setting-sound');
+    const btnBgUpload = document.getElementById('btn-bg-upload');
+    const btnBgReset = document.getElementById('btn-bg-reset');
+    const bgUploadInput = document.getElementById('bg-upload-input');
+    const notifHeader = document.getElementById('notif-dropdown-header');
+    const notifContent = document.getElementById('notif-dropdown-content');
+
+    // State
+    let currentUsername = '';
+    let currentAvatarBase64 = ''; 
+    let stagedImage = null; 
+    let typingTimeout = null;
+    const typingUsers = new Set();
+    let currentChatMode = 'global'; 
+    let currentDmTarget = null;
+    let allUsersCache = []; 
+    let unreadCounts = {}; 
+
+    // VC State
+    let localStream = null;
+    let peers = {}; // socketId: RTCPeerConnection
+    let isInVC = false;
+    let isMuted = false;
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    // --- SIDEBAR LOGIC ---
+    function renderSidebar() {
+        dmList.innerHTML = '';
+        
+        const mainChatCard = document.createElement('div');
+        mainChatCard.className = 'dm-user-card';
+        if (currentChatMode === 'global') mainChatCard.classList.add('active');
+        
+        const mainWrapper = document.createElement('div');
+        mainWrapper.className = 'dm-avatar-wrapper';
+        const mainImg = document.createElement('img');
+        mainImg.src = 'placeholder-avatar.png'; 
+        const mainStatus = document.createElement('div');
+        mainStatus.className = 'status-bubble status-online';
+        
+        mainWrapper.appendChild(mainImg);
+        mainWrapper.appendChild(mainStatus);
+        
+        const mainName = document.createElement('div');
+        mainName.className = 'dm-username';
+        mainName.innerText = "Main Chat";
+        
+        mainChatCard.appendChild(mainWrapper);
+        mainChatCard.appendChild(mainName);
+        mainChatCard.onclick = () => switchToGlobal();
+        
+        dmList.appendChild(mainChatCard);
+
+        const sortedUsers = [...allUsersCache].sort((a, b) => {
+            if (a.online === b.online) return a.username.localeCompare(b.username);
+            return a.online ? -1 : 1;
+        });
+
+        sortedUsers.forEach(u => {
+            if (u.username === currentUsername) return;
+            const card = document.createElement('div');
+            card.className = 'dm-user-card';
+            if (currentChatMode === 'dm' && currentDmTarget === u.username) card.classList.add('active');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'dm-avatar-wrapper';
+            const img = document.createElement('img');
+            img.src = u.avatar || 'placeholder-avatar.png';
+            const statusBubble = document.createElement('div');
+            statusBubble.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
+            const unreadBadge = document.createElement('div');
+            unreadBadge.className = 'unread-badge';
+            if (unreadCounts[u.username] > 0) {
+                unreadBadge.innerText = unreadCounts[u.username];
+                unreadBadge.classList.add('visible');
+            }
+            wrapper.appendChild(img);
+            wrapper.appendChild(statusBubble);
+            wrapper.appendChild(unreadBadge);
+            const name = document.createElement('div');
+            name.className = 'dm-username';
+            name.innerText = u.username;
+            card.appendChild(wrapper);
+            card.appendChild(name);
+            card.onclick = () => switchToDm(u.username);
+            dmList.appendChild(card);
+        });
+    }
+
+    function switchToDm(targetUser) {
+        currentChatMode = 'dm';
+        currentDmTarget = targetUser;
+        unreadCounts[targetUser] = 0;
+        typingUsers.clear();
+        updateTypingDisplay();
+        renderSidebar();
+        messagesDiv.innerHTML = '';
+        chatHeaderLabel.innerText = `Chat with ${targetUser}`;
+        onlineUsersArea.style.display = 'none';
+        socket.emit('fetch-dm-history', targetUser);
+    }
+
+    function switchToGlobal() {
+        currentChatMode = 'global';
+        currentDmTarget = null;
+        typingUsers.clear();
+        updateTypingDisplay();
+        renderSidebar();
+        messagesDiv.innerHTML = '';
+        chatHeaderLabel.innerText = 'username:';
+        onlineUsersArea.style.display = 'flex';
+        socket.emit('get-history');
+    }
+
+    // --- SOCKET HANDLERS ---
+    socket.on('sidebar-user-list', (list) => { allUsersCache = list; renderSidebar(); });
+    socket.on('user-status-change', (data) => {
+        const user = allUsersCache.find(u => u.username === data.username);
+        if (user) { user.online = data.online; if(data.avatar) user.avatar = data.avatar; } 
+        else { allUsersCache.push({ username: data.username, online: data.online, avatar: data.avatar }); }
+        renderSidebar();
+    });
+    socket.on('dm-history', (data) => {
+        if (currentChatMode === 'dm' && currentDmTarget === data.target) {
+            messagesDiv.innerHTML = '';
+            data.messages.forEach(msg => displayMessage(msg));
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    });
+    socket.on('dm-received', (data) => {
+        if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
+            displayMessage(data.message);
+        } else if (data.from !== currentUsername) {
+            if (!unreadCounts[data.from]) unreadCounts[data.from] = 0;
+            unreadCounts[data.from]++;
+            renderSidebar();
+        }
+    });
+    socket.on('chat-message', (msg) => { if (currentChatMode === 'global') displayMessage(msg); });
+    socket.on('history', (history) => {
+        if (currentChatMode === 'global') {
+            messagesDiv.innerHTML = '';
+            history.forEach(displayMessage);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    });
+
+    // --- CHAT LOGIC ---
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        if ((!text && !stagedImage) || !currentUsername) return; 
+        if (currentChatMode === 'global') socket.emit('chat-message', { text: text, image: stagedImage });
+        else socket.emit('send-dm', { target: currentDmTarget, message: text, image: stagedImage });
+        messageInput.value = ''; stagedImage = null; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
+        const scope = currentChatMode === 'global' ? 'global' : currentDmTarget;
+        socket.emit('typing-stop', scope);
+        if (typingTimeout) clearTimeout(typingTimeout);
+    }
+    
+    // Typing
+    messageInput.addEventListener('input', () => { 
+        if (!currentUsername) return; 
+        const scope = currentChatMode === 'global' ? 'global' : currentDmTarget;
+        socket.emit('typing-start', scope); 
+        if (typingTimeout) clearTimeout(typingTimeout); 
+        typingTimeout = setTimeout(() => { socket.emit('typing-stop', scope); }, 2000); 
+    });
+    socket.on('user-typing', (data) => {
+        if ((currentChatMode === 'global' && data.scope === 'global') || 
+            (currentChatMode === 'dm' && data.scope === 'dm' && data.username === currentDmTarget)) {
+            typingUsers.add(data.username); updateTypingDisplay();
+        }
+    });
+    socket.on('user-stopped-typing', (data) => { typingUsers.delete(data.username); updateTypingDisplay(); });
+    function updateTypingDisplay() { 
+        if (typingUsers.size > 0) { const names = Array.from(typingUsers).join(', '); typingIndicator.innerText = `${names} is typing...`; typingIndicator.classList.add('active'); } 
+        else { typingIndicator.classList.remove('active'); } 
+    }
+
+    // --- DISPLAY MESSAGE ---
+    function parseFormatting(text) { if (!text) return ''; return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>'); }
+    function displayMessage(msg) {
+        if (msg.sender !== currentUsername && currentChatMode === 'global') {
+            if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
+            else if (msg.type === 'system' && settingVC.checked && msg.text.includes('Voice Chat')) triggerNotification('Voice Chat', msg.text);
+            else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
+        }
+
+        if (msg.type === 'system') {
+            const sysDiv = document.createElement('div');
+            sysDiv.className = 'system-message';
+            sysDiv.innerText = msg.text;
+            messagesDiv.appendChild(sysDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return;
+        }
+
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message');
+        if (msg.type === 'private' || msg.type === 'pm') {
+            const isMe = (msg.sender === currentUsername);
+            isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
+            messageEl.classList.add('dm-message-item'); 
+        } else {
+             const isMe = (msg.sender === currentUsername);
+             isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
+        }
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+        if (msg.type === 'private' || msg.type === 'pm') contentArea.classList.add('private-message-container');
+        const contentWrapper = document.createElement('div');
+        contentWrapper.classList.add('message-content-wrapper');
+        const bubbleContent = document.createElement('div');
+        bubbleContent.classList.add('bubble-content');
+        if (msg.type === 'private' || msg.type === 'pm') bubbleContent.classList.add('bubble-private');
+        if (msg.image) {
+            const img = document.createElement('img');
+            img.src = msg.image; img.classList.add('message-image');
+            img.onclick = () => { const w = window.open(""); w.document.write(`<img src="${msg.image}" style="width:100%">`); };
+            bubbleContent.appendChild(img);
+        }
+        if (msg.text) {
+            const textSpan = document.createElement('span');
+            textSpan.innerHTML = parseFormatting(msg.text);
+            bubbleContent.appendChild(textSpan);
+        }
+        const timeDiv = document.createElement('div');
+        timeDiv.classList.add('message-time');
+        timeDiv.textContent = msg.time;
+        contentWrapper.appendChild(bubbleContent);
+        contentWrapper.appendChild(timeDiv);
+        contentArea.appendChild(contentWrapper);
+        if (msg.avatar) {
+            const avatarImg = document.createElement('img');
+            avatarImg.src = msg.avatar; avatarImg.classList.add('avatar');
+            messageEl.appendChild(avatarImg);
+        }
+        messageEl.appendChild(contentArea);
+        messagesDiv.appendChild(messageEl);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // --- VOICE CHAT IMPLEMENTATION ---
+    function createPeer(targetId, initiator = false) {
+        const p = new RTCPeerConnection(rtcConfig);
+        p.onicecandidate = (e) => {
+            if (e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } });
         };
+        p.ontrack = (e) => {
+            const audio = document.createElement('audio');
+            audio.srcObject = e.streams[0];
+            audio.autoplay = true;
+            audio.id = `audio-${targetId}`;
+            audioContainer.appendChild(audio);
+        };
+        if (localStream) {
+            localStream.getTracks().forEach(track => p.addTrack(track, localStream));
+        }
+        return p;
     }
-    
-    return {
-        text: text, 
-        image: image, 
-        sender: sender, 
-        avatar: finalAvatar, 
-        time: time,
-        type: isPm ? 'pm' : 'general'
+
+    vcBtnJoin.onclick = async () => {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            socket.emit('vc-join');
+            isInVC = true;
+            vcBtnJoin.style.display = 'none';
+            vcBtnMute.style.display = 'inline-block';
+            vcBtnMute.innerText = "Mute";
+        } catch (err) {
+            alert("Could not access microphone.");
+            console.error(err);
+        }
     };
-}
 
-function getDmKey(user1, user2) {
-    return [user1, user2].sort();
-}
+    vcBtnMute.onclick = () => {
+        if(localStream) {
+            isMuted = !isMuted;
+            localStream.getAudioTracks()[0].enabled = !isMuted;
+            vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
+            vcBtnMute.style.backgroundColor = isMuted ? "grey" : "var(--color-vc-red)";
+            socket.emit('vc-mute-toggle', isMuted);
+        }
+    };
 
-function broadcastUserList() {
-    io.emit('user-list-update', Object.values(users));
-}
-
-function broadcastVCUserList() {
-    io.emit('vc-user-list-update', Object.values(vcUsers));
-}
-
-function addToHistory(msgObj) {
-    messageHistory.push(msgObj);
-    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
-}
-
-function findSocketIdByUsername(username) {
-    return Object.keys(users).find(id => users[id].username.toLowerCase() === username.toLowerCase());
-}
-
-function getClientIp(socket) {
-    const forwarded = socket.handshake.headers['x-forwarded-for'];
-    if (forwarded) return forwarded.split(',')[0].trim();
-    return socket.handshake.address;
-}
-
-app.use(express.static('public'));
-
-io.on('connection', async (socket) => {
-    const clientIp = getClientIp(socket);
-    
-    if (bannedIPs.has(clientIp)) {
-        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
-        socket.disconnect(true);
-        return;
-    }
-
-    socket.emit('history', messageHistory);
-    broadcastUserList();
-    broadcastVCUserList(); 
-
-    try {
-        const allDbUsers = await User.find({});
-        const sidebarList = allDbUsers.map(u => ({
-            username: u.username,
-            avatar: u.avatar,
-            online: Object.values(users).some(live => live.username === u.username)
-        }));
-        socket.emit('sidebar-user-list', sidebarList);
-    } catch (err) { console.error("Sidebar fetch error", err); }
-
-    socket.on('get-history', () => {
-        socket.emit('history', messageHistory);
+    socket.on('vc-prepare-connection', async (initiatorId) => {
+        if (!isInVC) return;
+        const peer = createPeer(initiatorId, true);
+        peers[initiatorId] = peer;
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.emit('signal', { target: initiatorId, signal: { type: 'offer', sdp: peer.localDescription } });
     });
 
-    socket.on('set-username', async ({ username, avatar }) => {
-        const oldUserData = users[socket.id] || {};
-        const oldUsername = oldUserData.username;
-        const newAvatar = avatar || 'placeholder-avatar.png'; 
-
-        if (!username) return;
-
-        const usernameLower = username.toLowerCase();
-        const isDuplicate = Object.keys(users).some(id => 
-            id !== socket.id && users[id].username.toLowerCase() === usernameLower
-        );
-
-        if (isDuplicate) {
-            socket.emit('chat-message', formatMessage('System', `The username '${username}' is already taken.`));
-            return;
+    socket.on('signal', async ({ sender, signal }) => {
+        if (!isInVC) return;
+        let peer = peers[sender];
+        if (!peer) {
+            peer = createPeer(sender, false);
+            peers[sender] = peer;
         }
-
-        userAvatarCache[username] = newAvatar;
-        users[socket.id] = { username, avatar: newAvatar, id: socket.id };
-
-        try {
-            await User.findOneAndUpdate(
-                { username: username },
-                { avatar: newAvatar, lastSeen: Date.now() },
-                { upsert: true, new: true }
-            );
-        } catch(e) { console.error("DB Save Error", e); }
-
-        if (vcUsers[socket.id]) {
-            vcUsers[socket.id].username = username;
-            vcUsers[socket.id].avatar = newAvatar;
-            broadcastVCUserList();
+        if (signal.type === 'offer') {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.emit('signal', { target: sender, signal: { type: 'answer', sdp: peer.localDescription } });
+        } else if (signal.type === 'answer') {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } else if (signal.candidate) {
+            await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
         }
-        
-        if (username !== oldUsername) {
-            const joinMsg = formatMessage('System', `User ${username} joined the chat.`);
-            io.emit('chat-message', joinMsg);
-            addToHistory(joinMsg);
-        }
-        broadcastUserList();
-        io.emit('user-status-change', { username: username, online: true, avatar: newAvatar });
     });
 
-    socket.on('chat-message', (payload) => {
-        const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
-        const sender = userData.username;
-
-        if (mutedUsers.has(sender.toLowerCase())) {
-            socket.emit('chat-message', formatMessage('System', 'You are currently muted.'));
-            return;
-        }
-
-        let msgText = '';
-        let msgImage = null;
-
-        if (typeof payload === 'string') {
-            msgText = payload;
-        } else if (typeof payload === 'object') {
-            msgText = payload.text || '';
-            msgImage = payload.image || null;
-        }
-
-        if (msgText.startsWith('/')) {
-            const parts = msgText.trim().slice(1).split(/\s+/); 
-            const command = parts[0].toLowerCase();
-            const args = parts.slice(1); 
-            
-            if (command === 'msg') {
-                const targetUsername = parts[1];
-                const privateText = parts.slice(2).join(' ').trim();
-                if (!targetUsername || !privateText) {
-                    socket.emit('chat-message', formatMessage('System', `Usage: /msg <username> <message>`));
-                    return;
-                }
-                const recipientId = findSocketIdByUsername(targetUsername);
-                if (!recipientId) {
-                    socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`));
-                } else {
-                    const pmObject = {
-                        text: privateText,
-                        type: 'private',
-                        sender: sender,
-                        target: users[recipientId].username,
-                        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                        avatar: userAvatarCache[sender] || userData.avatar
-                    };
-                    socket.emit('chat-message', pmObject);
-                    io.to(recipientId).emit('chat-message', pmObject);
-                }
-                return; 
-            } 
-            
-            if (sender === ADMIN_USERNAME) {
-                const targetName = args[0];
-                const reason = args.slice(1).join(' ') || 'No reason';
-                
-                if (command === 'server' && args.length > 0) {
-                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
-                    io.emit('chat-message', serverMsg);
-                    addToHistory(serverMsg);
-                    return;
-                } else if (command === 'clear') {
-                    messageHistory.length = 0;
-                    io.emit('clear-chat');
-                    const clearMsg = formatMessage('System', `Chat history cleared.`);
-                    io.emit('chat-message', clearMsg);
-                    addToHistory(clearMsg);
-                    return;
-                } else if (command === 'mute') {
-                    if (targetName) {
-                        mutedUsers.add(targetName.toLowerCase());
-                        io.emit('chat-message', formatMessage('System', `${targetName} muted. Reason: ${reason}`));
-                    }
-                    return;
-                } else if (command === 'unmute') {
-                    if (targetName && mutedUsers.has(targetName.toLowerCase())) {
-                        mutedUsers.delete(targetName.toLowerCase());
-                        socket.emit('chat-message', formatMessage('System', `${targetName} unmuted.`));
-                    }
-                    return;
-                } else if (command === 'kick') {
-                    const targetId = findSocketIdByUsername(targetName);
-                    if (targetId) {
-                        io.to(targetId).emit('chat-message', formatMessage('System', `You have been kicked. ${reason}`));
-                        io.sockets.sockets.get(targetId)?.disconnect();
-                        io.emit('chat-message', formatMessage('System', `${targetName} kicked.`));
-                    }
-                    return;
-                } else if (command === 'ban') {
-                    const targetId = findSocketIdByUsername(targetName);
-                    if (targetId) {
-                         const ip = getClientIp(io.sockets.sockets.get(targetId));
-                         bannedIPs.set(ip, reason);
-                         io.to(targetId).emit('chat-message', formatMessage('System', `You have been BANNED. ${reason}`));
-                         io.sockets.sockets.get(targetId)?.disconnect();
-                         io.emit('chat-message', formatMessage('System', `${targetName} BANNED.`));
-                    }
-                    return;
-                }
-            }
-        }
-
-        const msgObj = formatMessage(sender, msgText, userData.avatar, msgImage);
-        addToHistory(msgObj);
-        io.emit('chat-message', msgObj);
+    socket.on('vc-user-left', (id) => {
+        if (peers[id]) { peers[id].close(); delete peers[id]; }
+        const audioEl = document.getElementById(`audio-${id}`);
+        if (audioEl) audioEl.remove();
     });
 
-    socket.on('fetch-dm-history', async (targetUsername) => {
-        const user = users[socket.id];
-        if(!user) return;
-        try {
-            const participants = getDmKey(user.username, targetUsername);
-            const conversation = await DM.findOne({ participants: participants });
-            const history = conversation ? conversation.messages : [];
-            socket.emit('dm-history', { target: targetUsername, messages: history });
-        } catch(e) { console.error("DM Fetch Error", e); }
-    });
-
-    socket.on('send-dm', async (data) => {
-        const sender = users[socket.id];
-        if (!sender) return;
-        
-        const msgObj = formatMessage(sender.username, data.message, sender.avatar, data.image, true);
-        const participants = getDmKey(sender.username, data.target);
-
-        try {
-            await DM.findOneAndUpdate(
-                { participants: participants },
-                { $push: { messages: { $each: [msgObj], $slice: -50 } } }, 
-                { upsert: true }
-            );
-        } catch(e) { console.error("DM Save Error", e); }
-
-        socket.emit('dm-received', { from: sender.username, to: data.target, message: msgObj });
-        
-        const targetSockets = Object.values(users).filter(u => u.username === data.target);
-        targetSockets.forEach(u => {
-            const targetSocketId = Object.keys(users).find(key => users[key].username === u.username);
-            if(targetSocketId) {
-                io.to(targetSocketId).emit('dm-received', { from: sender.username, to: data.target, message: msgObj });
-            }
+    socket.on('vc-user-list-update', (users) => {
+        vcUserList.innerHTML = '';
+        users.forEach(u => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${u.username}</span> ${u.isMuted ? '<span style="color:red">(Muted)</span>' : ''}`;
+            vcUserList.appendChild(li);
         });
     });
 
-    socket.on('typing-start', (target) => {
-        const user = users[socket.id];
-        if(!user) return;
-        
-        if (!target || target === 'global') {
-            socket.broadcast.emit('user-typing', { username: user.username, scope: 'global' });
-        } else {
-            const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-            if(targetSocketId) {
-                io.to(targetSocketId).emit('user-typing', { username: user.username, scope: 'dm' });
-            }
-        }
-    });
+    // --- GENERIC UI ---
+    if (btnCloakLauncher) {
+        btnCloakLauncher.addEventListener('click', () => {
+            const urlToEmbed = "https://tuff.speedslicer.dev/files/1_1UT8/WASM/";
+            const newWindow = window.open('about:blank', '_blank');
+            if (!newWindow) return;
+            newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="${urlToEmbed}"></iframe></body></html>`);
+        });
+    }
 
-    socket.on('typing-stop', (target) => {
-        const user = users[socket.id];
-        if(!user) return;
-
-        if (!target || target === 'global') {
-            socket.broadcast.emit('user-stopped-typing', { username: user.username, scope: 'global' });
-        } else {
-             const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-             if(targetSocketId) {
-                 io.to(targetSocketId).emit('user-stopped-typing', { username: user.username, scope: 'dm' });
-             }
-        }
-    });
-
-    // VC
-    socket.on('vc-join', () => {
-        if (users[socket.id]) {
-            vcUsers[socket.id] = { id: socket.id, username: users[socket.id].username, avatar: users[socket.id].avatar, isMuted: false };
-            const joinMsg = formatMessage('System', `${users[socket.id].username} joined Voice Chat.`);
-            io.emit('chat-message', joinMsg);
-            addToHistory(joinMsg);
-            broadcastVCUserList();
-            
-            socket.broadcast.emit('vc-prepare-connection', socket.id);
-        }
-    });
-
-    socket.on('vc-leave', () => {
-        if (vcUsers[socket.id]) {
-            const userData = users[socket.id];
-            delete vcUsers[socket.id];
-            if (userData) {
-                const leaveMsg = formatMessage('System', `${userData.username} left Voice Chat.`);
-                io.emit('chat-message', leaveMsg);
-                addToHistory(leaveMsg);
-                socket.broadcast.emit('vc-user-left', socket.id);
-            }
-        }
-        broadcastVCUserList();
-    });
-
-    socket.on('vc-mute-toggle', (isMuted) => { if (vcUsers[socket.id]) { vcUsers[socket.id].isMuted = isMuted; broadcastVCUserList(); } });
+    if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
+    socket.on('update-user-list', (users) => { onlineUsersList.innerHTML = ''; users.forEach(user => { const li = document.createElement('li'); li.innerHTML = `<span style="width:10px;height:10px;background:#4caf50;border-radius:50%;display:inline-block;"></span> ${user.username}`; onlineUsersList.appendChild(li); }); });
     
-    socket.on('signal', (data) => { 
-        io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); 
-    });
-    
-    socket.on('disconnect', () => {
-        const user = users[socket.id];
-        if (user) {
-            delete users[socket.id];
-            if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
-            const leaveMsg = formatMessage('System', `${user.username} has left.`);
-            io.emit('chat-message', leaveMsg);
-            addToHistory(leaveMsg);
-            broadcastUserList();
-            io.emit('user-status-change', { username: user.username, online: false });
-        }
-    });
-});
+    notifHeader.addEventListener('click', () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); });
+    const loadSetting = (key, checkbox) => { const saved = localStorage.getItem(key); if (saved !== null) checkbox.checked = (saved === 'true'); };
+    loadSetting('notif-main', settingMain); loadSetting('notif-pm', settingPM); loadSetting('notif-vc', settingVC); loadSetting('notif-sound', settingSound);
+    const savedBg = localStorage.getItem('custom-bg');
+    if (savedBg) { document.body.style.backgroundImage = `url(${savedBg})`; document.body.classList.add('transparent-mode'); }
+    const saveSetting = (key, checkbox) => { checkbox.addEventListener('change', () => { localStorage.setItem(key, checkbox.checked); if (Notification.permission === 'default') Notification.requestPermission(); }); };
+    saveSetting('notif-main', settingMain); saveSetting('notif-pm', settingPM); saveSetting('notif-vc', settingVC); saveSetting('notif-sound', settingSound);
+    btnBgUpload.addEventListener('click', () => bgUploadInput.click());
+    bgUploadInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (file && file.type.startsWith('image/')) { const reader = new FileReader(); reader.onload = (evt) => { const bgData = evt.target.result; localStorage.setItem('custom-bg', bgData); document.body.style.backgroundImage = `url(${bgData})`; document.body.classList.add('transparent-mode'); }; reader.readAsDataURL(file); } });
+    btnBgReset.addEventListener('click', () => { localStorage.removeItem('custom-bg'); document.body.style.backgroundImage = ''; document.body.classList.remove('transparent-mode'); });
+    function playNotificationSound() { if (!settingSound.checked) return; const ctx = new (window.AudioContext || window.webkitAudioContext)(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.type = 'sine'; osc.frequency.setValueAtTime(500, ctx.currentTime); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1); osc.start(); osc.stop(ctx.currentTime + 0.1); }
+    function triggerNotification(title, body) { if (document.hidden && Notification.permission === 'granted') { const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png', requireInteraction: true }); playNotificationSound(); } }
+    function handleFileSelection(file) { if (!file || !file.type.startsWith('image/')) return; const reader = new FileReader(); reader.onload = (e) => { stagedImage = e.target.result; imagePreview.src = stagedImage; imagePreviewArea.style.display = 'flex'; }; reader.readAsDataURL(file); }
+    fileUploadBtn.addEventListener('click', () => hiddenFileInput.click()); hiddenFileInput.addEventListener('change', (e) => handleFileSelection(e.target.files[0]));
+    messageInput.addEventListener('paste', (e) => { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let item of items) { if (item.kind === 'file' && item.type.startsWith('image/')) { const file = item.getAsFile(); handleFileSelection(file); e.preventDefault(); } } });
+    window.addEventListener('dragover', (e) => e.preventDefault()); window.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelection(e.dataTransfer.files[0]); });
+    removeImageBtn.addEventListener('click', () => { stagedImage = null; imagePreview.src = ''; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = ''; });
+    avatarUploadBtn.addEventListener('click', () => { const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => { currentAvatarBase64 = reader.result; currentAvatarPreview.src = currentAvatarBase64; if (currentUsername) socket.emit('set-username', { username: currentUsername, avatar: currentAvatarBase64 }); localStorage.setItem('chatAvatar', currentAvatarBase64); }; reader.readAsDataURL(file); } }); fileInput.click(); });
+    document.addEventListener('DOMContentLoaded', () => { const storedUsername = localStorage.getItem('chatUsername'); const storedAvatar = localStorage.getItem('chatAvatar'); if (storedAvatar) { currentAvatarBase64 = storedAvatar; currentAvatarPreview.src = storedAvatar; } if (storedUsername) { usernameInput.value = storedUsername; socket.emit('set-username', { username: storedUsername, avatar: storedAvatar }); currentUsername = storedUsername; usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
+    setUsernameBtn.addEventListener('click', () => { const username = usernameInput.value.trim(); if (username) { localStorage.setItem('chatUsername', username); currentUsername = username; socket.emit('set-username', { username: username, avatar: currentAvatarBase64 || 'placeholder-avatar.png' }); usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+</script>
+</body>
+</html>
