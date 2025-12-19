@@ -111,7 +111,7 @@ html, body {
     padding: 15px; background-color: var(--bg-primary);
     border-bottom: 1px solid #333; 
     display: flex; align-items: center; 
-    justify-content: space-between; /* Pushes sides apart */
+    justify-content: space-between; 
     gap: 10px;
     transition: background-color 0.3s ease;
 }
@@ -142,7 +142,6 @@ html, body {
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
 
-/* System Message Style */
 .system-message {
     text-align: center;
     color: var(--color-system);
@@ -152,7 +151,6 @@ html, body {
     width: 100%;
 }
 
-/* Typing Indicator */
 #typing-indicator {
     padding: 5px 20px; font-style: italic; color: var(--color-muted); font-size: 0.8em; display: none;
 }
@@ -196,14 +194,13 @@ html, body {
 #send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #file-upload-btn { background-color: #555; color: white; padding: 10px; border-radius: 4px; border: none; cursor: pointer; }
 
-/* Right Panel Layout Fix */
 #right-panel { 
     width: 250px; 
     background-color: var(--bg-primary); 
     border-left: 1px solid #333; 
     display: flex; 
     flex-direction: column; 
-    overflow: hidden; /* Prevent double scrollbars */
+    overflow: hidden; 
     transition: background-color 0.3s ease; 
 }
 .panel-top-group { 
@@ -217,7 +214,7 @@ html, body {
     border-bottom: 1px solid #333; 
     flex-shrink: 0; 
     margin-top: auto; 
-    background-color: inherit; /* Matches parent color (important for transparent mode) */
+    background-color: inherit; 
     z-index: 10;
 }
 
@@ -235,21 +232,37 @@ html, body {
 .settings-list { list-style: none; padding: 10px; margin: 0; width: 100%; box-sizing: border-box; }
 .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid #333; }
 
+/* ========================================= */
+/* --- TRANSPARENT MODE & CUSTOM BG STYLES --- */
+/* ========================================= */
+
 body.transparent-mode #main-wrapper {
     background-color: rgba(30, 30, 30, 0.75); 
     backdrop-filter: blur(8px); 
     box-shadow: 0 0 30px rgba(0,0,0,0.8);
     border: 1px solid rgba(255,255,255,0.1);
 }
-body.transparent-mode #dm-sidebar {
-    background-color: rgba(30, 30, 30, 0.6); 
-    backdrop-filter: blur(8px); 
-    border-right: 1px solid rgba(255,255,255,0.1);
+
+/* By setting these to transparent, they reveal the #main-wrapper background (0.75) 
+   beneath them, making all 3 panels look exactly the same.
+*/
+body.transparent-mode #dm-sidebar, 
+body.transparent-mode #right-panel {
+    background-color: transparent; 
+    backdrop-filter: none; /* Avoid double-blur */
+    border-color: rgba(255,255,255,0.1);
 }
-body.transparent-mode #right-panel,
+
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
-    background-color: rgba(30, 30, 30, 0.6); 
+    background-color: rgba(30, 30, 30, 0.3); /* Slight tint for text readability */
 }
-body.transparent-mode #online-users-area { background-color: rgba(42, 56, 71, 0.7); }
-body.transparent-mode .bubble-content { opacity: 0.95; backdrop-filter: blur(2px); }
+
+body.transparent-mode #online-users-area {
+    background-color: rgba(42, 56, 71, 0.7); 
+}
+
+body.transparent-mode .bubble-content {
+    opacity: 0.95; 
+    backdrop-filter: blur(2px);
+}
