@@ -35,7 +35,7 @@ const dmSchema = new mongoose.Schema({
         timestamp: { type: Date, default: Date.now }
     }]
 });
-// Indexing for speed
+// Index for speed
 dmSchema.index({ participants: 1 });
 const DM = mongoose.model('DM', dmSchema);
 
@@ -117,12 +117,13 @@ io.on('connection', async (socket) => {
         return;
     }
 
+    // Send history on connect
     socket.emit('history', messageHistory);
     broadcastUserList();
     broadcastVCUserList(); 
 
     try {
-        const allDbUsers = await User.find({}).lean(); // Use lean for speed
+        const allDbUsers = await User.find({}).lean();
         const sidebarList = allDbUsers.map(u => ({
             username: u.username,
             avatar: u.avatar,
@@ -131,6 +132,7 @@ io.on('connection', async (socket) => {
         socket.emit('sidebar-user-list', sidebarList);
     } catch (err) { console.error("Sidebar fetch error", err); }
 
+    // Client requests global history refresh
     socket.on('get-history', () => {
         socket.emit('history', messageHistory);
     });
@@ -287,7 +289,6 @@ io.on('connection', async (socket) => {
         if(!user) return;
         try {
             const participants = getDmKey(user.username, targetUsername);
-            // .lean() makes the query much faster by returning a plain JS object
             const conversation = await DM.findOne({ participants: participants }).lean();
             const history = conversation ? conversation.messages : [];
             socket.emit('dm-history', { target: targetUsername, messages: history });
