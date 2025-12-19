@@ -1,4 +1,4 @@
-/* --- Dark Mode Variables (Preserved) --- */
+/* --- Dark Mode Variables --- */
 :root {
     --bg-primary: #1e1e1e;
     --bg-secondary: #252526;
@@ -34,7 +34,6 @@ html, body {
 
 #main-wrapper {
     display: flex; height: 100vh;
-    /* CHANGED: Increased max-width to accommodate sidebar */
     max-width: 1200px; 
     margin: 0 auto;
     border-left: 1px solid #333; border-right: 1px solid #333;
@@ -43,7 +42,6 @@ html, body {
     transition: background-color 0.3s ease;
 }
 
-/* --- NEW: DM SIDEBAR STYLES --- */
 #dm-sidebar {
     width: 250px;
     background-color: var(--bg-primary);
@@ -103,15 +101,6 @@ html, body {
 
 .dm-username { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-#return-global-btn {
-    width: 100%; padding: 8px;
-    background: var(--bg-input); color: white;
-    border: none; cursor: pointer; border-radius: 4px;
-}
-#return-global-btn:hover { background: #555; }
-
-/* --- EXISTING STYLES (Preserved) --- */
-
 #chat-container {
     flex: 1; display: flex; flex-direction: column;
     min-width: 0; 
@@ -120,8 +109,16 @@ html, body {
 
 #username-area {
     padding: 15px; background-color: var(--bg-primary);
-    border-bottom: 1px solid #333; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid #333; 
+    display: flex; align-items: center; 
+    justify-content: space-between; /* Pushes sides apart */
+    gap: 10px;
     transition: background-color 0.3s ease;
+}
+#username-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 #avatar-upload-btn { background: none; border: none; cursor: pointer; padding: 0; width: 40px; height: 40px; }
 #current-avatar-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #555; }
@@ -144,6 +141,22 @@ html, body {
 #messages::-webkit-scrollbar { width: 8px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+/* System Message Style */
+.system-message {
+    text-align: center;
+    color: var(--color-system);
+    font-size: 0.85em;
+    margin: 10px 0;
+    font-style: italic;
+    width: 100%;
+}
+
+/* Typing Indicator */
+#typing-indicator {
+    padding: 5px 20px; font-style: italic; color: var(--color-muted); font-size: 0.8em; display: none;
+}
+#typing-indicator.active { display: block; }
 
 .message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
 .user-message { flex-direction: row-reverse; }
@@ -183,16 +196,37 @@ html, body {
 #send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #file-upload-btn { background-color: #555; color: white; padding: 10px; border-radius: 4px; border: none; cursor: pointer; }
 
-/* Right Panel */
-#right-panel { width: 250px; background-color: var(--bg-primary); border-left: 1px solid #333; display: flex; flex-direction: column; overflow-y: auto; transition: background-color 0.3s ease; }
-.panel-top-group, .panel-bottom-group { padding: 15px; border-bottom: 1px solid #333; }
+/* Right Panel Layout Fix */
+#right-panel { 
+    width: 250px; 
+    background-color: var(--bg-primary); 
+    border-left: 1px solid #333; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; /* Prevent double scrollbars */
+    transition: background-color 0.3s ease; 
+}
+.panel-top-group { 
+    padding: 15px; 
+    border-bottom: 1px solid #333; 
+    flex-grow: 1; 
+    overflow-y: auto; 
+}
+.panel-bottom-group { 
+    padding: 15px; 
+    border-bottom: 1px solid #333; 
+    flex-shrink: 0; 
+    margin-top: auto; 
+    background-color: inherit; /* Matches parent color (important for transparent mode) */
+    z-index: 10;
+}
+
 .panel-title { margin: 0 0 10px 0; font-size: 0.9em; text-transform: uppercase; color: var(--color-muted); letter-spacing: 1px; }
 .panel-btn { width: 100%; padding: 8px; margin-bottom: 8px; background-color: var(--bg-input); border: 1px solid #555; color: var(--color-text); border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
 .panel-btn:hover { background-color: #444; }
 #vc-user-list { list-style: none; padding: 0; margin: 0; }
 #vc-user-list li { font-size: 0.9em; padding: 5px 0; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
 
-/* Dropdown */
 .dropdown-wrapper { margin-top: 15px; position: relative; }
 .dropdown-header { padding: 8px; background-color: var(--bg-input); border: 1px solid #555; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
 .dropdown-header:hover { background-color: #444; }
@@ -201,25 +235,21 @@ html, body {
 .settings-list { list-style: none; padding: 10px; margin: 0; width: 100%; box-sizing: border-box; }
 .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid #333; }
 
-/* --- TRANSPARENT MODE & CUSTOM BG STYLES (Preserved & Updated) --- */
 body.transparent-mode #main-wrapper {
     background-color: rgba(30, 30, 30, 0.75); 
     backdrop-filter: blur(8px); 
     box-shadow: 0 0 30px rgba(0,0,0,0.8);
     border: 1px solid rgba(255,255,255,0.1);
 }
-
 body.transparent-mode #dm-sidebar {
     background-color: rgba(30, 30, 30, 0.6); 
     backdrop-filter: blur(8px); 
     border-right: 1px solid rgba(255,255,255,0.1);
 }
-
 body.transparent-mode #right-panel,
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
     background-color: rgba(30, 30, 30, 0.6); 
 }
-
 body.transparent-mode #online-users-area { background-color: rgba(42, 56, 71, 0.7); }
 body.transparent-mode .bubble-content { opacity: 0.95; backdrop-filter: blur(2px); }
