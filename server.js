@@ -13,12 +13,14 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// --- 2. DEFINE DATABASE SCHEMAS ---
+// --- 2. SCHEMAS ---
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     avatar: String,
     lastSeen: { type: Date, default: Date.now },
-    isMuted: { type: Boolean, default: false }
+    isMuted: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
+    ip: String // To track IP bans
 });
 const User = mongoose.model('User', userSchema);
 
@@ -27,17 +29,21 @@ const messageSchema = new mongoose.Schema({
     image: String,
     sender: String,
     avatar: String,
-    type: { type: String, default: 'general' }, // 'general', 'private', 'system'
-    target: String, // Receiver username (for DMs)
+    type: { type: String, default: 'general' },
+    target: String,
     timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', messageSchema);
 
 // --- SERVER SETUP ---
-app.use(express.static('public'));
+app.use(express.static('public')); // Corrected folder path
 app.set('trust proxy', 1); 
 
-// Helper: Format message for frontend
+// --- ADMIN CONFIG ---
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const adminSockets = new Set(); // Track which sockets are logged in as admin
+
+// Helper: Format message
 function formatMsg(dbMsg) {
     return {
         text: dbMsg.text,
@@ -52,43 +58,55 @@ function formatMsg(dbMsg) {
 
 const onlineUsers = new Map(); // socket.id -> username
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
+    const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+
+    // CHECK IP BAN
+    const bannedUser = await User.findOne({ ip: clientIp, isBanned: true });
+    if (bannedUser) {
+        socket.disconnect();
+        return;
+    }
+
     // --- ON JOIN ---
     socket.on('set-username', async (data) => {
         const { username, avatar } = data;
         const cleanName = username.trim();
 
-        // Update/Create User in DB
+        // Check DB for Ban/Mute
         let user = await User.findOne({ username: cleanName });
+        if (user && user.isBanned) {
+            socket.emit('chat-message', { sender: 'System', text: 'You are banned.', type: 'system' });
+            socket.disconnect();
+            return;
+        }
+
         if (!user) {
-            user = await User.create({ username: cleanName, avatar });
+            user = await User.create({ username: cleanName, avatar, ip: clientIp });
         } else {
             user.avatar = avatar; 
             user.lastSeen = new Date();
+            user.ip = clientIp; // Update IP
             await user.save();
         }
 
         onlineUsers.set(socket.id, cleanName);
 
-        // 1. Send Global History (Last 50)
+        // 1. Send Global History
         const globalMsgs = await Message.find({ type: { $in: ['general', 'system'] } })
             .sort({ timestamp: -1 }).limit(50);
         socket.emit('history', globalMsgs.reverse().map(formatMsg));
 
-        // 2. Send DM History (The "Mailbox")
-        // Get ALL private messages where I am sender OR receiver
+        // 2. Send DM History
         const myDms = await Message.find({
             type: 'private',
             $or: [{ target: cleanName }, { sender: cleanName }]
         }).sort({ timestamp: 1 });
         
-        // Group them for the frontend
         const dmHistory = {};
         myDms.forEach(msg => {
-            // Create a unique key for the conversation (e.g. "Alice:Bob")
             const otherPerson = (msg.sender === cleanName) ? msg.target : msg.sender;
             const key = [cleanName, otherPerson].sort().join(':');
-            
             if (!dmHistory[key]) dmHistory[key] = [];
             dmHistory[key].push(formatMsg(msg));
         });
@@ -98,7 +116,6 @@ io.on('connection', (socket) => {
         const allUsers = await User.find({}).sort({ lastSeen: -1 });
         io.emit('user-list-update', allUsers);
         
-        // Announce
         io.emit('status-update', { username: cleanName, status: 'online' });
     });
 
@@ -107,12 +124,73 @@ io.on('connection', (socket) => {
         const senderName = onlineUsers.get(socket.id);
         if (!senderName) return;
 
-        // Save to DB
+        const user = await User.findOne({ username: senderName });
+        if (user && user.isMuted) {
+            socket.emit('chat-message', { sender: 'System', text: 'You are muted.', type: 'system' });
+            return;
+        }
+
+        // --- ADMIN COMMANDS ---
+        if (payload.text && payload.text.startsWith('/')) {
+            const args = payload.text.slice(1).split(' ');
+            const command = args.shift().toLowerCase();
+
+            // /auth password
+            if (command === 'auth') {
+                if (args[0] === ADMIN_PASSWORD) {
+                    adminSockets.add(socket.id);
+                    socket.emit('chat-message', { sender: 'System', text: 'Admin logged in.', type: 'system' });
+                }
+                return;
+            }
+
+            // Admin checks
+            if (['kick', 'ban', 'mute', 'unmute'].includes(command)) {
+                if (!adminSockets.has(socket.id)) {
+                    socket.emit('chat-message', { sender: 'System', text: 'Permission denied.', type: 'system' });
+                    return;
+                }
+                
+                const targetName = args[0];
+                const targetUser = await User.findOne({ username: targetName });
+
+                if (!targetUser) {
+                    socket.emit('chat-message', { sender: 'System', text: 'User not found.', type: 'system' });
+                    return;
+                }
+
+                if (command === 'mute') {
+                    targetUser.isMuted = true;
+                    await targetUser.save();
+                    io.emit('chat-message', { sender: 'System', text: `**${targetName}** was muted.`, type: 'system' });
+                }
+                if (command === 'unmute') {
+                    targetUser.isMuted = false;
+                    await targetUser.save();
+                    io.emit('chat-message', { sender: 'System', text: `**${targetName}** was unmuted.`, type: 'system' });
+                }
+                if (command === 'ban') {
+                    targetUser.isBanned = true;
+                    await targetUser.save();
+                    // Disconnect if online
+                    for (let [id, name] of onlineUsers.entries()) {
+                        if (name === targetName) {
+                            io.to(id).emit('chat-message', { sender: 'System', text: 'You have been banned.', type: 'system' });
+                            io.sockets.sockets.get(id)?.disconnect();
+                        }
+                    }
+                    io.emit('chat-message', { sender: 'System', text: `**${targetName}** was BANNED.`, type: 'system' });
+                }
+                return;
+            }
+        }
+
+        // --- NORMAL MESSAGE ---
         const newMsg = await Message.create({
             text: payload.text,
             image: payload.image,
             sender: senderName,
-            avatar: payload.avatar, // In a real app we'd fetch this from DB to be safe
+            avatar: payload.avatar,
             type: payload.type || 'general',
             target: payload.target
         });
@@ -120,29 +198,16 @@ io.on('connection', (socket) => {
         const formatted = formatMsg(newMsg);
 
         if (payload.type === 'private' && payload.target) {
-            // Send to Me (Sender)
-            socket.emit('chat-message', formatted);
-            
-            // Send to Target (if online)
+            socket.emit('chat-message', formatted); // Sender see it
+            // Receiver sees it
             for (let [id, name] of onlineUsers.entries()) {
                 if (name === payload.target) {
                     io.to(id).emit('chat-message', formatted);
                 }
             }
         } else {
-            // Global Message
             io.emit('chat-message', formatted);
         }
-    });
-
-    // --- TYPING & VC (Pass-through) ---
-    socket.on('typing-start', () => {
-        const name = onlineUsers.get(socket.id);
-        if(name) socket.broadcast.emit('user-typing', name);
-    });
-    socket.on('typing-stop', () => {
-        const name = onlineUsers.get(socket.id);
-        if(name) socket.broadcast.emit('user-stopped-typing', name);
     });
 
     socket.on('disconnect', async () => {
@@ -151,6 +216,7 @@ io.on('connection', (socket) => {
             await User.updateOne({ username: name }, { lastSeen: new Date() });
             io.emit('status-update', { username: name, status: 'offline' });
             onlineUsers.delete(socket.id);
+            adminSockets.delete(socket.id);
         }
     });
 });
