@@ -196,9 +196,17 @@ html, body {
 #typing-indicator.active { display: block; }
 
 .message { display: flex; align-items: flex-start; margin-bottom: 15px; max-width: 100%; }
+
+/* GROUPED MESSAGE REDUCES GAP */
+.grouped-message {
+    margin-bottom: 2px; /* Much tighter spacing */
+}
+
 .user-message { flex-direction: row-reverse; }
 
 .avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
+.avatar-spacer { width: 35px; height: 35px; margin: 0 10px; flex-shrink: 0; } /* Keeps alignment */
+
 .message-content-area { display: flex; flex-direction: column; max-width: 70%; }
 .user-message .message-content-area { align-items: flex-end; }
 .bubble-content {
@@ -207,6 +215,12 @@ html, body {
 }
 .other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
 .user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
+
+/* Admin Highlight */
+.admin-message .bubble-content {
+    border: 1px solid #ffd700;
+    box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+}
 
 .message-image { max-width: 100%; border-radius: 8px; margin-bottom: 5px; display: block; cursor: pointer; }
 .message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
