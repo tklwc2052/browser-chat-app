@@ -48,6 +48,8 @@ const vcUsers = {};
 const messageHistory = []; 
 const MAX_HISTORY = 50; 
 const userAvatarCache = {}; 
+// NEW: Store the MOTD in memory (resets if server restarts)
+let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
 
 const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
@@ -77,25 +79,19 @@ function formatMessage(sender, text, avatar = null, image = null, isPm = false) 
 }
 
 function getDmKey(user1, user2) { return [user1, user2].sort(); }
-
 function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vcUsers)); }
-
 function addToHistory(msgObj) {
     messageHistory.push(msgObj);
     if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
 }
-
 function findSocketIdByUsername(username) {
     return Object.keys(users).find(id => users[id].username.toLowerCase() === username.toLowerCase());
 }
-
 function getClientIp(socket) {
     const forwarded = socket.handshake.headers['x-forwarded-for'];
     if (forwarded) return forwarded.split(',')[0].trim();
     return socket.handshake.address;
 }
-
-// HELPER: Refreshes the sidebar list for everyone
 async function broadcastSidebarRefresh() {
     try {
         const allDbUsers = await User.find({}).lean();
@@ -119,9 +115,12 @@ io.on('connection', async (socket) => {
         return;
     }
 
+    // NEW: Send MOTD specifically to this user on connection
+    socket.emit('motd', serverMOTD);
+
     socket.emit('history', messageHistory);
     broadcastVCUserList(); 
-    broadcastSidebarRefresh(); // Send initial list
+    broadcastSidebarRefresh(); 
 
     socket.on('get-history', () => { socket.emit('history', messageHistory); });
 
@@ -133,7 +132,6 @@ io.on('connection', async (socket) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
-        // Check duplicates (exclude self)
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -164,11 +162,8 @@ io.on('connection', async (socket) => {
             const joinMsg = formatMessage('System', `User ${username} joined the chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
-            
-            // User is new or changed name, refresh sidebar for everyone
             broadcastSidebarRefresh();
         }
-        
         io.emit('user-status-change', { username: username, online: true, avatar: newAvatar });
     });
 
@@ -267,34 +262,34 @@ io.on('connection', async (socket) => {
                          io.emit('chat-message', formatMessage('System', `${targetName} BANNED.`));
                     }
                     return;
-                } 
-                // --- NEW CLEANUP COMMANDS ---
-                else if (command === 'prune') {
-                    // Usage: /prune 7 (removes users inactive for 7 days)
-                    const days = parseInt(args[0]) || 30; // Default 30 days
+                } else if (command === 'prune') {
+                    const parsed = parseInt(args[0]);
+                    const days = isNaN(parsed) ? 30 : parsed; 
                     const cutoff = new Date();
                     cutoff.setDate(cutoff.getDate() - days);
-                    
                     try {
-                        const result = await User.deleteMany({ 
-                            lastSeen: { $lt: cutoff },
-                            username: { $ne: ADMIN_USERNAME } // Never delete admin
-                        });
-                        broadcastSidebarRefresh(); // Update everyone's list
+                        const result = await User.deleteMany({ lastSeen: { $lt: cutoff }, username: { $ne: ADMIN_USERNAME } });
+                        broadcastSidebarRefresh(); 
                         io.emit('chat-message', formatMessage('System', `Pruned ${result.deletedCount} users inactive for ${days}+ days.`));
-                    } catch (e) {
-                        console.error(e);
-                        socket.emit('chat-message', formatMessage('System', 'Error pruning users.'));
-                    }
+                    } catch (e) { console.error(e); }
                     return;
                 } else if (command === 'purgeusers') {
-                    // Usage: /purgeusers (deletes everyone except admin)
                     try {
                         await User.deleteMany({ username: { $ne: ADMIN_USERNAME } });
                         broadcastSidebarRefresh();
-                        io.emit('chat-message', formatMessage('System', `All users (except Admin) have been wiped from the database.`));
-                    } catch(e) {
-                         console.error(e);
+                        io.emit('chat-message', formatMessage('System', `All users (except Admin) have been wiped.`));
+                    } catch(e) { console.error(e); }
+                    return;
+                }
+                // NEW: Admin MOTD Command
+                else if (command === 'motd') {
+                    const newMotd = args.join(' ');
+                    if (newMotd) {
+                        serverMOTD = newMotd;
+                        // Confirm to admin that it changed
+                        socket.emit('chat-message', formatMessage('System', `MOTD updated to: ${serverMOTD}`));
+                    } else {
+                        socket.emit('chat-message', formatMessage('System', `Current MOTD: ${serverMOTD}`));
                     }
                     return;
                 }
@@ -320,10 +315,8 @@ io.on('connection', async (socket) => {
     socket.on('send-dm', async (data) => {
         const sender = users[socket.id];
         if (!sender) return;
-        
         const msgObj = formatMessage(sender.username, data.message, sender.avatar, data.image, true);
         const participants = getDmKey(sender.username, data.target);
-
         try {
             await DM.findOneAndUpdate(
                 { participants: participants },
@@ -331,9 +324,7 @@ io.on('connection', async (socket) => {
                 { upsert: true }
             );
         } catch(e) { console.error("DM Save Error", e); }
-
         socket.emit('dm-received', { from: sender.username, to: data.target, message: msgObj });
-        
         const targetSockets = Object.values(users).filter(u => u.username === data.target);
         targetSockets.forEach(u => {
             const targetSocketId = Object.keys(users).find(key => users[key].username === u.username);
