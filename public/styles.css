@@ -105,7 +105,7 @@ html, body {
     flex: 1; display: flex; flex-direction: column;
     min-width: 0; 
     background-color: transparent; 
-    position: relative; /* Needed for Scroll Button positioning */
+    position: relative; 
 }
 
 #username-area {
@@ -129,9 +129,9 @@ html, body {
 #messages {
     flex-grow: 1; overflow-y: auto;
     padding: 20px; display: flex; flex-direction: column; gap: 2px; 
-    content-visibility: auto; /* Browser Optimization */
+    content-visibility: auto; 
     contain-intrinsic-size: 50px;
-    scroll-behavior: auto; /* IMPORTANT: Instant jumping for chat switch */
+    scroll-behavior: auto; 
 }
 #messages::-webkit-scrollbar { width: 8px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
@@ -139,9 +139,9 @@ html, body {
 
 /* Scroll Down Button */
 #scroll-down-btn {
-    display: none; /* Hidden by default */
+    display: none; 
     position: absolute;
-    bottom: 90px; /* Just above input area */
+    bottom: 90px; 
     left: 50%;
     transform: translateX(-50%);
     background-color: var(--color-accent-blue);
@@ -156,9 +156,7 @@ html, body {
     font-size: 0.85em;
     transition: background 0.2s;
 }
-#scroll-down-btn:hover {
-    background-color: #005fa3;
-}
+#scroll-down-btn:hover { background-color: #005fa3; }
 
 /* System Message Style */
 .system-message {
@@ -170,24 +168,20 @@ html, body {
     width: 100%;
 }
 
-/* MOTD STYLE */
 .motd-message {
     color: #ffffff !important;
     font-weight: bold;
-    text-shadow: 0 0 5px rgba(0,0,0,0.5); /* Pop against background */
+    text-shadow: 0 0 5px rgba(0,0,0,0.5);
     margin-bottom: 15px; 
     font-size: 1.1em;
 }
 
-/* CLICKABLE LINKS */
 .chat-link {
     color: #4db8ff;
     text-decoration: underline;
     word-break: break-all;
 }
-.chat-link:hover {
-    color: #80d4ff;
-}
+.chat-link:hover { color: #80d4ff; }
 
 /* Typing Indicator */
 #typing-indicator {
@@ -198,44 +192,107 @@ html, body {
 .message { 
     display: flex; 
     align-items: flex-start; 
-    margin-bottom: 15px; /* Default margin for single messages or last in group */
+    margin-bottom: 15px; 
     max-width: 100%; 
+    position: relative; /* For actions */
 }
+.message:hover .message-actions { display: flex; } /* Show actions on hover */
 
-/* GROUPED MESSAGE (Internal to group) */
-.grouped-tight {
-    margin-bottom: 1px !important; /* Forces the gap to disappear */
-}
+.grouped-tight { margin-bottom: 1px !important; }
 
 .user-message { flex-direction: row-reverse; }
 
 .avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
-.avatar-spacer { width: 35px; height: 35px; margin: 0 10px; flex-shrink: 0; } /* Keeps alignment */
+.avatar-spacer { width: 35px; height: 35px; margin: 0 10px; flex-shrink: 0; }
 
-.message-content-area { display: flex; flex-direction: column; max-width: 70%; }
+.message-content-area { display: flex; flex-direction: column; max-width: 70%; position: relative; }
 .user-message .message-content-area { align-items: flex-end; }
+
+/* Message Actions (Reply/Edit/Delete) */
+.message-actions {
+    display: none;
+    position: absolute;
+    top: -20px;
+    right: 0; /* Default right */
+    background: #333;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    z-index: 100;
+}
+.user-message .message-actions { right: auto; left: 0; } /* Flip for self */
+
+.action-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+.action-btn:hover { color: white; background: #444; }
+
+/* Reply Context Block */
+.reply-context {
+    background-color: rgba(0,0,0,0.2);
+    border-left: 3px solid #777;
+    padding: 4px 8px;
+    font-size: 0.8em;
+    color: #ccc;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
 .bubble-content {
     padding: 8px 12px; border-radius: 12px;
     word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    min-width: 50px;
 }
 .other-message .bubble-content { background-color: var(--color-bubble-other); border-bottom-left-radius: 2px; }
 .user-message .bubble-content { background-color: var(--color-bubble-self); border-bottom-right-radius: 2px; }
+
+.edited-tag { font-size: 0.75em; color: #ccc; opacity: 0.7; margin-left: 5px; }
 
 .message-image { max-width: 100%; border-radius: 8px; margin-bottom: 5px; display: block; cursor: pointer; }
 .message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
 .user-message .message-time { text-align: right; }
 
-/* REMOVED .private-message-container and .bubble-private */
-
 #message-input-area {
     padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;
+    border-top: 1px solid #333; display: flex; flex-direction: column; gap: 5px; /* Changed to column to stack reply bar */
     transition: background-color 0.3s ease;
 }
+
+/* Reply Bar above input */
+#reply-bar {
+    display: none; /* Flex when active */
+    justify-content: space-between;
+    align-items: center;
+    background: #333;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: #ccc;
+    border-left: 3px solid var(--color-accent-blue);
+    margin-bottom: 5px;
+}
+#cancel-reply-btn { background: none; border: none; color: #888; cursor: pointer; font-weight: bold; }
+#cancel-reply-btn:hover { color: white; }
+
+/* Input Row (contains text area and buttons) */
+#message-input-area > :not(#reply-bar):not(#image-preview-area) {
+    display: flex; gap: 10px; align-items: center; width: 100%;
+}
+
+/* Fix for previous flex container override */
 #image-preview-area {
     display: flex; flex-direction: column; align-items: flex-end;
     padding: 5px; background: var(--color-preview-bg); border-radius: 4px;
-    gap: 5px; flex-basis: 150px; flex-shrink: 0;
+    gap: 5px; flex-basis: 150px; flex-shrink: 0; align-self: flex-start;
 }
 #image-preview-area img { max-width: 140px; max-height: 140px; border-radius: 3px; object-fit: contain; }
 #remove-image-btn { background: var(--color-vc-red); color: white; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer; }
@@ -280,9 +337,7 @@ html, body {
     cursor: pointer;
     transition: background-color 0.2s;
 }
-.panel-btn:hover {
-    background-color: #005fa3;
-}
+.panel-btn:hover { background-color: #005fa3; }
 #vc-user-list { list-style: none; padding: 0; margin: 0; }
 #vc-user-list li { font-size: 0.9em; padding: 5px 0; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
 
