@@ -205,21 +205,29 @@ html, body {
 .avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
 .avatar-spacer { width: 35px; height: 35px; margin: 0 10px; flex-shrink: 0; }
 
-.message-content-area { display: flex; flex-direction: column; max-width: 70%; position: relative; }
+/* NEW: Relative positioning for actions */
+.message-content-area { 
+    display: flex; 
+    flex-direction: column; 
+    max-width: 70%; 
+    position: relative; 
+}
 .user-message .message-content-area { align-items: flex-end; }
 
 /* Message Actions (Reply/Edit/Delete) */
 .message-actions {
     display: none;
     position: absolute;
-    top: -20px;
-    right: 0; /* Default right */
+    top: -25px; /* Floats above the bubble */
     background: #333;
     border-radius: 4px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.5);
     z-index: 100;
 }
-.user-message .message-actions { right: auto; left: 0; } /* Flip for self */
+/* User (Right Side): Align actions to the right */
+.user-message .message-actions { right: 0; } 
+/* Other (Left Side): Align actions to the left */
+.other-message .message-actions { left: 0; } 
 
 .action-btn {
     background: none;
@@ -263,13 +271,13 @@ html, body {
 
 #message-input-area {
     padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; flex-direction: column; gap: 5px; /* Changed to column to stack reply bar */
+    border-top: 1px solid #333; display: flex; flex-direction: column; gap: 5px; 
     transition: background-color 0.3s ease;
 }
 
 /* Reply Bar above input */
 #reply-bar {
-    display: none; /* Flex when active */
+    display: none; 
     justify-content: space-between;
     align-items: center;
     background: #333;
@@ -283,9 +291,12 @@ html, body {
 #cancel-reply-btn { background: none; border: none; color: #888; cursor: pointer; font-weight: bold; }
 #cancel-reply-btn:hover { color: white; }
 
-/* Input Row (contains text area and buttons) */
-#message-input-area > :not(#reply-bar):not(#image-preview-area) {
-    display: flex; gap: 10px; align-items: center; width: 100%;
+/* NEW: Input Row Container */
+#input-row {
+    display: flex;
+    width: 100%;
+    gap: 10px;
+    align-items: center;
 }
 
 /* Fix for previous flex container override */
