@@ -113,7 +113,7 @@
 
     // DOM Elements
     const messagesDiv = document.getElementById('messages');
-    const scrollDownBtn = document.getElementById('scroll-down-btn'); // NEW
+    const scrollDownBtn = document.getElementById('scroll-down-btn');
     const usernameInput = document.getElementById('username-input');
     const setUsernameBtn = document.getElementById('set-username-btn');
     const messageInput = document.getElementById('message-input');
@@ -162,6 +162,8 @@
     let currentDmTarget = null;
     let allUsersCache = []; 
     let unreadCounts = {}; 
+    let lastMessageSender = null; // Track logic for grouping
+    let lastMessageTime = null;   // Track logic for grouping
 
     // Cache
     let globalMessagesCache = [];
@@ -241,6 +243,7 @@
         renderSidebar();
         chatHeaderLabel.innerText = `Chat with ${targetUser}`;
         messagesDiv.innerHTML = '';
+        lastMessageSender = null; // Reset grouping logic
         if (dmMessagesCache[targetUser]) {
             renderMessageBatch(dmMessagesCache[targetUser]);
         } else {
@@ -256,6 +259,7 @@
         renderSidebar();
         chatHeaderLabel.innerText = 'username:';
         messagesDiv.innerHTML = '';
+        lastMessageSender = null; // Reset grouping logic
         if (globalMessagesCache.length > 0) {
             renderMessageBatch(globalMessagesCache);
         } else {
@@ -265,15 +269,11 @@
 
     // --- SCROLL HELPER & LOGIC ---
     let userScrolledUp = false;
-
-    // Detect when user manually scrolls up
     messagesDiv.addEventListener('scroll', () => {
-        // Threshold: 50px from bottom is considered "at bottom"
         const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 50;
-        
         if (isAtBottom) {
             userScrolledUp = false;
-            scrollDownBtn.style.display = 'none'; // Hide button if we are at bottom
+            scrollDownBtn.style.display = 'none'; 
         } else {
             userScrolledUp = true;
         }
@@ -302,6 +302,7 @@
         dmMessagesCache[data.target] = data.messages;
         if (currentChatMode === 'dm' && currentDmTarget === data.target) {
             messagesDiv.innerHTML = '';
+            lastMessageSender = null;
             renderMessageBatch(data.messages);
         }
     });
@@ -309,6 +310,7 @@
         globalMessagesCache = history; 
         if (currentChatMode === 'global') {
             messagesDiv.innerHTML = '';
+            lastMessageSender = null;
             renderMessageBatch(history);
         }
     });
@@ -385,30 +387,27 @@
 
     // --- RENDER HELPERS ---
     
-    // NEW: UPDATED PARSER WITH CLICKABLE LINKS
     function parseFormatting(text) {
         if (!text) return '';
-        
-        // 1. Escape HTML
-        let temp = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-
-        // 2. Linkify URLs
+        let temp = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const urlRegex = /(https?:\/\/[^\s]+)/g;
-        temp = temp.replace(urlRegex, function(url) {
-            return `<a href="${url}" target="_blank" class="chat-link">${url}</a>`;
-        });
-
-        // 3. Styles
-        return temp
-            .replace(/~~(.*?)~~/g, '<del>$1</del>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+        temp = temp.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" class="chat-link">${url}</a>`; });
+        return temp.replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
     
-    function createMessageElement(msg) {
+    // Check if grouping is valid (same user, within 15 seconds)
+    function shouldGroupMessage(currentMsg, prevMsg) {
+        if (!prevMsg) return false;
+        if (currentMsg.type !== 'general' && currentMsg.type !== 'pm' && currentMsg.type !== 'private') return false;
+        if (prevMsg.type !== currentMsg.type) return false;
+        if (currentMsg.sender !== prevMsg.sender) return false;
+
+        // Note: msg.time is a string, not a timestamp, so we rely on client-side arrival time or cache order
+        // For cached messages, we process them in order so simple sequential check works well enough for visual grouping
+        return true; 
+    }
+
+    function createMessageElement(msg, isGrouped = false) {
         if (msg.type === 'motd') {
             const div = document.createElement('div');
             div.className = 'system-message motd-message';
@@ -425,6 +424,12 @@
 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
+        if (isGrouped) messageEl.classList.add('grouped-message'); // Add class for styling logic
+
+        if (msg.sender === 'kl_') {
+            messageEl.classList.add('admin-message');
+        }
+
         if (msg.type === 'private' || msg.type === 'pm') {
             const isMe = (msg.sender === currentUsername);
             isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
@@ -450,7 +455,6 @@
             img.src = msg.image; 
             img.classList.add('message-image');
             img.onclick = () => { const w = window.open(""); w.document.write(`<img src="${msg.image}" style="width:100%">`); };
-            // Ensure image load doesn't mess up scroll if we are reading history
             img.onload = () => { if(!userScrolledUp) forceScrollToBottom(); };
             bubbleContent.appendChild(img);
         }
@@ -469,10 +473,17 @@
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
         
-        if (msg.avatar) {
+        // Only append Avatar if NOT grouped
+        if (!isGrouped && msg.avatar) {
             const avatarImg = document.createElement('img');
-            avatarImg.src = msg.avatar; avatarImg.classList.add('avatar');
+            avatarImg.src = msg.avatar; 
+            avatarImg.classList.add('avatar');
             messageEl.appendChild(avatarImg);
+        } else if (isGrouped) {
+            // Add a spacer invisible avatar to keep alignment
+            const spacer = document.createElement('div');
+            spacer.classList.add('avatar-spacer');
+            messageEl.appendChild(spacer);
         }
         
         messageEl.appendChild(contentArea);
@@ -482,17 +493,38 @@
     function renderMessageBatch(messages) {
         const recentMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
         const fragment = document.createDocumentFragment();
+        
+        let prevMsg = null;
+
         recentMessages.forEach(msg => {
-            fragment.appendChild(createMessageElement(msg));
+            // Grouping Logic
+            let isGrouped = false;
+            if (prevMsg && shouldGroupMessage(msg, prevMsg)) {
+                // Check grouping time - this is rough estimation based on list order 
+                // but effective for visual flow
+                isGrouped = true; 
+            }
+
+            fragment.appendChild(createMessageElement(msg, isGrouped));
+            
+            // Only update prevMsg if it's a real user message to track continuity
+            if (msg.type === 'general' || msg.type === 'pm') {
+                prevMsg = msg;
+            } else {
+                prevMsg = null; // Reset grouping if a system message interrupts
+            }
         });
+        
         messagesDiv.appendChild(fragment);
+        
+        // Update global state for next incoming message
+        lastMessageSender = prevMsg ? prevMsg.sender : null;
+
         forceScrollToBottom();
-        // Reset scroll state on full render
         userScrolledUp = false;
         scrollDownBtn.style.display = 'none';
     }
 
-    // NEW: UPDATED APPEND LOGIC FOR BUTTON
     function appendMessageToUI(msg) {
         if (msg.sender !== currentUsername && currentChatMode === 'global') {
             if (msg.type === 'private' && settingPM.checked) triggerNotification(`Private from ${msg.sender}`, msg.text || 'Sent an image');
@@ -500,17 +532,27 @@
             else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
         }
         
-        const el = createMessageElement(msg);
+        // Grouping Check for Single New Message
+        let isGrouped = false;
+        // Check sender against global state
+        if (lastMessageSender === msg.sender && (msg.type === 'general' || msg.type === 'pm')) {
+            isGrouped = true;
+        }
+
+        const el = createMessageElement(msg, isGrouped);
         messagesDiv.appendChild(el);
+        
+        // Update state
+        if (msg.type === 'general' || msg.type === 'pm') {
+            lastMessageSender = msg.sender;
+        } else {
+            lastMessageSender = null;
+        }
 
         if (messagesDiv.childElementCount > MAX_VISIBLE_MESSAGES) {
             messagesDiv.removeChild(messagesDiv.firstElementChild);
         }
 
-        // Logic: 
-        // 1. If I sent the message, always scroll down.
-        // 2. If I'm already at the bottom, stay at the bottom.
-        // 3. If I am scrolled up reading history, DON'T scroll, show button instead.
         if (msg.sender === currentUsername) {
             forceScrollToBottom();
             userScrolledUp = false;
@@ -518,7 +560,6 @@
         } else if (!userScrolledUp) {
             forceScrollToBottom();
         } else {
-            // User is scrolled up, show the button!
             scrollDownBtn.style.display = 'block';
         }
     }
@@ -555,7 +596,7 @@
     btnBgUpload.onclick = () => bgUploadInput.click(); bgUploadInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (evt) => { localStorage.setItem('custom-bg', evt.target.result); document.body.style.backgroundImage = `url(${evt.target.result})`; document.body.classList.add('transparent-mode'); }; reader.readAsDataURL(file); } };
     btnBgReset.onclick = () => { localStorage.removeItem('custom-bg'); document.body.style.backgroundImage = ''; document.body.classList.remove('transparent-mode'); };
     
-    // Updated Sound/Notification Logic
+    // Sound/Notification Logic
     function playNotificationSound() { 
         if (!settingSound.checked) return; 
         const ctx = new (window.AudioContext || window.webkitAudioContext)(); 
