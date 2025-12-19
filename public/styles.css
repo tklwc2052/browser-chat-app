@@ -142,6 +142,7 @@ html, body {
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
 
+/* System Message Style */
 .system-message {
     text-align: center;
     color: var(--color-system);
@@ -151,6 +152,7 @@ html, body {
     width: 100%;
 }
 
+/* Typing Indicator */
 #typing-indicator {
     padding: 5px 20px; font-style: italic; color: var(--color-muted); font-size: 0.8em; display: none;
 }
@@ -194,6 +196,7 @@ html, body {
 #send-button { background-color: var(--color-accent-green); color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #file-upload-btn { background-color: #555; color: white; padding: 10px; border-radius: 4px; border: none; cursor: pointer; }
 
+/* Right Panel Layout Fix */
 #right-panel { 
     width: 250px; 
     background-color: var(--bg-primary); 
@@ -219,8 +222,20 @@ html, body {
 }
 
 .panel-title { margin: 0 0 10px 0; font-size: 0.9em; text-transform: uppercase; color: var(--color-muted); letter-spacing: 1px; }
-.panel-btn { width: 100%; padding: 8px; margin-bottom: 8px; background-color: var(--bg-input); border: 1px solid #555; color: var(--color-text); border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
-.panel-btn:hover { background-color: #444; }
+.panel-btn {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 8px;
+    background-color: var(--color-accent-blue);
+    border: 1px solid #005fa3;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.panel-btn:hover {
+    background-color: #005fa3;
+}
 #vc-user-list { list-style: none; padding: 0; margin: 0; }
 #vc-user-list li { font-size: 0.9em; padding: 5px 0; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
 
