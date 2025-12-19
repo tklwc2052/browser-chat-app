@@ -6,7 +6,11 @@ const mongoose = require('mongoose');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+
+// Buffer limit 10MB for GIFs
+const io = socketIo(server, {
+    maxHttpBufferSize: 1e7 
+});
 
 app.set('trust proxy', 1); 
 
@@ -35,7 +39,6 @@ const dmSchema = new mongoose.Schema({
         timestamp: { type: Date, default: Date.now }
     }]
 });
-// Index for speed
 dmSchema.index({ participants: 1 });
 const DM = mongoose.model('DM', dmSchema);
 
@@ -60,13 +63,7 @@ function formatMessage(sender, text, avatar = null, image = null, isPm = false) 
     if (!finalAvatar && sender !== 'System') finalAvatar = 'placeholder-avatar.png';
 
     if (sender === 'System' || sender === 'Announcement') {
-        return {
-            text: text, 
-            sender: sender,
-            avatar: null,
-            time: time,
-            type: 'system'
-        };
+        return { text: text, sender: sender, avatar: null, time: time, type: 'system' };
     }
     
     return {
@@ -79,13 +76,9 @@ function formatMessage(sender, text, avatar = null, image = null, isPm = false) 
     };
 }
 
-function getDmKey(user1, user2) {
-    return [user1, user2].sort();
-}
+function getDmKey(user1, user2) { return [user1, user2].sort(); }
 
-function broadcastVCUserList() {
-    io.emit('vc-user-list-update', Object.values(vcUsers));
-}
+function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vcUsers)); }
 
 function addToHistory(msgObj) {
     messageHistory.push(msgObj);
@@ -102,6 +95,19 @@ function getClientIp(socket) {
     return socket.handshake.address;
 }
 
+// HELPER: Refreshes the sidebar list for everyone
+async function broadcastSidebarRefresh() {
+    try {
+        const allDbUsers = await User.find({}).lean();
+        const sidebarList = allDbUsers.map(u => ({
+            username: u.username,
+            avatar: u.avatar,
+            online: Object.values(users).some(live => live.username === u.username)
+        }));
+        io.emit('sidebar-user-list', sidebarList);
+    } catch (err) { console.error("Sidebar update error", err); }
+}
+
 app.use(express.static('public'));
 
 io.on('connection', async (socket) => {
@@ -113,25 +119,11 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // Send history on connect
     socket.emit('history', messageHistory);
-    // Removed broadcastUserList() call here
     broadcastVCUserList(); 
+    broadcastSidebarRefresh(); // Send initial list
 
-    try {
-        const allDbUsers = await User.find({}).lean();
-        const sidebarList = allDbUsers.map(u => ({
-            username: u.username,
-            avatar: u.avatar,
-            online: Object.values(users).some(live => live.username === u.username)
-        }));
-        socket.emit('sidebar-user-list', sidebarList);
-    } catch (err) { console.error("Sidebar fetch error", err); }
-
-    // Client requests global history refresh
-    socket.on('get-history', () => {
-        socket.emit('history', messageHistory);
-    });
+    socket.on('get-history', () => { socket.emit('history', messageHistory); });
 
     socket.on('set-username', async ({ username, avatar }) => {
         const oldUserData = users[socket.id] || {};
@@ -141,6 +133,7 @@ io.on('connection', async (socket) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
+        // Check duplicates (exclude self)
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -171,12 +164,15 @@ io.on('connection', async (socket) => {
             const joinMsg = formatMessage('System', `User ${username} joined the chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
+            
+            // User is new or changed name, refresh sidebar for everyone
+            broadcastSidebarRefresh();
         }
-        // Removed broadcastUserList() call here
+        
         io.emit('user-status-change', { username: username, online: true, avatar: newAvatar });
     });
 
-    socket.on('chat-message', (payload) => {
+    socket.on('chat-message', async (payload) => {
         const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
 
@@ -271,6 +267,36 @@ io.on('connection', async (socket) => {
                          io.emit('chat-message', formatMessage('System', `${targetName} BANNED.`));
                     }
                     return;
+                } 
+                // --- NEW CLEANUP COMMANDS ---
+                else if (command === 'prune') {
+                    // Usage: /prune 7 (removes users inactive for 7 days)
+                    const days = parseInt(args[0]) || 30; // Default 30 days
+                    const cutoff = new Date();
+                    cutoff.setDate(cutoff.getDate() - days);
+                    
+                    try {
+                        const result = await User.deleteMany({ 
+                            lastSeen: { $lt: cutoff },
+                            username: { $ne: ADMIN_USERNAME } // Never delete admin
+                        });
+                        broadcastSidebarRefresh(); // Update everyone's list
+                        io.emit('chat-message', formatMessage('System', `Pruned ${result.deletedCount} users inactive for ${days}+ days.`));
+                    } catch (e) {
+                        console.error(e);
+                        socket.emit('chat-message', formatMessage('System', 'Error pruning users.'));
+                    }
+                    return;
+                } else if (command === 'purgeusers') {
+                    // Usage: /purgeusers (deletes everyone except admin)
+                    try {
+                        await User.deleteMany({ username: { $ne: ADMIN_USERNAME } });
+                        broadcastSidebarRefresh();
+                        io.emit('chat-message', formatMessage('System', `All users (except Admin) have been wiped from the database.`));
+                    } catch(e) {
+                         console.error(e);
+                    }
+                    return;
                 }
             }
         }
@@ -320,28 +346,20 @@ io.on('connection', async (socket) => {
     socket.on('typing-start', (target) => {
         const user = users[socket.id];
         if(!user) return;
-        
-        if (!target || target === 'global') {
-            socket.broadcast.emit('user-typing', { username: user.username, scope: 'global' });
-        } else {
+        if (!target || target === 'global') socket.broadcast.emit('user-typing', { username: user.username, scope: 'global' });
+        else {
             const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-            if(targetSocketId) {
-                io.to(targetSocketId).emit('user-typing', { username: user.username, scope: 'dm' });
-            }
+            if(targetSocketId) io.to(targetSocketId).emit('user-typing', { username: user.username, scope: 'dm' });
         }
     });
 
     socket.on('typing-stop', (target) => {
         const user = users[socket.id];
         if(!user) return;
-
-        if (!target || target === 'global') {
-            socket.broadcast.emit('user-stopped-typing', { username: user.username, scope: 'global' });
-        } else {
+        if (!target || target === 'global') socket.broadcast.emit('user-stopped-typing', { username: user.username, scope: 'global' });
+        else {
              const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-             if(targetSocketId) {
-                 io.to(targetSocketId).emit('user-stopped-typing', { username: user.username, scope: 'dm' });
-             }
+             if(targetSocketId) io.to(targetSocketId).emit('user-stopped-typing', { username: user.username, scope: 'dm' });
         }
     });
 
@@ -353,7 +371,6 @@ io.on('connection', async (socket) => {
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
             broadcastVCUserList();
-            
             socket.broadcast.emit('vc-prepare-connection', socket.id);
         }
     });
@@ -374,9 +391,7 @@ io.on('connection', async (socket) => {
 
     socket.on('vc-mute-toggle', (isMuted) => { if (vcUsers[socket.id]) { vcUsers[socket.id].isMuted = isMuted; broadcastVCUserList(); } });
     
-    socket.on('signal', (data) => { 
-        io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); 
-    });
+    socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
     
     socket.on('disconnect', () => {
         const user = users[socket.id];
@@ -386,7 +401,6 @@ io.on('connection', async (socket) => {
             const leaveMsg = formatMessage('System', `${user.username} has left.`);
             io.emit('chat-message', leaveMsg);
             addToHistory(leaveMsg);
-            // Removed broadcastUserList() call here
             io.emit('user-status-change', { username: user.username, online: false });
         }
     });
