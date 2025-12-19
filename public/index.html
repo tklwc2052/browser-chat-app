@@ -162,8 +162,7 @@
     let currentDmTarget = null;
     let allUsersCache = []; 
     let unreadCounts = {}; 
-    let lastMessageSender = null; // Track logic for grouping
-    let lastMessageTime = null;   // Track logic for grouping
+    let lastMessageSender = null; 
 
     // Cache
     let globalMessagesCache = [];
@@ -243,7 +242,7 @@
         renderSidebar();
         chatHeaderLabel.innerText = `Chat with ${targetUser}`;
         messagesDiv.innerHTML = '';
-        lastMessageSender = null; // Reset grouping logic
+        lastMessageSender = null; 
         if (dmMessagesCache[targetUser]) {
             renderMessageBatch(dmMessagesCache[targetUser]);
         } else {
@@ -259,7 +258,7 @@
         renderSidebar();
         chatHeaderLabel.innerText = 'username:';
         messagesDiv.innerHTML = '';
-        lastMessageSender = null; // Reset grouping logic
+        lastMessageSender = null; 
         if (globalMessagesCache.length > 0) {
             renderMessageBatch(globalMessagesCache);
         } else {
@@ -395,19 +394,16 @@
         return temp.replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
     
-    // Check if grouping is valid (same user, within 15 seconds)
+    // Grouping check helper
     function shouldGroupMessage(currentMsg, prevMsg) {
         if (!prevMsg) return false;
         if (currentMsg.type !== 'general' && currentMsg.type !== 'pm' && currentMsg.type !== 'private') return false;
         if (prevMsg.type !== currentMsg.type) return false;
         if (currentMsg.sender !== prevMsg.sender) return false;
-
-        // Note: msg.time is a string, not a timestamp, so we rely on client-side arrival time or cache order
-        // For cached messages, we process them in order so simple sequential check works well enough for visual grouping
         return true; 
     }
 
-    function createMessageElement(msg, isGrouped = false) {
+    function createMessageElement(msg, isContinuation = false) {
         if (msg.type === 'motd') {
             const div = document.createElement('div');
             div.className = 'system-message motd-message';
@@ -424,11 +420,8 @@
 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message');
-        if (isGrouped) messageEl.classList.add('grouped-message'); // Add class for styling logic
-
-        if (msg.sender === 'kl_') {
-            messageEl.classList.add('admin-message');
-        }
+        // NOTE: we don't add 'grouped-tight' here by default, that's done dynamically 
+        // to the PREVIOUS message or via batch logic
 
         if (msg.type === 'private' || msg.type === 'pm') {
             const isMe = (msg.sender === currentUsername);
@@ -473,13 +466,13 @@
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
         
-        // Only append Avatar if NOT grouped
-        if (!isGrouped && msg.avatar) {
+        // Only append Avatar if this is NOT a continuation (i.e. it's the start of a block)
+        if (!isContinuation && msg.avatar) {
             const avatarImg = document.createElement('img');
             avatarImg.src = msg.avatar; 
             avatarImg.classList.add('avatar');
             messageEl.appendChild(avatarImg);
-        } else if (isGrouped) {
+        } else if (isContinuation) {
             // Add a spacer invisible avatar to keep alignment
             const spacer = document.createElement('div');
             spacer.classList.add('avatar-spacer');
@@ -496,28 +489,33 @@
         
         let prevMsg = null;
 
-        recentMessages.forEach(msg => {
-            // Grouping Logic
-            let isGrouped = false;
+        recentMessages.forEach((msg, index) => {
+            // Check if this message continues the previous one (for avatar spacer)
+            let isContinuation = false;
             if (prevMsg && shouldGroupMessage(msg, prevMsg)) {
-                // Check grouping time - this is rough estimation based on list order 
-                // but effective for visual flow
-                isGrouped = true; 
+                isContinuation = true; 
             }
 
-            fragment.appendChild(createMessageElement(msg, isGrouped));
+            const el = createMessageElement(msg, isContinuation);
             
-            // Only update prevMsg if it's a real user message to track continuity
+            // NEW: Check if NEXT message continues this one (for gap/timestamp)
+            const nextMsg = recentMessages[index + 1];
+            if (nextMsg && shouldGroupMessage(nextMsg, msg)) {
+                el.classList.add('grouped-tight'); // Tighten bottom margin
+                const timeEl = el.querySelector('.message-time');
+                if (timeEl) timeEl.style.display = 'none'; // Hide timestamp
+            }
+
+            fragment.appendChild(el);
+            
             if (msg.type === 'general' || msg.type === 'pm') {
                 prevMsg = msg;
             } else {
-                prevMsg = null; // Reset grouping if a system message interrupts
+                prevMsg = null; 
             }
         });
         
         messagesDiv.appendChild(fragment);
-        
-        // Update global state for next incoming message
         lastMessageSender = prevMsg ? prevMsg.sender : null;
 
         forceScrollToBottom();
@@ -532,14 +530,22 @@
             else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
         }
         
-        // Grouping Check for Single New Message
-        let isGrouped = false;
-        // Check sender against global state
+        // 1. Check if this is a continuation of the previous message
+        let isContinuation = false;
         if (lastMessageSender === msg.sender && (msg.type === 'general' || msg.type === 'pm')) {
-            isGrouped = true;
+            isContinuation = true;
+            
+            // NEW: Modify the PREVIOUS message (which is currently the last element)
+            const prevEl = messagesDiv.lastElementChild;
+            if (prevEl && prevEl.classList.contains('message')) {
+                prevEl.classList.add('grouped-tight'); // Remove its bottom gap
+                const timeEl = prevEl.querySelector('.message-time');
+                if (timeEl) timeEl.style.display = 'none'; // Hide its timestamp
+            }
         }
 
-        const el = createMessageElement(msg, isGrouped);
+        // 2. Create the new element (timestamp visible by default)
+        const el = createMessageElement(msg, isContinuation);
         messagesDiv.appendChild(el);
         
         // Update state
