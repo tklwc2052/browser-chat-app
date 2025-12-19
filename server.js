@@ -34,7 +34,7 @@ const messageSchema = new mongoose.Schema({
 const Message = mongoose.model('Message', messageSchema);
 
 // --- SERVER SETUP ---
-app.use(express.static(__dirname));
+app.use(express.static('public'));
 app.set('trust proxy', 1); 
 
 // Helper: Format message for frontend
