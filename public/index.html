@@ -144,7 +144,6 @@
     const imagePreview = document.getElementById('image-preview');
     const removeImageBtn = document.getElementById('remove-image-btn');
 
-    // NEW DOM Element
     const typingIndicator = document.getElementById('typing-indicator');
 
     // Settings Inputs
@@ -186,7 +185,6 @@
     // --- SETTINGS & APPEARANCE LOGIC ---
     // ==========================================
 
-    // Handle Dropdown Toggle
     notifHeader.addEventListener('click', () => {
         notifHeader.classList.toggle('active');
         notifContent.classList.toggle('show');
@@ -201,7 +199,7 @@
     loadSetting('notif-vc', settingVC);
     loadSetting('notif-sound', settingSound);
 
-    // Load Custom Background & Auto-Enable Transparency
+    // Load Custom Background
     const savedBg = localStorage.getItem('custom-bg');
     if (savedBg) {
         document.body.style.backgroundImage = `url(${savedBg})`;
@@ -221,7 +219,6 @@
     saveSetting('notif-vc', settingVC);
     saveSetting('notif-sound', settingSound);
 
-    // Handle Custom Background Upload
     btnBgUpload.addEventListener('click', () => bgUploadInput.click());
 
     bgUploadInput.addEventListener('change', (e) => {
@@ -231,23 +228,16 @@
             reader.onload = (evt) => {
                 const bgData = evt.target.result;
                 localStorage.setItem('custom-bg', bgData);
-                
-                // Apply Image
                 document.body.style.backgroundImage = `url(${bgData})`;
-                
-                // AUTO ENABLE TRANSPARENCY
                 document.body.classList.add('transparent-mode');
             };
             reader.readAsDataURL(file);
         }
     });
 
-    // Handle Reset Background
     btnBgReset.addEventListener('click', () => {
         localStorage.removeItem('custom-bg');
         document.body.style.backgroundImage = '';
-        
-        // AUTO DISABLE TRANSPARENCY
         document.body.classList.remove('transparent-mode');
     });
 
@@ -281,10 +271,6 @@
     // --- CORE LOGIC ---
     // ==========================================
 
-    // ==========================================
-    // --- IMAGE RESIZING LOGIC (NEW) ---
-    // ==========================================
-
     function resizeImage(file, maxWidth, maxHeight, quality, callback) {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -294,8 +280,6 @@
             img.onload = () => {
                 let width = img.width;
                 let height = img.height;
-
-                // Calculate new dimensions
                 if (width > height) {
                     if (width > maxWidth) {
                         height = Math.round(height * (maxWidth / width));
@@ -307,16 +291,11 @@
                         height = maxHeight;
                     }
                 }
-
-                // Draw to hidden canvas
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
-
-                // Convert back to Data URL (compressed)
-                // 'image/jpeg' allows us to use the quality parameter (0.0 - 1.0)
                 const dataUrl = canvas.toDataURL('image/jpeg', quality);
                 callback(dataUrl);
             };
@@ -325,8 +304,6 @@
 
     function handleFileSelection(file) {
         if (!file || !file.type.startsWith('image/')) return;
-        
-        // Resize to max 800x800 px with 70% quality
         resizeImage(file, 800, 800, 0.7, (resizedDataUrl) => {
             stagedImage = resizedDataUrl;
             imagePreview.src = stagedImage;
@@ -403,7 +380,6 @@
         messageInput.value = ''; stagedImage = null;
         imagePreviewArea.style.display = 'none'; hiddenFileInput.value = '';
         
-        // Immediately stop typing indicator when sent
         socket.emit('typing-stop');
         if (typingTimeout) clearTimeout(typingTimeout);
     }
@@ -413,16 +389,14 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     
-    // --- TYPING LOGIC START ---
+    // --- TYPING LOGIC ---
     messageInput.addEventListener('input', () => {
         if (!currentUsername) return;
-        
         socket.emit('typing-start');
-        
         if (typingTimeout) clearTimeout(typingTimeout);
         typingTimeout = setTimeout(() => {
             socket.emit('typing-stop');
-        }, 2000); // Stop indicator after 2s of inactivity
+        }, 2000); 
     });
 
     socket.on('user-typing', (username) => {
@@ -444,11 +418,25 @@
             typingIndicator.classList.remove('active');
         }
     }
-    // --- TYPING LOGIC END ---
 
+    // ==========================================
+    // --- UPDATED PARSE FORMATTING (LINKIFY) ---
+    // ==========================================
     function parseFormatting(text) {
         if (!text) return '';
-        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        
+        // 1. Escape HTML first (Security)
+        let safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // 2. Detect URLs and make them clickable
+        const urlRegex = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gim;
+        
+        safeText = safeText.replace(urlRegex, function(url) {
+            return `<a href="${url}" target="_blank" style="color: #4da6ff; text-decoration: underline; word-break: break-all;">${url}</a>`;
+        });
+
+        // 3. Apply existing Markdown
+        return safeText
             .replace(/~~(.*?)~~/g, '<del>$1</del>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -741,7 +729,6 @@
         window.open(`${window.location.href.split('?')[0]}?mode=popup`, '_blank', 'width=200,height=700,resizable=yes');
     });
 
-    // --- CLOAKED LAUNCHER ---
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const chromeIconSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236e6e6e' d='M6 6h3v3H6zm5 0h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3zm-5 5h3v3h-3zm-5 0h3v3H6zm10 0h3v3h-3z'/%3E%3C/svg%3E`;
 
