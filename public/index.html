@@ -46,10 +46,13 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
-            <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-            <button id="file-upload-btn" title="Upload Image">📁</button>
-            <button id="send-button">Send</button>
+
+            <div id="input-row">
+                <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
+                <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+                <button id="file-upload-btn" title="Upload Image">📁</button>
+                <button id="send-button">Send</button>
+            </div>
         </div>
     </div>
     
@@ -173,9 +176,7 @@
     let allUsersCache = []; 
     let unreadCounts = {}; 
     let lastMessageSender = null; 
-    
-    // NEW: Reply State
-    let currentReplyTo = null; // { id, sender, text }
+    let currentReplyTo = null;
 
     // Cache
     let globalMessagesCache = [];
@@ -302,7 +303,7 @@
         setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 100);
     }
 
-    // --- SOCKET HANDLERS (UPDATED) ---
+    // --- SOCKET HANDLERS ---
     socket.on('sidebar-user-list', (list) => { allUsersCache = list; renderSidebar(); });
     socket.on('user-status-change', (data) => {
         const user = allUsersCache.find(u => u.username === data.username);
@@ -311,9 +312,7 @@
         renderSidebar();
     });
     
-    // NEW: Update message in place
     socket.on('message-updated', (data) => {
-        // Update Cache
         let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
         if (targetCache) {
             const msg = targetCache.find(m => m.id === data.id);
@@ -322,8 +321,6 @@
                 msg.isEdited = true;
             }
         }
-        
-        // Update DOM
         const msgEl = document.querySelector(`.message[data-id="${data.id}"]`);
         if (msgEl) {
             const textSpan = msgEl.querySelector('.message-text');
@@ -333,16 +330,12 @@
         }
     });
 
-    // NEW: Delete message in place
     socket.on('message-deleted', (id) => {
-        // Update Cache
         let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
         if (targetCache) {
             const idx = targetCache.findIndex(m => m.id === id);
             if (idx !== -1) targetCache.splice(idx, 1);
         }
-        
-        // Update DOM
         const msgEl = document.querySelector(`.message[data-id="${id}"]`);
         if (msgEl) msgEl.remove();
     });
@@ -407,7 +400,7 @@
         const payload = {
             text: text,
             image: stagedImage,
-            replyTo: currentReplyTo // Send reply data
+            replyTo: currentReplyTo
         };
 
         if (currentChatMode === 'global') socket.emit('chat-message', payload);
@@ -417,8 +410,6 @@
         stagedImage = null; 
         imagePreviewArea.style.display = 'none'; 
         hiddenFileInput.value = '';
-        
-        // Clear Reply
         currentReplyTo = null;
         replyBar.style.display = 'none';
 
@@ -427,7 +418,6 @@
         if (typingTimeout) clearTimeout(typingTimeout);
     }
     
-    // NEW: Actions Logic
     window.initReply = (id, sender, text) => {
         currentReplyTo = { id, sender, text };
         replyTargetName.innerText = sender;
@@ -473,7 +463,6 @@
     }
 
     // --- RENDER HELPERS ---
-    
     function parseFormatting(text) {
         if (!text) return '';
         let temp = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -507,16 +496,19 @@
 
         const messageEl = document.createElement('div');
         messageEl.className = 'message';
-        if(msg.id) messageEl.setAttribute('data-id', msg.id); // NEW: Attach ID
+        if(msg.id) messageEl.setAttribute('data-id', msg.id); 
 
         const isMe = (msg.sender === currentUsername);
         isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
         
-        // --- NEW: Action Buttons ---
+        // Content Area
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+        
+        // --- NEW: Action Buttons attached to contentArea ---
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
-        // Reply Button (Everyone)
         const replyBtn = document.createElement('button');
         replyBtn.className = 'action-btn';
         replyBtn.innerHTML = '↩';
@@ -524,8 +516,6 @@
         replyBtn.onclick = () => window.initReply(msg.id, msg.sender, msg.text);
         actionsDiv.appendChild(replyBtn);
 
-        // Edit/Delete Buttons (Only Self or Admin)
-        // Note: Simple Client-side check. Server validates actual permission.
         if (isMe || currentUsername === 'kl_') {
             const editBtn = document.createElement('button');
             editBtn.className = 'action-btn';
@@ -542,28 +532,19 @@
             actionsDiv.appendChild(delBtn);
         }
         
-        messageEl.appendChild(actionsDiv);
+        contentArea.appendChild(actionsDiv); 
         // ---------------------------
 
-        const contentArea = document.createElement('div');
-        contentArea.classList.add('message-content-area');
-        
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
-        // --- NEW: Reply Context ---
         if (msg.replyTo) {
             const replyBlock = document.createElement('div');
             replyBlock.className = 'reply-context';
-            // Truncate reply text if long
             const replyText = msg.replyTo.text.length > 50 ? msg.replyTo.text.substring(0, 50) + '...' : msg.replyTo.text;
             replyBlock.innerHTML = `<strong>${msg.replyTo.sender}:</strong> ${replyText}`;
-            replyBlock.onclick = () => {
-                // Scroll to quoted message? (Advanced feature for later)
-            };
             contentWrapper.appendChild(replyBlock);
         }
-        // --------------------------
 
         const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
@@ -579,9 +560,9 @@
         
         if (msg.text) {
             const textSpan = document.createElement('span');
-            textSpan.className = 'message-text'; // Class for easy editing selection
+            textSpan.className = 'message-text';
             let innerHTML = parseFormatting(msg.text);
-            if (msg.isEdited) innerHTML += ' <span class="edited-tag">(edited)</span>'; // Show edited status
+            if (msg.isEdited) innerHTML += ' <span class="edited-tag">(edited)</span>'; 
             textSpan.innerHTML = innerHTML;
             bubbleContent.appendChild(textSpan);
         }
@@ -609,7 +590,6 @@
         return messageEl;
     }
 
-    // (renderMessageBatch, appendMessageToUI, VC logic remain the same but use new createMessageElement)
     function renderMessageBatch(messages) {
         const recentMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
         const fragment = document.createDocumentFragment();
@@ -690,10 +670,7 @@
         }
     }
 
-    // ... (Rest of VC / Generic UI / Compression logic same as previous) ...
-    // Note: I included the full file block above to be safe, but just know the rest is identical.
-    
-    // ... [VC Logic Block] ...
+    // --- VC Logic (Same as before) ---
     function createPeer(targetId, initiator = false) {
         const p = new RTCPeerConnection(rtcConfig);
         p.onicecandidate = (e) => { if (e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } }); };
@@ -715,6 +692,7 @@
     socket.on('vc-user-left', (id) => { if (peers[id]) { peers[id].close(); delete peers[id]; } const audioEl = document.getElementById(`audio-${id}`); if (audioEl) audioEl.remove(); });
     socket.on('vc-user-list-update', (users) => { vcUserList.innerHTML = ''; users.forEach(u => { const li = document.createElement('li'); li.innerHTML = `<span>${u.username}</span> ${u.isMuted ? '<span style="color:red">(Muted)</span>' : ''}`; vcUserList.appendChild(li); }); });
 
+    // --- GENERIC UI (Same as before) ---
     if (btnCloakLauncher) btnCloakLauncher.onclick = () => { const newWindow = window.open('about:blank', '_blank'); if (!newWindow) return; newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/"></iframe></body></html>`); };
     if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
     notifHeader.onclick = () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); };
