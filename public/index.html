@@ -287,25 +287,44 @@
             renderMessageBatch(history);
         }
     });
+    
+    // --- UPDATED DM HANDLER ---
     socket.on('dm-received', (data) => {
         const partner = (data.from === currentUsername) ? data.to : data.from;
         if (!dmMessagesCache[partner]) dmMessagesCache[partner] = [];
         dmMessagesCache[partner].push(data.message);
 
+        // Case 1: We are currently looking at this DM
         if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
             appendMessageToUI(data.message);
-        } else if (data.from !== currentUsername) {
+            // Even if we are looking at it, if window is minimized, notify
+            if (document.hidden && settingPM.checked) {
+                triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image');
+            }
+        } 
+        // Case 2: We are NOT looking at this DM (Global chat or other DM)
+        else if (data.from !== currentUsername) {
             if (!unreadCounts[data.from]) unreadCounts[data.from] = 0;
             unreadCounts[data.from]++;
             renderSidebar();
+            
+            // TRIGGER NOTIFICATION
+            if (settingPM.checked) {
+                // Play sound regardless of focus (if enabled)
+                playNotificationSound();
+                // Show popup if hidden
+                if (document.hidden) {
+                    triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image', true);
+                }
+            }
         }
     });
+
     socket.on('chat-message', (msg) => { 
         globalMessagesCache.push(msg);
         if (currentChatMode === 'global') appendMessageToUI(msg); 
     });
 
-    // NEW: Handle MOTD specifically
     socket.on('motd', (motdText) => {
         const msg = {
             type: 'motd',
@@ -351,11 +370,10 @@
     function parseFormatting(text) { if (!text) return ''; return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/~~(.*?)~~/g, '<del>$1</del>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>'); }
     
     function createMessageElement(msg) {
-        // NEW: Formatted MOTD style
         if (msg.type === 'motd') {
             const div = document.createElement('div');
             div.className = 'system-message motd-message';
-            div.innerHTML = parseFormatting(msg.text); // Allow **bold** inside motd too
+            div.innerHTML = parseFormatting(msg.text); 
             return div;
         }
 
@@ -484,8 +502,29 @@
     [settingMain, settingPM, settingVC, settingSound].forEach(el => el.onchange = () => { localStorage.setItem(el.id.replace('setting-', 'notif-'), el.checked); if (Notification.permission === 'default') Notification.requestPermission(); });
     btnBgUpload.onclick = () => bgUploadInput.click(); bgUploadInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (evt) => { localStorage.setItem('custom-bg', evt.target.result); document.body.style.backgroundImage = `url(${evt.target.result})`; document.body.classList.add('transparent-mode'); }; reader.readAsDataURL(file); } };
     btnBgReset.onclick = () => { localStorage.removeItem('custom-bg'); document.body.style.backgroundImage = ''; document.body.classList.remove('transparent-mode'); };
-    function playNotificationSound() { if (!settingSound.checked) return; const ctx = new (window.AudioContext || window.webkitAudioContext)(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.type = 'sine'; osc.frequency.setValueAtTime(500, ctx.currentTime); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1); osc.start(); osc.stop(ctx.currentTime + 0.1); }
-    function triggerNotification(title, body) { if (document.hidden && Notification.permission === 'granted') { const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png', requireInteraction: true }); playNotificationSound(); } }
+    
+    // Updated Sound/Notification Logic
+    function playNotificationSound() { 
+        if (!settingSound.checked) return; 
+        const ctx = new (window.AudioContext || window.webkitAudioContext)(); 
+        const osc = ctx.createOscillator(); 
+        const gain = ctx.createGain(); 
+        osc.connect(gain); 
+        gain.connect(ctx.destination); 
+        osc.type = 'sine'; 
+        osc.frequency.setValueAtTime(500, ctx.currentTime); 
+        gain.gain.setValueAtTime(0.1, ctx.currentTime); 
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1); 
+        osc.start(); 
+        osc.stop(ctx.currentTime + 0.1); 
+    }
+    
+    function triggerNotification(title, body, skipSound = false) { 
+        if (!skipSound) playNotificationSound();
+        if (document.hidden && Notification.permission === 'granted') { 
+            const n = new Notification(title, { body: body, icon: 'placeholder-avatar.png', requireInteraction: true }); 
+        } 
+    }
     
     // --- COMPRESSION AND UPLOAD ---
     fileUploadBtn.onclick = () => hiddenFileInput.click(); 
