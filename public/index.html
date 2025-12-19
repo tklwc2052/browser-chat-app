@@ -271,6 +271,18 @@
         }
     }
 
+    // --- SCROLL HELPER (NEW) ---
+    function forceScrollToBottom() {
+        // Use a slightly delayed scroll to account for layout shifts
+        setTimeout(() => {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000;
+        }, 10);
+        // Double check after render
+        setTimeout(() => {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000;
+        }, 100);
+    }
+
     // --- SOCKET HANDLERS ---
     socket.on('sidebar-user-list', (list) => { allUsersCache = list; renderSidebar(); });
     socket.on('user-status-change', (data) => {
@@ -381,8 +393,11 @@
         
         if (msg.image) {
             const img = document.createElement('img');
-            img.src = msg.image; img.classList.add('message-image');
+            img.src = msg.image; 
+            img.classList.add('message-image');
             img.onclick = () => { const w = window.open(""); w.document.write(`<img src="${msg.image}" style="width:100%">`); };
+            // Auto scroll when image loads
+            img.onload = () => forceScrollToBottom();
             bubbleContent.appendChild(img);
         }
         
@@ -410,19 +425,17 @@
         return messageEl;
     }
 
-    // --- SMART SCROLL LOGIC ---
-    
-    // Batch Render (History) - ALWAYS scrolls to bottom
+    // BATCH RENDER (Switching Chats) - Always Bottom
     function renderMessageBatch(messages) {
         const fragment = document.createDocumentFragment();
         messages.forEach(msg => {
             fragment.appendChild(createMessageElement(msg));
         });
         messagesDiv.appendChild(fragment);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        forceScrollToBottom(); // FORCE BOTTOM ON SWITCH
     }
 
-    // Single Message (Live) - SMART scrolling
+    // SINGLE APPEND (Live) - Smart Scroll
     function appendMessageToUI(msg) {
         // Notifications
         if (msg.sender !== currentUsername && currentChatMode === 'global') {
@@ -431,16 +444,16 @@
             else if (msg.type === 'general' && settingMain.checked) triggerNotification(`${msg.sender}`, msg.text || 'Image');
         }
 
-        // Logic: Are we already near the bottom?
-        const threshold = 50; // pixels from bottom to be considered "at bottom"
-        const wasAtBottom = (messagesDiv.scrollTop + messagesDiv.clientHeight) >= (messagesDiv.scrollHeight - threshold);
+        // Logic: Are we near bottom? (within 100px)
+        const threshold = 100;
+        const isNearBottom = (messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight) < threshold;
         
         const el = createMessageElement(msg);
         messagesDiv.appendChild(el);
 
-        // Scroll IF: I sent it OR I was already looking at the bottom
-        if (msg.sender === currentUsername || wasAtBottom) {
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        // Scroll ONLY if user sent it OR they were already near bottom
+        if (msg.sender === currentUsername || isNearBottom) {
+            forceScrollToBottom();
         }
     }
 
