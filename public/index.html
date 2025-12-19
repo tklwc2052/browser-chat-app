@@ -113,6 +113,14 @@
 
     const socket = io();
 
+    // --- FORCE RESET HANDLER (THE PURGE) ---
+    // This listens for the server rejecting a bad username
+    socket.on('force-reset', (reason) => {
+        alert("SYSTEM NOTICE: " + reason);
+        localStorage.removeItem('chatUsername'); // Delete bad name
+        window.location.reload(); // Reload to login screen
+    });
+
     // DOM Elements
     const messagesDiv = document.getElementById('messages');
     const usernameInput = document.getElementById('username-input');
@@ -537,11 +545,9 @@
     
     document.addEventListener('DOMContentLoaded', () => { const u = localStorage.getItem('chatUsername'); const a = localStorage.getItem('chatAvatar'); if(a) { currentAvatarBase64 = a; currentAvatarPreview.src = a; } if(u) { usernameInput.value = u; socket.emit('set-username', {username: u, avatar: a}); currentUsername = u; usernameInput.disabled = true; setUsernameBtn.disabled = true; } });
     
-    // --- UPDATED USERNAME VALIDATION ---
+    // --- UPDATED CLIENT-SIDE VALIDATION ---
     setUsernameBtn.onclick = () => { 
         const u = usernameInput.value.trim();
-        
-        // Regex: Only Letters, Numbers, Underscores. No spaces.
         const nameRegex = /^[a-zA-Z0-9_]+$/;
 
         if(!u) return;
