@@ -224,11 +224,8 @@ html, body {
 .message-image { max-width: 100%; border-radius: 8px; margin-bottom: 5px; display: block; cursor: pointer; }
 .message-time { font-size: 0.65em; color: rgba(255,255,255,0.5); margin-top: 3px; padding: 0 2px; }
 .user-message .message-time { text-align: right; }
-.private-message-container {
-    background-color: transparent; border: 1px dashed var(--color-bubble-pm);
-    padding: 5px; border-radius: 8px; margin-bottom: 10px;
-}
-.bubble-private { background-color: var(--color-bubble-pm) !important; color: #fff; border: 1px solid #7c43bd; }
+
+/* REMOVED .private-message-container and .bubble-private */
 
 #message-input-area {
     padding: 15px; background-color: var(--bg-primary);
