@@ -1,7 +1,7 @@
 {
   "name": "simple-chat-app",
   "version": "1.0.0",
-  "description": "A simple Node.js chat application using Socket.IO.",
+  "description": "C&C Corp Chat",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,7 +9,6 @@
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "mongoose": "^8.0.0",
-    "dotenv": "^16.3.1"
+    "uuid": "^10.0.0" 
   }
 }
