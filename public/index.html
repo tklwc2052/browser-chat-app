@@ -190,56 +190,101 @@
     let isMuted = false;
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- SIDEBAR LOGIC (No changes) ---
+    // --- SIDEBAR LOGIC (Updated for Saved Messages) ---
     function renderSidebar() {
         dmList.innerHTML = '';
+
+        // 1. Global Chat Card
         const mainChatCard = document.createElement('div');
         mainChatCard.className = 'dm-user-card';
         if (currentChatMode === 'global') mainChatCard.classList.add('active');
+        
         const mainWrapper = document.createElement('div');
         mainWrapper.className = 'dm-avatar-wrapper';
         const mainImg = document.createElement('img');
         mainImg.src = 'placeholder-avatar.png'; 
         const mainStatus = document.createElement('div');
-        mainStatus.className = 'status-bubble status-online';
+        mainStatus.className = 'status-bubble status-online'; // Always green
         mainWrapper.appendChild(mainImg);
         mainWrapper.appendChild(mainStatus);
+        
         const mainName = document.createElement('div');
         mainName.className = 'dm-username';
         mainName.innerText = "Main Chat";
+        
         mainChatCard.appendChild(mainWrapper);
         mainChatCard.appendChild(mainName);
         mainChatCard.onclick = () => switchToGlobal();
         dmList.appendChild(mainChatCard);
 
+        // 2. Saved Messages Card (NEW)
+        if (currentUsername) {
+            const savedCard = document.createElement('div');
+            savedCard.className = 'dm-user-card';
+            // If we are DMing ourselves, highlight this card
+            if (currentChatMode === 'dm' && currentDmTarget === currentUsername) savedCard.classList.add('active');
+
+            const savedWrapper = document.createElement('div');
+            savedWrapper.className = 'dm-avatar-wrapper';
+            const savedIcon = document.createElement('div');
+            // Using a simple div with emoji for the icon instead of an image
+            savedIcon.style.width = "40px";
+            savedIcon.style.height = "40px";
+            savedIcon.style.borderRadius = "50%";
+            savedIcon.style.backgroundColor = "#333";
+            savedIcon.style.display = "flex";
+            savedIcon.style.alignItems = "center";
+            savedIcon.style.justifyContent = "center";
+            savedIcon.innerText = "🔖"; // Bookmark icon
+            savedWrapper.appendChild(savedIcon);
+
+            const savedName = document.createElement('div');
+            savedName.className = 'dm-username';
+            savedName.innerText = "Saved Messages";
+
+            savedCard.appendChild(savedWrapper);
+            savedCard.appendChild(savedName);
+            // Clicking this switches to a DM with YOURSELF
+            savedCard.onclick = () => switchToDm(currentUsername);
+            dmList.appendChild(savedCard);
+        }
+
+        // 3. Other Users
         const sortedUsers = [...allUsersCache].sort((a, b) => {
             if (a.online === b.online) return a.username.localeCompare(b.username);
             return a.online ? -1 : 1;
         });
 
         sortedUsers.forEach(u => {
-            if (u.username === currentUsername) return;
+            if (u.username === currentUsername) return; // Don't show ourselves in the list again
+            
             const card = document.createElement('div');
             card.className = 'dm-user-card';
             if (currentChatMode === 'dm' && currentDmTarget === u.username) card.classList.add('active');
+            
             const wrapper = document.createElement('div');
             wrapper.className = 'dm-avatar-wrapper';
             const img = document.createElement('img');
             img.src = u.avatar || 'placeholder-avatar.png';
+            
             const statusBubble = document.createElement('div');
             statusBubble.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
+            
             const unreadBadge = document.createElement('div');
             unreadBadge.className = 'unread-badge';
             if (unreadCounts[u.username] > 0) {
                 unreadBadge.innerText = unreadCounts[u.username];
                 unreadBadge.classList.add('visible');
             }
+            
             wrapper.appendChild(img);
             wrapper.appendChild(statusBubble);
             wrapper.appendChild(unreadBadge);
+            
             const name = document.createElement('div');
             name.className = 'dm-username';
             name.innerText = u.username;
+            
             card.appendChild(wrapper);
             card.appendChild(name);
             card.onclick = () => switchToDm(u.username);
@@ -250,13 +295,22 @@
     function switchToDm(targetUser) {
         currentChatMode = 'dm';
         currentDmTarget = targetUser;
-        unreadCounts[targetUser] = 0;
+        unreadCounts[targetUser] = 0; // Clear unread
+        
         typingUsers.clear();
         updateTypingDisplay();
-        renderSidebar();
-        chatHeaderLabel.innerText = `Chat with ${targetUser}`;
+        renderSidebar(); // Re-render to update the active highlight
+
+        // Custom Header for Saved Messages
+        if (targetUser === currentUsername) {
+            chatHeaderLabel.innerText = "Saved Messages (Private Notes)";
+        } else {
+            chatHeaderLabel.innerText = `Chat with ${targetUser}`;
+        }
+        
         messagesDiv.innerHTML = '';
         lastMessageSender = null; 
+        
         if (dmMessagesCache[targetUser]) {
             renderMessageBatch(dmMessagesCache[targetUser]);
         } else {
@@ -505,7 +559,7 @@
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         
-        // --- NEW: Action Buttons attached to contentArea ---
+        // --- Action Buttons attached to contentArea ---
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
@@ -670,7 +724,7 @@
         }
     }
 
-    // --- VC Logic (Same as before) ---
+    // --- VC Logic ---
     function createPeer(targetId, initiator = false) {
         const p = new RTCPeerConnection(rtcConfig);
         p.onicecandidate = (e) => { if (e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } }); };
@@ -692,7 +746,7 @@
     socket.on('vc-user-left', (id) => { if (peers[id]) { peers[id].close(); delete peers[id]; } const audioEl = document.getElementById(`audio-${id}`); if (audioEl) audioEl.remove(); });
     socket.on('vc-user-list-update', (users) => { vcUserList.innerHTML = ''; users.forEach(u => { const li = document.createElement('li'); li.innerHTML = `<span>${u.username}</span> ${u.isMuted ? '<span style="color:red">(Muted)</span>' : ''}`; vcUserList.appendChild(li); }); });
 
-    // --- GENERIC UI (Same as before) ---
+    // --- GENERIC UI ---
     if (btnCloakLauncher) btnCloakLauncher.onclick = () => { const newWindow = window.open('about:blank', '_blank'); if (!newWindow) return; newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/"></iframe></body></html>`); };
     if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
     notifHeader.onclick = () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); };
