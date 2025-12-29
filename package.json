@@ -1,7 +1,7 @@
 {
   "name": "simple-chat-app",
   "version": "1.0.0",
-  "description": "C&C Corp Chat",
+  "description": "A simple Node.js chat application using Socket.IO.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
