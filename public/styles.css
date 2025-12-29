@@ -205,29 +205,21 @@ html, body {
 .avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin: 0 10px; flex-shrink: 0; }
 .avatar-spacer { width: 35px; height: 35px; margin: 0 10px; flex-shrink: 0; }
 
-/* NEW: Relative positioning for actions */
-.message-content-area { 
-    display: flex; 
-    flex-direction: column; 
-    max-width: 70%; 
-    position: relative; 
-}
+.message-content-area { display: flex; flex-direction: column; max-width: 70%; position: relative; }
 .user-message .message-content-area { align-items: flex-end; }
 
 /* Message Actions (Reply/Edit/Delete) */
 .message-actions {
     display: none;
     position: absolute;
-    top: -25px; /* Floats above the bubble */
+    top: -20px;
+    right: 0; /* Default right */
     background: #333;
     border-radius: 4px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.5);
     z-index: 100;
 }
-/* User (Right Side): Align actions to the right */
-.user-message .message-actions { right: 0; } 
-/* Other (Left Side): Align actions to the left */
-.other-message .message-actions { left: 0; } 
+.user-message .message-actions { right: auto; left: 0; } /* Flip for self */
 
 .action-btn {
     background: none;
@@ -271,13 +263,13 @@ html, body {
 
 #message-input-area {
     padding: 15px; background-color: var(--bg-primary);
-    border-top: 1px solid #333; display: flex; flex-direction: column; gap: 5px; 
+    border-top: 1px solid #333; display: flex; flex-direction: column; gap: 5px; /* Changed to column to stack reply bar */
     transition: background-color 0.3s ease;
 }
 
 /* Reply Bar above input */
 #reply-bar {
-    display: none; 
+    display: none; /* Flex when active */
     justify-content: space-between;
     align-items: center;
     background: #333;
@@ -291,12 +283,9 @@ html, body {
 #cancel-reply-btn { background: none; border: none; color: #888; cursor: pointer; font-weight: bold; }
 #cancel-reply-btn:hover { color: white; }
 
-/* NEW: Input Row Container */
-#input-row {
-    display: flex;
-    width: 100%;
-    gap: 10px;
-    align-items: center;
+/* Input Row (contains text area and buttons) */
+#message-input-area > :not(#reply-bar):not(#image-preview-area) {
+    display: flex; gap: 10px; align-items: center; width: 100%;
 }
 
 /* Fix for previous flex container override */
