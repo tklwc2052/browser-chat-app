@@ -3,7 +3,6 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
-const path = require('path'); // <--- Added this to handle folder paths
 
 const app = express();
 const server = http.createServer(app);
@@ -13,14 +12,11 @@ const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
 });
 
-// --- SERVE FILES FROM 'public' FOLDER ---
-// This fixes the "Cannot GET" error by telling the server 
-// to look inside the 'public' folder for index.html
-app.use(express.static(path.join(__dirname, 'public')));
-
+app.use(express.static(__dirname, 'public')); // Serve static files (index.html, css)
 app.set('trust proxy', 1); 
 
 // --- MONGODB CONNECTION ---
+// On Render, this uses the MONGO_URI env var. Locally, it uses localhost.
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
 
 mongoose.connect(mongoURI)
@@ -149,7 +145,7 @@ io.on('connection', (socket) => {
         if (user) socket.broadcast.emit('stop-typing', user.username);
     });
 
-    // 4. --- DIRECT MESSAGES ---
+    // 4. --- DIRECT MESSAGES (The Fix) ---
     socket.on('send-dm', async (data) => {
         const user = users[socket.id];
         if (!user) return;
@@ -181,7 +177,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. Load DM History
+    // 5. Load DM History (So previous chats appear)
     socket.on('get-dm-history', async ({ target }) => {
         const user = users[socket.id];
         if (!user) return;
