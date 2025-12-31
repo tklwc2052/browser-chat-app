@@ -7,15 +7,18 @@ const mongoose = require('mongoose');
 const app = express();
 const server = http.createServer(app);
 
-// Buffer limit 10MB for GIFs
+// Buffer limit 10MB for GIFs/Images
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
 });
 
+app.use(express.static(__dirname)); // Serve static files (index.html, css)
 app.set('trust proxy', 1); 
 
 // --- MONGODB CONNECTION ---
+// On Render, this uses the MONGO_URI env var. Locally, it uses localhost.
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
+
 mongoose.connect(mongoURI)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => console.log('MongoDB Connection Error:', err));
@@ -29,397 +32,186 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 const dmSchema = new mongoose.Schema({
-    participants: [String], 
+    participants: [String], // Stores ["UserA", "UserB"] sorted
     messages: [{
-        id: String,       // NEW: Unique ID
-        replyTo: Object,  // NEW: Reply Data
+        id: String,
+        replyTo: Object,
         sender: String,
         text: String,
         image: String,
         avatar: String,
         time: String,
-        isEdited: { type: Boolean, default: false }, // NEW: Edited flag
+        isEdited: { type: Boolean, default: false },
         timestamp: { type: Date, default: Date.now }
     }]
 });
 dmSchema.index({ participants: 1 });
 const DM = mongoose.model('DM', dmSchema);
 
-// --- State Management ---
-const users = {}; 
-const vcUsers = {}; 
-const messageHistory = []; 
-const MAX_HISTORY = 50; 
-const userAvatarCache = {}; 
-let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
+// --- GLOBAL VARIABLES ---
+const users = {};        // Maps socket.id -> { username, avatar, ... }
+const vcUsers = {};      // Maps socket.id -> { username, isMuted }
+const messageHistory = []; // In-memory history for public chat
 
-const mutedUsers = new Set(); 
-const bannedIPs = new Map();  
-const ADMIN_USERNAME = 'kl_'; 
+// --- HELPER FUNCTIONS ---
 
-// --- Utility Functions ---
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-function formatMessage(sender, text, avatar = null, image = null, isPm = false, replyTo = null) {
-    const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    
-    let finalAvatar = avatar;
-    if (!finalAvatar && userAvatarCache[sender]) finalAvatar = userAvatarCache[sender];
-    if (!finalAvatar && sender !== 'System') finalAvatar = 'placeholder-avatar.png';
-
-    if (sender === 'System' || sender === 'Announcement') {
-        return { 
-            id: generateId(),
-            text: text, 
-            sender: sender, 
-            avatar: null, 
-            time: time, 
-            type: 'system' 
-        };
-    }
-    
+function formatMessage(username, text, avatar, image, isPm = false, replyTo = null) {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return {
-        id: generateId(), // Unique ID for edit/delete
-        text: text, 
-        image: image, 
-        sender: sender, 
-        avatar: finalAvatar, 
-        time: time,
-        replyTo: replyTo, // Object containing sender and text of quoted msg
-        type: isPm ? 'pm' : 'general',
-        isEdited: false
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        username,
+        text,
+        time,
+        avatar,
+        image,
+        isPm,
+        replyTo,
+        timestamp: new Date()
     };
 }
 
-function getDmKey(user1, user2) { return [user1, user2].sort(); }
-function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vcUsers)); }
-function addToHistory(msgObj) {
-    messageHistory.push(msgObj);
-    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
-}
-function findSocketIdByUsername(username) {
-    return Object.keys(users).find(id => users[id].username.toLowerCase() === username.toLowerCase());
-}
-function getClientIp(socket) {
-    const forwarded = socket.handshake.headers['x-forwarded-for'];
-    if (forwarded) return forwarded.split(',')[0].trim();
-    return socket.handshake.address;
-}
-async function broadcastSidebarRefresh() {
-    try {
-        const allDbUsers = await User.find({}).lean();
-        const sidebarList = allDbUsers.map(u => ({
-            username: u.username,
-            avatar: u.avatar,
-            online: Object.values(users).some(live => live.username === u.username)
-        }));
-        io.emit('sidebar-user-list', sidebarList);
-    } catch (err) { console.error("Sidebar update error", err); }
-}
-
-app.use(express.static('public'));
-
-io.on('connection', async (socket) => {
-    const clientIp = getClientIp(socket);
-    
-    if (bannedIPs.has(clientIp)) {
-        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
-        socket.disconnect(true);
-        return;
+function addToHistory(msg) {
+    messageHistory.push(msg);
+    if (messageHistory.length > 50) {
+        messageHistory.shift(); // Keep last 50 public messages
     }
+}
 
-    socket.emit('history', messageHistory);
-    broadcastVCUserList(); 
-    broadcastSidebarRefresh(); 
+function findSocketIdByUsername(username) {
+    for (let id in users) {
+        if (users[id].username === username) {
+            return id;
+        }
+    }
+    return null;
+}
 
-    setTimeout(() => {
-        socket.emit('motd', serverMOTD);
-    }, 100);
+// --- SOCKET.IO LOGIC ---
+io.on('connection', (socket) => {
+    console.log('New Client Connected:', socket.id);
 
-    socket.on('get-history', () => { socket.emit('history', messageHistory); });
-
+    // 1. Handle User Join / Set Username
     socket.on('set-username', async ({ username, avatar }) => {
-        const oldUserData = users[socket.id] || {};
-        const oldUsername = oldUserData.username;
-        const newAvatar = avatar || 'placeholder-avatar.png'; 
-
-        if (!username) return;
-
-        const usernameLower = username.toLowerCase();
-        const isDuplicate = Object.keys(users).some(id => 
-            id !== socket.id && users[id].username.toLowerCase() === usernameLower
-        );
-
-        if (isDuplicate) {
-            socket.emit('chat-message', formatMessage('System', `The username '${username}' is already taken.`));
+        // Prevent duplicate usernames in active session
+        const existingSocket = findSocketIdByUsername(username);
+        if (existingSocket && existingSocket !== socket.id) {
+            socket.emit('username-taken');
             return;
         }
 
-        userAvatarCache[username] = newAvatar;
-        users[socket.id] = { username, avatar: newAvatar, id: socket.id };
-
+        // Save user to memory
+        users[socket.id] = { username, avatar, id: socket.id };
+        
+        // Update Database (Last Seen / Avatar)
         try {
             await User.findOneAndUpdate(
-                { username: username },
-                { avatar: newAvatar, lastSeen: Date.now() },
+                { username }, 
+                { username, avatar, lastSeen: new Date() },
                 { upsert: true, new: true }
             );
-        } catch(e) { console.error("DB Save Error", e); }
-
-        if (vcUsers[socket.id]) {
-            vcUsers[socket.id].username = username;
-            vcUsers[socket.id].avatar = newAvatar;
-            broadcastVCUserList();
+        } catch (err) {
+            console.error("DB Error updating user:", err);
         }
+
+        // Notify user they joined & send public history
+        socket.emit('user-joined', { username, history: messageHistory });
         
-        if (username !== oldUsername) {
-            const joinMsg = formatMessage('System', `User ${username} joined the chat.`);
-            io.emit('chat-message', joinMsg);
-            addToHistory(joinMsg);
-            broadcastSidebarRefresh();
-        }
-        io.emit('user-status-change', { username: username, online: true, avatar: newAvatar });
+        // Notify others
+        socket.broadcast.emit('chat-message', formatMessage('System', `${username} joined the chat.`));
+        io.emit('user-status-change', { username, status: 'online', avatar });
+        
+        // Refresh sidebar lists
+        broadcastUserList();
     });
 
-    socket.on('chat-message', async (payload) => {
-        const userData = users[socket.id] || { username: 'Anonymous', avatar: 'placeholder-avatar.png' };
-        const sender = userData.username;
-
-        if (mutedUsers.has(sender.toLowerCase())) {
-            socket.emit('chat-message', formatMessage('System', 'You are currently muted.'));
-            return;
-        }
-
-        let msgText = '';
-        let msgImage = null;
-        let replyTo = null; // NEW
-
-        if (typeof payload === 'string') {
-            msgText = payload;
-        } else if (typeof payload === 'object') {
-            msgText = payload.text || '';
-            msgImage = payload.image || null;
-            replyTo = payload.replyTo || null;
-        }
-
-        if (msgText.startsWith('/')) {
-            const parts = msgText.trim().slice(1).split(/\s+/); 
-            const command = parts[0].toLowerCase();
-            const args = parts.slice(1); 
-            
-            if (command === 'msg') {
-                const targetUsername = parts[1];
-                const privateText = parts.slice(2).join(' ').trim();
-                if (!targetUsername || !privateText) {
-                    socket.emit('chat-message', formatMessage('System', `Usage: /msg <username> <message>`));
-                    return;
-                }
-                const recipientId = findSocketIdByUsername(targetUsername);
-                if (!recipientId) {
-                    socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`));
-                } else {
-                    const pmObject = {
-                        id: generateId(),
-                        text: privateText,
-                        type: 'private',
-                        sender: sender,
-                        target: users[recipientId].username,
-                        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                        avatar: userAvatarCache[sender] || userData.avatar,
-                        replyTo: replyTo
-                    };
-                    socket.emit('chat-message', pmObject);
-                    io.to(recipientId).emit('chat-message', pmObject);
-                }
-                return; 
-            } 
-            
-            if (sender === ADMIN_USERNAME) {
-                // ... Admin commands (kick, ban, mute, motd, prune, etc) ...
-                // Keeping existing admin commands for brevity (they remain unchanged)
-                const targetName = args[0];
-                const reason = args.slice(1).join(' ') || 'No reason';
-                
-                if (command === 'server' && args.length > 0) {
-                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
-                    io.emit('chat-message', serverMsg);
-                    addToHistory(serverMsg);
-                    return;
-                } else if (command === 'clear') {
-                    messageHistory.length = 0;
-                    io.emit('clear-chat');
-                    const clearMsg = formatMessage('System', `Chat history cleared.`);
-                    io.emit('chat-message', clearMsg);
-                    addToHistory(clearMsg);
-                    return;
-                } else if (command === 'motd') {
-                    const newMotd = args.join(' ');
-                    if (newMotd) {
-                        serverMOTD = newMotd;
-                        socket.emit('chat-message', formatMessage('System', `MOTD updated.`));
-                    }
-                    return;
-                }
-                // ... (Other admin commands: mute, kick, ban, prune, purgeusers) ...
-            }
-        }
-
-        const msgObj = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo);
-        addToHistory(msgObj);
-        io.emit('chat-message', msgObj);
-    });
-
-    // --- NEW: EDIT MESSAGE ---
-    socket.on('edit-message', async (data) => {
+    // 2. Public Chat Messages
+    socket.on('chat-message', (data) => {
         const user = users[socket.id];
-        if (!user) return;
-        const { id, newText } = data;
-
-        // 1. Update in Memory (Global Chat)
-        const msgIndex = messageHistory.findIndex(m => m.id === id);
-        if (msgIndex !== -1) {
-            const msg = messageHistory[msgIndex];
-            if (msg.sender === user.username || user.username === ADMIN_USERNAME) {
-                msg.text = newText;
-                msg.isEdited = true;
-                io.emit('message-updated', { id, text: newText, isEdited: true });
-            }
+        if (user) {
+            const msg = formatMessage(user.username, data.text, user.avatar, data.image, false, data.replyTo);
+            addToHistory(msg);
+            io.emit('chat-message', msg);
         }
-
-        // 2. Update in Database (DMs)
-        // This is tricky because we don't know who the participants are just from the ID easily.
-        // We will try to find the document containing the message.
-        try {
-            const dmDoc = await DM.findOne({ "messages.id": id });
-            if (dmDoc) {
-                const dbMsg = dmDoc.messages.find(m => m.id === id);
-                if (dbMsg && (dbMsg.sender === user.username || user.username === ADMIN_USERNAME)) {
-                    dbMsg.text = newText;
-                    dbMsg.isEdited = true;
-                    await dmDoc.save();
-                    
-                    // Notify participants
-                    const p1 = dmDoc.participants[0];
-                    const p2 = dmDoc.participants[1];
-                    const s1 = findSocketIdByUsername(p1);
-                    const s2 = findSocketIdByUsername(p2);
-                    if(s1) io.to(s1).emit('message-updated', { id, text: newText, isEdited: true });
-                    if(s2) io.to(s2).emit('message-updated', { id, text: newText, isEdited: true });
-                }
-            }
-        } catch(e) { console.error("Edit DB Error", e); }
     });
 
-    // --- NEW: DELETE MESSAGE ---
-    socket.on('delete-message', async (id) => {
+    // 3. Typing Indicators
+    socket.on('typing', () => {
         const user = users[socket.id];
-        if (!user) return;
-
-        // 1. Delete from Memory
-        const msgIndex = messageHistory.findIndex(m => m.id === id);
-        if (msgIndex !== -1) {
-            const msg = messageHistory[msgIndex];
-            if (msg.sender === user.username || user.username === ADMIN_USERNAME) {
-                messageHistory.splice(msgIndex, 1);
-                io.emit('message-deleted', id);
-            }
-        }
-
-        // 2. Delete from Database
-        try {
-            const dmDoc = await DM.findOne({ "messages.id": id });
-            if (dmDoc) {
-                const dbMsg = dmDoc.messages.find(m => m.id === id);
-                if (dbMsg && (dbMsg.sender === user.username || user.username === ADMIN_USERNAME)) {
-                    // Pull removes the item from the array
-                    await DM.updateOne(
-                        { _id: dmDoc._id },
-                        { $pull: { messages: { id: id } } }
-                    );
-                    
-                    const p1 = dmDoc.participants[0];
-                    const p2 = dmDoc.participants[1];
-                    const s1 = findSocketIdByUsername(p1);
-                    const s2 = findSocketIdByUsername(p2);
-                    if(s1) io.to(s1).emit('message-deleted', id);
-                    if(s2) io.to(s2).emit('message-deleted', id);
-                }
-            }
-        } catch(e) { console.error("Delete DB Error", e); }
+        if (user) socket.broadcast.emit('typing', user.username);
     });
 
-    socket.on('fetch-dm-history', async (targetUsername) => {
+    socket.on('stop-typing', () => {
         const user = users[socket.id];
-        if(!user) return;
-        try {
-            const participants = getDmKey(user.username, targetUsername);
-            const conversation = await DM.findOne({ participants: participants }).lean();
-            const history = conversation ? conversation.messages : [];
-            socket.emit('dm-history', { target: targetUsername, messages: history });
-        } catch(e) { console.error("DM Fetch Error", e); }
+        if (user) socket.broadcast.emit('stop-typing', user.username);
     });
 
+    // 4. --- DIRECT MESSAGES (The Fix) ---
     socket.on('send-dm', async (data) => {
-        const sender = users[socket.id];
-        if (!sender) return;
+        const user = users[socket.id];
+        if (!user) return;
         
-        // Pass replyTo through
-        const msgObj = formatMessage(sender.username, data.message, sender.avatar, data.image, true, data.replyTo);
-        const participants = getDmKey(sender.username, data.target);
+        const { target, text, image, replyTo } = data;
+        
+        // Create formatted message
+        const msgObj = formatMessage(user.username, text, user.avatar, image, true, replyTo);
+        
+        // Send to sender (so it shows in your own chat immediately)
+        socket.emit('dm-received', { from: user.username, to: target, message: msgObj });
+        
+        // Send to recipient (if online)
+        const targetSocketId = findSocketIdByUsername(target);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('dm-received', { from: user.username, to: target, message: msgObj });
+        }
 
+        // Save to Database
         try {
+            const participants = [user.username, target].sort();
             await DM.findOneAndUpdate(
                 { participants: participants },
-                { $push: { messages: { $each: [msgObj], $slice: -50 } } }, 
+                { $push: { messages: msgObj } },
                 { upsert: true }
             );
-        } catch(e) { console.error("DM Save Error", e); }
+        } catch (err) {
+            console.error("Error saving DM:", err);
+        }
+    });
 
-        socket.emit('dm-received', { from: sender.username, to: data.target, message: msgObj });
-        
-        const targetSockets = Object.values(users).filter(u => u.username === data.target);
-        targetSockets.forEach(u => {
-            const targetSocketId = Object.keys(users).find(key => users[key].username === u.username);
-            if(targetSocketId) {
-                io.to(targetSocketId).emit('dm-received', { from: sender.username, to: data.target, message: msgObj });
+    // 5. Load DM History (So previous chats appear)
+    socket.on('get-dm-history', async ({ target }) => {
+        const user = users[socket.id];
+        if (!user) return;
+
+        try {
+            const participants = [user.username, target].sort();
+            const conversation = await DM.findOne({ participants });
+            
+            if (conversation && conversation.messages) {
+                socket.emit('dm-history', { 
+                    target: target, 
+                    messages: conversation.messages 
+                });
+            } else {
+                socket.emit('dm-history', { target: target, messages: [] });
             }
-        });
-    });
-
-    // ... (Rest of Voice Chat, Typing, Disconnect logic remains identical) ...
-    // Keeping it concise here, but assume the VC/Typing blocks are here as before.
-    
-    socket.on('typing-start', (target) => {
-        const user = users[socket.id];
-        if(!user) return;
-        if (!target || target === 'global') socket.broadcast.emit('user-typing', { username: user.username, scope: 'global' });
-        else {
-            const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-            if(targetSocketId) io.to(targetSocketId).emit('user-typing', { username: user.username, scope: 'dm' });
+        } catch (err) {
+            console.error("Error fetching DM history:", err);
         }
     });
 
-    socket.on('typing-stop', (target) => {
-        const user = users[socket.id];
-        if(!user) return;
-        if (!target || target === 'global') socket.broadcast.emit('user-stopped-typing', { username: user.username, scope: 'global' });
-        else {
-             const targetSocketId = Object.keys(users).find(k => users[k].username === target);
-             if(targetSocketId) io.to(targetSocketId).emit('user-stopped-typing', { username: user.username, scope: 'dm' });
-        }
-    });
-
-    // VC
+    // 6. Voice Chat Handling
     socket.on('vc-join', () => {
-        if (users[socket.id]) {
-            vcUsers[socket.id] = { id: socket.id, username: users[socket.id].username, avatar: users[socket.id].avatar, isMuted: false };
-            const joinMsg = formatMessage('System', `${users[socket.id].username} joined Voice Chat.`);
+        const user = users[socket.id];
+        if (user) {
+            vcUsers[socket.id] = { username: user.username, isMuted: false };
+            broadcastVCUserList();
+            
+            // Log in public chat
+            const joinMsg = formatMessage('System', `${user.username} joined Voice Chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
-            broadcastVCUserList();
+
+            // Signal to existing VC users
             socket.broadcast.emit('vc-prepare-connection', socket.id);
         }
     });
@@ -428,6 +220,7 @@ io.on('connection', async (socket) => {
         if (vcUsers[socket.id]) {
             const userData = users[socket.id];
             delete vcUsers[socket.id];
+            
             if (userData) {
                 const leaveMsg = formatMessage('System', `${userData.username} left Voice Chat.`);
                 io.emit('chat-message', leaveMsg);
@@ -438,22 +231,83 @@ io.on('connection', async (socket) => {
         broadcastVCUserList();
     });
 
-    socket.on('vc-mute-toggle', (isMuted) => { if (vcUsers[socket.id]) { vcUsers[socket.id].isMuted = isMuted; broadcastVCUserList(); } });
-    
-    socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
-    
-    socket.on('disconnect', () => {
+    socket.on('vc-mute-toggle', (isMuted) => {
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].isMuted = isMuted;
+            broadcastVCUserList();
+        }
+    });
+
+    socket.on('signal', (data) => {
+        io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
+    });
+
+    // 7. Disconnect Handling
+    socket.on('disconnect', async () => {
         const user = users[socket.id];
         if (user) {
+            // Update DB to show when they left
+            try {
+                await User.findOneAndUpdate({ username: user.username }, { lastSeen: Date.now() });
+            } catch (e) { console.error(e); }
+
+            // Handle VC cleanup
+            if (vcUsers[socket.id]) {
+                delete vcUsers[socket.id];
+                broadcastVCUserList();
+                socket.broadcast.emit('vc-user-left', socket.id);
+            }
+
+            // Remove from active users
             delete users[socket.id];
-            if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
+
+            // Notify chat
             const leaveMsg = formatMessage('System', `${user.username} has left.`);
             io.emit('chat-message', leaveMsg);
             addToHistory(leaveMsg);
-            io.emit('user-status-change', { username: user.username, online: false });
+            
+            io.emit('user-status-change', { username: user.username, status: 'offline' });
+            broadcastUserList();
         }
+        console.log('Client Disconnected:', socket.id);
     });
 });
 
+// --- BROADCAST HELPERS ---
+
+async function broadcastUserList() {
+    // We want to send both online users AND offline users (from DB)
+    try {
+        const allDocs = await User.find({}); // Fetch all registered users
+        const userList = allDocs.map(doc => {
+            // Check if currently online
+            const isOnline = Object.values(users).some(u => u.username === doc.username);
+            return {
+                username: doc.username,
+                avatar: doc.avatar,
+                status: isOnline ? 'online' : 'offline',
+                lastSeen: doc.lastSeen
+            };
+        });
+        io.emit('update-user-list', userList);
+    } catch (err) {
+        // Fallback if DB fails: just send online users
+        const onlineOnly = Object.values(users).map(u => ({
+            username: u.username,
+            avatar: u.avatar,
+            status: 'online'
+        }));
+        io.emit('update-user-list', onlineOnly);
+    }
+}
+
+function broadcastVCUserList() {
+    const list = Object.values(vcUsers);
+    io.emit('vc-user-list', list);
+}
+
+// --- START SERVER ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
