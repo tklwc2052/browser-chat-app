@@ -17,7 +17,18 @@ app.set('trust proxy', 1);
 // --- MONGODB CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
 mongoose.connect(mongoURI)
-    .then(() => console.log('MongoDB Connected'))
+    .then(async () => {
+        console.log('MongoDB Connected');
+        // --- NEW: Load Public History on Startup ---
+        try {
+            const savedMessages = await Message.find().sort({ timestamp: -1 }).limit(50).lean();
+            // We reverse them so they appear in chronological order (oldest -> newest)
+            messageHistory.push(...savedMessages.reverse());
+            console.log(`Loaded ${savedMessages.length} past messages.`);
+        } catch (err) {
+            console.error("Error loading chat history:", err);
+        }
+    })
     .catch(err => console.log('MongoDB Connection Error:', err));
 
 // --- SCHEMAS ---
@@ -28,17 +39,32 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
+// --- NEW: Public Message Schema ---
+const messageSchema = new mongoose.Schema({
+    id: String,
+    sender: String,
+    text: String,
+    image: String,
+    avatar: String,
+    time: String,
+    replyTo: Object,
+    type: String, // 'general', 'system', etc.
+    isEdited: { type: Boolean, default: false },
+    timestamp: { type: Date, default: Date.now }
+});
+const Message = mongoose.model('Message', messageSchema);
+
 const dmSchema = new mongoose.Schema({
     participants: [String], 
     messages: [{
-        id: String,       // NEW: Unique ID
-        replyTo: Object,  // NEW: Reply Data
+        id: String,
+        replyTo: Object,
         sender: String,
         text: String,
         image: String,
         avatar: String,
         time: String,
-        isEdited: { type: Boolean, default: false }, // NEW: Edited flag
+        isEdited: { type: Boolean, default: false },
         timestamp: { type: Date, default: Date.now }
     }]
 });
@@ -77,21 +103,47 @@ function formatMessage(sender, text, avatar = null, image = null, isPm = false, 
             sender: sender, 
             avatar: null, 
             time: time, 
-            type: 'system' 
+            type: 'system',
+            timestamp: now
         };
     }
     
     return {
-        id: generateId(), // Unique ID for edit/delete
+        id: generateId(), 
         text: text, 
         image: image, 
         sender: sender, 
         avatar: finalAvatar, 
         time: time,
-        replyTo: replyTo, // Object containing sender and text of quoted msg
+        replyTo: replyTo, 
         type: isPm ? 'pm' : 'general',
-        isEdited: false
+        isEdited: false,
+        timestamp: now
     };
+}
+
+// Helper to save public messages to DB
+async function savePublicMessage(msgObj) {
+    // We only save general chat messages and system messages, not DMs (DMs are handled separately)
+    if (msgObj.type === 'pm') return;
+
+    try {
+        const newMsg = new Message({
+            id: msgObj.id,
+            sender: msgObj.sender,
+            text: msgObj.text,
+            image: msgObj.image,
+            avatar: msgObj.avatar,
+            time: msgObj.time,
+            replyTo: msgObj.replyTo,
+            type: msgObj.type,
+            isEdited: msgObj.isEdited || false,
+            timestamp: msgObj.timestamp || new Date()
+        });
+        await newMsg.save();
+    } catch (err) {
+        console.error("Error saving public message:", err);
+    }
 }
 
 function getDmKey(user1, user2) { return [user1, user2].sort(); }
@@ -179,6 +231,7 @@ io.on('connection', async (socket) => {
             const joinMsg = formatMessage('System', `User ${username} joined the chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
+            savePublicMessage(joinMsg); // Save join event
             broadcastSidebarRefresh();
         }
         io.emit('user-status-change', { username: username, online: true, avatar: newAvatar });
@@ -195,7 +248,7 @@ io.on('connection', async (socket) => {
 
         let msgText = '';
         let msgImage = null;
-        let replyTo = null; // NEW
+        let replyTo = null; 
 
         if (typeof payload === 'string') {
             msgText = payload;
@@ -238,8 +291,6 @@ io.on('connection', async (socket) => {
             } 
             
             if (sender === ADMIN_USERNAME) {
-                // ... Admin commands (kick, ban, mute, motd, prune, etc) ...
-                // Keeping existing admin commands for brevity (they remain unchanged)
                 const targetName = args[0];
                 const reason = args.slice(1).join(' ') || 'No reason';
                 
@@ -247,13 +298,19 @@ io.on('connection', async (socket) => {
                     const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
                     io.emit('chat-message', serverMsg);
                     addToHistory(serverMsg);
+                    savePublicMessage(serverMsg); // Save announcement
                     return;
                 } else if (command === 'clear') {
                     messageHistory.length = 0;
+                    // Also clear DB history for consistency? 
+                    // Usually /clear just clears the screen, but let's clear DB to be safe:
+                    await Message.deleteMany({}); 
+                    
                     io.emit('clear-chat');
                     const clearMsg = formatMessage('System', `Chat history cleared.`);
                     io.emit('chat-message', clearMsg);
                     addToHistory(clearMsg);
+                    savePublicMessage(clearMsg);
                     return;
                 } else if (command === 'motd') {
                     const newMotd = args.join(' ');
@@ -263,16 +320,16 @@ io.on('connection', async (socket) => {
                     }
                     return;
                 }
-                // ... (Other admin commands: mute, kick, ban, prune, purgeusers) ...
             }
         }
 
         const msgObj = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo);
         addToHistory(msgObj);
+        savePublicMessage(msgObj); // --- SAVE TO DB ---
         io.emit('chat-message', msgObj);
     });
 
-    // --- NEW: EDIT MESSAGE ---
+    // --- EDIT MESSAGE ---
     socket.on('edit-message', async (data) => {
         const user = users[socket.id];
         if (!user) return;
@@ -286,12 +343,15 @@ io.on('connection', async (socket) => {
                 msg.text = newText;
                 msg.isEdited = true;
                 io.emit('message-updated', { id, text: newText, isEdited: true });
+                
+                // --- UPDATE DB (Global) ---
+                try {
+                    await Message.findOneAndUpdate({ id: id }, { text: newText, isEdited: true });
+                } catch(e) { console.error("Edit Public DB Error", e); }
             }
         }
 
         // 2. Update in Database (DMs)
-        // This is tricky because we don't know who the participants are just from the ID easily.
-        // We will try to find the document containing the message.
         try {
             const dmDoc = await DM.findOne({ "messages.id": id });
             if (dmDoc) {
@@ -301,7 +361,6 @@ io.on('connection', async (socket) => {
                     dbMsg.isEdited = true;
                     await dmDoc.save();
                     
-                    // Notify participants
                     const p1 = dmDoc.participants[0];
                     const p2 = dmDoc.participants[1];
                     const s1 = findSocketIdByUsername(p1);
@@ -310,31 +369,35 @@ io.on('connection', async (socket) => {
                     if(s2) io.to(s2).emit('message-updated', { id, text: newText, isEdited: true });
                 }
             }
-        } catch(e) { console.error("Edit DB Error", e); }
+        } catch(e) { console.error("Edit DM DB Error", e); }
     });
 
-    // --- NEW: DELETE MESSAGE ---
+    // --- DELETE MESSAGE ---
     socket.on('delete-message', async (id) => {
         const user = users[socket.id];
         if (!user) return;
 
-        // 1. Delete from Memory
+        // 1. Delete from Memory (Global)
         const msgIndex = messageHistory.findIndex(m => m.id === id);
         if (msgIndex !== -1) {
             const msg = messageHistory[msgIndex];
             if (msg.sender === user.username || user.username === ADMIN_USERNAME) {
                 messageHistory.splice(msgIndex, 1);
                 io.emit('message-deleted', id);
+                
+                // --- DELETE FROM DB (Global) ---
+                try {
+                    await Message.findOneAndDelete({ id: id });
+                } catch(e) { console.error("Delete Public DB Error", e); }
             }
         }
 
-        // 2. Delete from Database
+        // 2. Delete from Database (DMs)
         try {
             const dmDoc = await DM.findOne({ "messages.id": id });
             if (dmDoc) {
                 const dbMsg = dmDoc.messages.find(m => m.id === id);
                 if (dbMsg && (dbMsg.sender === user.username || user.username === ADMIN_USERNAME)) {
-                    // Pull removes the item from the array
                     await DM.updateOne(
                         { _id: dmDoc._id },
                         { $pull: { messages: { id: id } } }
@@ -348,7 +411,7 @@ io.on('connection', async (socket) => {
                     if(s2) io.to(s2).emit('message-deleted', id);
                 }
             }
-        } catch(e) { console.error("Delete DB Error", e); }
+        } catch(e) { console.error("Delete DM DB Error", e); }
     });
 
     socket.on('fetch-dm-history', async (targetUsername) => {
@@ -362,12 +425,11 @@ io.on('connection', async (socket) => {
         } catch(e) { console.error("DM Fetch Error", e); }
     });
 
-    // --- DM LOGIC FIX ---
     socket.on('send-dm', async (data) => {
         const sender = users[socket.id];
         if (!sender) return;
         
-        // --- FIX HERE: Changed data.message to data.text ---
+        // Fix: Changed data.message to data.text
         const msgObj = formatMessage(sender.username, data.text, sender.avatar, data.image, true, data.replyTo);
         const participants = getDmKey(sender.username, data.target);
 
@@ -390,7 +452,7 @@ io.on('connection', async (socket) => {
         });
     });
 
-    // ... (Rest of Voice Chat, Typing, Disconnect logic remains identical) ...
+    // ... (Voice Chat, Typing, Disconnect logic) ...
     
     socket.on('typing-start', (target) => {
         const user = users[socket.id];
@@ -419,6 +481,7 @@ io.on('connection', async (socket) => {
             const joinMsg = formatMessage('System', `${users[socket.id].username} joined Voice Chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
+            savePublicMessage(joinMsg); // Save VC join to history
             broadcastVCUserList();
             socket.broadcast.emit('vc-prepare-connection', socket.id);
         }
@@ -432,6 +495,7 @@ io.on('connection', async (socket) => {
                 const leaveMsg = formatMessage('System', `${userData.username} left Voice Chat.`);
                 io.emit('chat-message', leaveMsg);
                 addToHistory(leaveMsg);
+                savePublicMessage(leaveMsg); // Save VC leave to history
                 socket.broadcast.emit('vc-user-left', socket.id);
             }
         }
@@ -450,6 +514,7 @@ io.on('connection', async (socket) => {
             const leaveMsg = formatMessage('System', `${user.username} has left.`);
             io.emit('chat-message', leaveMsg);
             addToHistory(leaveMsg);
+            savePublicMessage(leaveMsg); // Save disconnect
             io.emit('user-status-change', { username: user.username, online: false });
         }
     });
