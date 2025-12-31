@@ -3,12 +3,11 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
-const path = require('path'); // Added for safer folder finding
+const path = require('path'); 
 
 const app = express();
 const server = http.createServer(app);
 
-// Limit 10MB (Consider lowering this to 5MB if it's still slow)
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
 });
@@ -20,19 +19,28 @@ const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat'
 mongoose.connect(mongoURI)
     .then(async () => {
         console.log('MongoDB Connected');
-        // --- LOAD PUBLIC HISTORY ---
+        
+        // 1. LOAD PUBLIC HISTORY
         try {
-            // OPTIMIZATION: Use MAX_HISTORY variable here
             const savedMessages = await Message.find()
                 .sort({ timestamp: -1 })
-                .limit(MAX_HISTORY) // Only load the last 20
+                .limit(MAX_HISTORY)
                 .lean();
-            
-            // Reverse so they appear Oldest -> Newest
             messageHistory.push(...savedMessages.reverse());
             console.log(`Loaded ${savedMessages.length} past messages.`);
         } catch (err) {
             console.error("Error loading chat history:", err);
+        }
+
+        // 2. LOAD MOTD (NEW)
+        try {
+            const savedMotd = await Config.findOne({ key: 'motd' });
+            if (savedMotd) {
+                serverMOTD = savedMotd.value;
+                console.log(`Loaded MOTD: ${serverMOTD}`);
+            }
+        } catch (err) {
+            console.error("Error loading MOTD:", err);
         }
     })
     .catch(err => console.log('MongoDB Connection Error:', err));
@@ -57,7 +65,6 @@ const messageSchema = new mongoose.Schema({
     isEdited: { type: Boolean, default: false },
     timestamp: { type: Date, default: Date.now }
 });
-// OPTIMIZATION: Indexing makes startup queries faster
 messageSchema.index({ timestamp: -1 }); 
 const Message = mongoose.model('Message', messageSchema);
 
@@ -78,11 +85,17 @@ const dmSchema = new mongoose.Schema({
 dmSchema.index({ participants: 1 });
 const DM = mongoose.model('DM', dmSchema);
 
+// --- NEW: CONFIG SCHEMA (For MOTD) ---
+const configSchema = new mongoose.Schema({
+    key: { type: String, unique: true },
+    value: String
+});
+const Config = mongoose.model('Config', configSchema);
+
 // --- State Management ---
 const users = {}; 
 const vcUsers = {}; 
 const messageHistory = []; 
-// OPTIMIZATION: Reduced from 50 to 20 to speed up join time
 const MAX_HISTORY = 20; 
 const userAvatarCache = {}; 
 let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
@@ -177,7 +190,6 @@ async function broadcastSidebarRefresh() {
     } catch (err) { console.error("Sidebar update error", err); }
 }
 
-// OPTIMIZATION: Use path.join for reliable file serving
 app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', async (socket) => {
@@ -189,7 +201,6 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // Send history immediately
     socket.emit('history', messageHistory);
     broadcastVCUserList(); 
     broadcastSidebarRefresh(); 
@@ -309,7 +320,6 @@ io.on('connection', async (socket) => {
                     return;
                 } else if (command === 'clear') {
                     messageHistory.length = 0;
-                    // Wipe DB too so it doesn't reload on restart
                     await Message.deleteMany({}); 
                     
                     io.emit('clear-chat');
@@ -323,6 +333,15 @@ io.on('connection', async (socket) => {
                     if (newMotd) {
                         serverMOTD = newMotd;
                         socket.emit('chat-message', formatMessage('System', `MOTD updated.`));
+                        
+                        // --- SAVE MOTD TO DB ---
+                        try {
+                            await Config.findOneAndUpdate(
+                                { key: 'motd' },
+                                { value: newMotd },
+                                { upsert: true }
+                            );
+                        } catch (e) { console.error("Error saving MOTD:", e); }
                     }
                     return;
                 }
@@ -424,7 +443,6 @@ io.on('connection', async (socket) => {
         const sender = users[socket.id];
         if (!sender) return;
         
-        // Fixed data.message -> data.text
         const msgObj = formatMessage(sender.username, data.text, sender.avatar, data.image, true, data.replyTo);
         const participants = getDmKey(sender.username, data.target);
 
