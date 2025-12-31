@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
+const path = require('path'); // <--- 1. IMPORT PATH
 
 const app = express();
 const server = http.createServer(app);
@@ -12,11 +13,14 @@ const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
 });
 
-app.use(express.static(__dirname, 'public')); // Serve static files (index.html, css)
+// --- SERVE STATIC FILES ---
+// 2. TELL EXPRESS TO LOOK IN THE 'public' FOLDER
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.set('trust proxy', 1); 
 
 // --- MONGODB CONNECTION ---
-// On Render, this uses the MONGO_URI env var. Locally, it uses localhost.
+// Uses MONGO_URI from Render settings, or defaults to localhost if running locally
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
 
 mongoose.connect(mongoURI)
@@ -32,7 +36,7 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 const dmSchema = new mongoose.Schema({
-    participants: [String], // Stores ["UserA", "UserB"] sorted
+    participants: [String], // Stores ["UserA", "UserB"] sorted alphabetically
     messages: [{
         id: String,
         replyTo: Object,
@@ -92,7 +96,6 @@ io.on('connection', (socket) => {
 
     // 1. Handle User Join / Set Username
     socket.on('set-username', async ({ username, avatar }) => {
-        // Prevent duplicate usernames in active session
         const existingSocket = findSocketIdByUsername(username);
         if (existingSocket && existingSocket !== socket.id) {
             socket.emit('username-taken');
@@ -145,7 +148,7 @@ io.on('connection', (socket) => {
         if (user) socket.broadcast.emit('stop-typing', user.username);
     });
 
-    // 4. --- DIRECT MESSAGES (The Fix) ---
+    // 4. --- DIRECT MESSAGES ---
     socket.on('send-dm', async (data) => {
         const user = users[socket.id];
         if (!user) return;
@@ -177,7 +180,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. Load DM History (So previous chats appear)
+    // 5. Load DM History
     socket.on('get-dm-history', async ({ target }) => {
         const user = users[socket.id];
         if (!user) return;
