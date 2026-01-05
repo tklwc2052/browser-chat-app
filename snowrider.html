@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snow Rider 3D - C&C Corp</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Vrkids2009/snowrider3d@6b7c2b9167b592528b221428414e63f06c4640b9/TemplateData/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; display: flex; height: 100vh; background-color: #1e1e1e; }
+        
+        /* --- LEFT SIDE: GAME STAGE --- */
+        #game-stage {
+            flex: 1; /* Takes up remaining space */
+            position: relative;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* --- RIGHT SIDE: CHAT SIDEBAR --- */
+        #side-chat {
+            width: 350px; /* Fixed width sidebar */
+            display: flex;
+            flex-direction: column;
+            border-left: 2px solid #333;
+            background-color: var(--bg-secondary);
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+        }
+
+        #chat-header {
+            padding: 15px;
+            background-color: var(--bg-primary);
+            border-bottom: 1px solid #333;
+            font-weight: bold;
+            color: var(--color-accent-blue);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Mini Message Styles */
+        .message { padding: 5px 8px; border-radius: 4px; background: rgba(255,255,255,0.05); font-size: 0.9em; }
+        .message strong { color: var(--color-accent-blue); }
+        .message.system { color: var(--color-system); font-style: italic; background: none; }
+
+        #input-area {
+            padding: 10px;
+            background-color: var(--bg-primary);
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 5px;
+        }
+        
+        #side-input {
+            flex: 1;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: var(--bg-input);
+            color: white;
+        }
+
+        #home-btn {
+            text-decoration: none;
+            color: #aaa;
+            font-size: 0.8em;
+            border: 1px solid #555;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/gh/Vrkids2009/snowrider3d@6b7c2b9167b592528b221428414e63f06c4640b9/TemplateData/UnityProgress.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/Vrkids2009/snowrider3d@6b7c2b9167b592528b221428414e63f06c4640b9/Build/UnityLoader.js"></script>
+    <script>
+        var gameInstance = UnityLoader.instantiate("gameContainer", "https://cdn.jsdelivr.net/gh/Vrkids2009/snowrider3d@6b7c2b9167b592528b221428414e63f06c4640b9/Build/SnowRider3D-gd-1.json", {onProgress: UnityProgress,Module:{onRuntimeInitialized: function() {UnityProgress(gameInstance, "complete")}}}); 
+    </script>
+</head>
+<body>
+
+    <div id="game-stage">
+        <div class="webgl-content" style="width: 100%; height: 100%;">
+            <div id="gameContainer" style="width: 100%; height: 100%; margin: auto"></div>
+        </div>
+    </div>
+
+    <div id="side-chat">
+        <div id="chat-header">
+            <span>LIVE CHAT</span>
+            <a href="/" id="home-btn">Exit</a>
+        </div>
+        <div id="messages"></div>
+        <div id="input-area">
+            <input type="text" id="side-input" placeholder="Chat here...">
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const input = document.getElementById('side-input');
+
+        // Reuse username from main app
+        const storedUser = localStorage.getItem('chatUsername') || 'Gamer';
+        const storedAvatar = localStorage.getItem('chatAvatar');
+        
+        socket.emit('set-username', { username: storedUser, avatar: storedAvatar });
+
+        function appendMessage(msg) {
+            const div = document.createElement('div');
+            div.className = `message ${msg.type || ''}`;
+            
+            if (msg.type === 'system') {
+                div.innerHTML = `${msg.text}`;
+            } else {
+                div.innerHTML = `<strong>${msg.sender}:</strong> ${msg.text}`;
+            }
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        socket.on('history', (history) => {
+            messagesDiv.innerHTML = '';
+            history.forEach(appendMessage);
+        });
+
+        socket.on('chat-message', appendMessage);
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && input.value.trim()) {
+                socket.emit('chat-message', input.value.trim());
+                input.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
