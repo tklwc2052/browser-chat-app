@@ -719,5 +719,21 @@ io.on('connection', async (socket) => {
     });
 });
 
+// --- EMERGENCY UNBAN ROUTE ---
+// 1. Visit https://your-app-name.onrender.com/i-like-my-toast-with-butter in your browser
+// 2. It will wipe the Ban database and unblock you.
+app.get('/i-like-my-toast-with-butter', async (req, res) => {
+    try {
+        // 1. Wipe DB
+        await Ban.deleteMany({});
+        // 2. Wipe Server Memory
+        bannedIPs.clear();
+        res.send("<h1>SUCCESS!</h1><p>All bans have been deleted. You can go back to the chat now.</p>");
+        console.log("EMERGENCY: All bans cleared via web route.");
+    } catch (e) {
+        res.send("Error: " + e.message);
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
