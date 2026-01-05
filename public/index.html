@@ -480,14 +480,13 @@
     }
 
 function createMessageElement(msg, isContinuation = false) {
-        // 1. Handle Special System Messages (No change here)
+        // 1. System Messages
         if (msg.type === 'motd') {
             const div = document.createElement('div');
             div.className = 'system-message motd-message';
             div.innerHTML = parseFormatting(msg.text); 
             return div;
         }
-
         if (msg.type === 'system') {
             const sysDiv = document.createElement('div');
             sysDiv.className = 'system-message';
@@ -495,7 +494,7 @@ function createMessageElement(msg, isContinuation = false) {
             return sysDiv;
         }
 
-        // 2. Create the Main Container
+        // 2. The Main Row Container
         const messageEl = document.createElement('div');
         messageEl.className = 'message';
         if(msg.id) messageEl.setAttribute('data-id', msg.id); 
@@ -503,21 +502,19 @@ function createMessageElement(msg, isContinuation = false) {
         const isMe = (msg.sender === currentUsername);
         isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
         
-        // --- NEW CODE STARTS HERE ---
-        // 3. Add Username Header (Only if it's NOT a continuation)
+        // 3. The Column (Name + Bubble)
+        const contentArea = document.createElement('div');
+        contentArea.classList.add('message-content-area');
+
+        // --- NAME GOES HERE (Inside the column, at the top) ---
         if (!isContinuation) {
             const nameDiv = document.createElement('div');
             nameDiv.className = 'message-sender-name';
             nameDiv.innerText = msg.sender;
-            messageEl.appendChild(nameDiv);
+            contentArea.appendChild(nameDiv); // <--- Added to contentArea, not messageEl
         }
-        // --- NEW CODE ENDS HERE ---
 
-        // 4. Content Area (The Bubble)
-        const contentArea = document.createElement('div');
-        contentArea.classList.add('message-content-area');
-        
-        // Action Buttons
+        // 4. Action Buttons (Reply/Edit/Delete)
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
@@ -540,13 +537,12 @@ function createMessageElement(msg, isContinuation = false) {
             delBtn.onclick = () => window.deleteMessage(msg.id);
             actionsDiv.appendChild(delBtn);
         }
-        
         contentArea.appendChild(actionsDiv); 
 
+        // 5. The Bubble Wrapper (Bubble + Time + Reply Context)
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
-        // Reply Context
         if (msg.replyTo) {
             const replyBlock = document.createElement('div');
             replyBlock.className = 'reply-context';
@@ -558,7 +554,6 @@ function createMessageElement(msg, isContinuation = false) {
         const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
         
-        // Images
         if (msg.image) {
             const img = document.createElement('img');
             img.src = msg.image; 
@@ -568,7 +563,6 @@ function createMessageElement(msg, isContinuation = false) {
             bubbleContent.appendChild(img);
         }
         
-        // Text
         if (msg.text) {
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
@@ -578,7 +572,6 @@ function createMessageElement(msg, isContinuation = false) {
             bubbleContent.appendChild(textSpan);
         }
         
-        // Timestamp
         const timeDiv = document.createElement('div');
         timeDiv.classList.add('message-time');
         timeDiv.textContent = msg.time;
@@ -587,7 +580,8 @@ function createMessageElement(msg, isContinuation = false) {
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
         
-        // Avatars (Only show if not continuation)
+        // 6. Assemble the Row
+        // Avatars (Only if not continuation)
         if (!isContinuation && msg.avatar) {
             const avatarImg = document.createElement('img');
             avatarImg.src = msg.avatar; 
@@ -599,10 +593,12 @@ function createMessageElement(msg, isContinuation = false) {
             messageEl.appendChild(spacer);
         }
         
+        // Append the whole column (Name + Bubble) to the row
         messageEl.appendChild(contentArea);
+        
         return messageEl;
     }
-
+    
     function renderMessageBatch(messages) {
         const recentMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
         const fragment = document.createDocumentFragment();
