@@ -738,7 +738,7 @@ app.get('/i-like-my-toast-with-butter', async (req, res) => {
 // Visit: https://your-app-name.onrender.com/never-gonna-give-you-up
 app.get('/admin', (req, res) => {
     // This command tells the browser to go somewhere else
-    res.redirect('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    res.redirect('https://www.youtube.com/watch?v=xvFZjo5PgG0');
 });
 
 const PORT = process.env.PORT || 3000;
