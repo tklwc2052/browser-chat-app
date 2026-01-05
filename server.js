@@ -42,16 +42,39 @@ mongoose.connect(mongoURI)
         } catch (err) {
             console.error("Error loading MOTD:", err);
         }
+
+        // 3. LOAD BANS (New: Restore bans on restart)
+        try {
+            const allBans = await Ban.find({});
+            allBans.forEach(ban => {
+                bannedIPs.set(ban.ip, true);
+            });
+            console.log(`Loaded ${allBans.length} active bans.`);
+        } catch (err) {
+            console.error("Error loading bans:", err);
+        }
     })
     .catch(err => console.log('MongoDB Connection Error:', err));
 
 // --- SCHEMAS ---
+
+// Updated: Stores lastIp so we can ban them offline
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     avatar: String,
+    lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', userSchema);
+
+// New: Persist bans so they survive server restarts
+const banSchema = new mongoose.Schema({
+    username: String,
+    ip: String,
+    bannedAt: { type: Date, default: Date.now },
+    bannedBy: String
+});
+const Ban = mongoose.model('Ban', banSchema);
 
 const messageSchema = new mongoose.Schema({
     id: String,
@@ -100,8 +123,7 @@ const userAvatarCache = {};
 let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
 
 const mutedUsers = new Set(); 
-const bannedIPs = new Map();  
-const bannedUsernames = {}; 
+const bannedIPs = new Map();  // In-memory quick lookup
 const ADMIN_USERNAME = 'kl_'; 
 
 // --- Utility Functions ---
@@ -195,6 +217,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', async (socket) => {
     const clientIp = getClientIp(socket);
     
+    // Check Ban Status immediately
     if (bannedIPs.has(clientIp)) {
         socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
         socket.disconnect(true);
@@ -219,7 +242,6 @@ io.on('connection', async (socket) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
-        // Check if name is taken by someone else
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -232,10 +254,15 @@ io.on('connection', async (socket) => {
         userAvatarCache[username] = newAvatar;
         users[socket.id] = { username, avatar: newAvatar, id: socket.id };
 
+        // Save User to DB with IP Address (Crucial for offline banning)
         try {
             await User.findOneAndUpdate(
                 { username: username },
-                { avatar: newAvatar, lastSeen: Date.now() },
+                { 
+                    avatar: newAvatar, 
+                    lastSeen: Date.now(),
+                    lastIp: clientIp  // Save IP here
+                },
                 { upsert: true, new: true }
             );
         } catch(e) { console.error("DB Save Error", e); }
@@ -314,7 +341,7 @@ io.on('connection', async (socket) => {
             if (sender === ADMIN_USERNAME) {
                 const targetName = args[0];
                 
-                // 1. ANNOUNCEMENT (/server message)
+                // 1. ANNOUNCEMENT
                 if (command === 'server' && args.length > 0) {
                     const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
                     io.emit('chat-message', serverMsg);
@@ -323,7 +350,7 @@ io.on('connection', async (socket) => {
                     return;
                 } 
                 
-                // 2. MOTD (/motd new message)
+                // 2. MOTD
                 else if (command === 'motd') {
                     const newMotd = args.join(' ');
                     if (newMotd) {
@@ -337,8 +364,7 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 3. PRUNE USERS (/prune ALL or /prune username)
-                // NOW WITH DATABASE DELETION
+                // 3. PRUNE (Nuclear Option)
                 else if (command === 'prune') {
                     if (!targetName) {
                         socket.emit('chat-message', formatMessage('System', 'Usage: /prune <username> OR /prune ALL'));
@@ -354,20 +380,13 @@ io.on('connection', async (socket) => {
                                 kickCount++;
                             }
                         });
-                        
-                        // Clear memory object
-                        for (const key in users) {
-                            if (key !== socket.id) delete users[key];
-                        }
-                        
+                        for (const key in users) { if (key !== socket.id) delete users[key]; }
                         io.emit('chat-message', formatMessage('System', `Pruned ${kickCount} active users.`));
                         broadcastSidebarRefresh();
                     
                     } else {
-                        // KICK & WIPE SPECIFIC USER
+                        // WIPE SPECIFIC USER
                         const targetSocketId = findSocketIdByUsername(targetName);
-                        
-                        // 1. Kick if online
                         if (targetSocketId) {
                             const targetSocket = io.sockets.sockets.get(targetSocketId);
                             if (targetSocket) {
@@ -377,74 +396,100 @@ io.on('connection', async (socket) => {
                             delete users[targetSocketId]; 
                         }
 
-                        // 2. Delete from Databases
                         try {
-                            // Delete User Profile
                             await User.deleteOne({ username: targetName });
-                            // Delete Private Messages (DMs) involving this user
                             await DM.deleteMany({ participants: targetName });
-                            // Delete Public Messages sent by this user
                             await Message.deleteMany({ sender: targetName });
-                            
                             io.emit('chat-message', formatMessage('System', `${targetName} was pruned and wiped from the DB.`));
-                            broadcastSidebarRefresh(); // Refresh sidebars to remove name
+                            broadcastSidebarRefresh();
                         } catch(err) {
-                            console.error('Prune Error:', err);
-                            socket.emit('chat-message', formatMessage('System', `Error pruning ${targetName} from DB.`));
+                            socket.emit('chat-message', formatMessage('System', `Error pruning ${targetName}.`));
                         }
                     }
                     return;
                 }
 
-                // 4. BAN (/ban username)
+                // 4. BAN (Offline Capable)
                 else if (command === 'ban') {
+                    if (!targetName) {
+                        socket.emit('chat-message', formatMessage('System', 'Usage: /ban <username>'));
+                        return;
+                    }
+
+                    // Attempt 1: Get IP from online socket
+                    let ipToBan = null;
                     const targetSocketId = findSocketIdByUsername(targetName);
+                    
                     if (targetSocketId) {
                         const targetSocket = io.sockets.sockets.get(targetSocketId);
-                        const ip = getClientIp(targetSocket);
-                        
-                        bannedIPs.set(ip, true);
-                        bannedUsernames[targetName.toLowerCase()] = ip; 
-
+                        ipToBan = getClientIp(targetSocket);
+                        // Kick them immediately
                         targetSocket.emit('chat-message', formatMessage('System', 'You have been BANNED.'));
                         targetSocket.disconnect(true);
+                    } 
+                    
+                    // Attempt 2: If offline, get IP from Database
+                    if (!ipToBan) {
+                        try {
+                            const dbUser = await User.findOne({ username: targetName });
+                            if (dbUser && dbUser.lastIp) {
+                                ipToBan = dbUser.lastIp;
+                            }
+                        } catch (e) { console.error("Ban DB lookup error", e); }
+                    }
+
+                    if (ipToBan) {
+                        bannedIPs.set(ipToBan, true);
                         
+                        // Save ban to Database so it persists
+                        try {
+                            await Ban.create({ username: targetName.toLowerCase(), ip: ipToBan, bannedBy: sender });
+                        } catch (e) { console.error("Error saving ban", e); }
+
                         io.emit('chat-message', formatMessage('System', `${targetName} has been BANNED.`));
-                        console.log(`Banned ${targetName} mapped to IP: ${ip}`);
+                        console.log(`Banned ${targetName} IP: ${ipToBan}`);
                     } else {
-                        socket.emit('chat-message', formatMessage('System', `User ${targetName} not found online.`));
+                        socket.emit('chat-message', formatMessage('System', `Could not find IP for ${targetName}. Cannot ban.`));
                     }
                     return;
                 }
 
-                // 5. UNBAN (/unban username)
+                // 5. UNBAN (Offline Capable)
                 else if (command === 'unban') {
                     if(!targetName) return;
-                    const normalizedName = targetName.toLowerCase();
-                    const savedIp = bannedUsernames[normalizedName];
-
-                    if (savedIp) {
-                        bannedIPs.delete(savedIp);
-                        delete bannedUsernames[normalizedName];
-                        socket.emit('chat-message', formatMessage('System', `User ${targetName} (IP: ${savedIp}) has been UNBANNED.`));
-                    } else {
-                        if (bannedIPs.has(targetName)) {
-                            bannedIPs.delete(targetName);
-                            socket.emit('chat-message', formatMessage('System', `IP ${targetName} unbanned manually.`));
+                    
+                    // Look up Ban Record in DB
+                    try {
+                        const banRecord = await Ban.findOne({ username: targetName.toLowerCase() });
+                        
+                        if (banRecord) {
+                            // Unban the IP
+                            bannedIPs.delete(banRecord.ip);
+                            // Remove record from DB
+                            await Ban.deleteOne({ _id: banRecord._id });
+                            socket.emit('chat-message', formatMessage('System', `User ${targetName} (IP: ${banRecord.ip}) has been UNBANNED.`));
                         } else {
-                            socket.emit('chat-message', formatMessage('System', `Could not find ban record for "${targetName}".`));
+                            // Fallback: Check if admin typed a raw IP
+                            if (bannedIPs.has(targetName)) {
+                                bannedIPs.delete(targetName);
+                                socket.emit('chat-message', formatMessage('System', `IP ${targetName} unbanned manually.`));
+                            } else {
+                                socket.emit('chat-message', formatMessage('System', `No ban record found for "${targetName}".`));
+                            }
                         }
+                    } catch (e) {
+                        console.error("Unban Error", e);
+                        socket.emit('chat-message', formatMessage('System', "Database error during unban."));
                     }
                     return;
                 }
 
-                // 6. MUTE (/mute username)
+                // 6. MUTE
                 else if (command === 'mute') {
                     if (targetName) {
                         mutedUsers.add(targetName.toLowerCase());
                         const muteMsg = formatMessage('System', `User ${targetName} has been muted.`);
                         io.emit('chat-message', muteMsg);
-                        
                         const targetSocketId = findSocketIdByUsername(targetName);
                         if(targetSocketId && vcUsers[targetSocketId]) {
                             vcUsers[targetSocketId].isMuted = true;
@@ -454,7 +499,7 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 7. UNMUTE (/unmute username)
+                // 7. UNMUTE
                 else if (command === 'unmute') {
                     if (targetName) {
                         mutedUsers.delete(targetName.toLowerCase());
@@ -464,7 +509,7 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 8. KICK (/kick username)
+                // 8. KICK
                 else if (command === 'kick') {
                     const targetSocketId = findSocketIdByUsername(targetName);
                     if (targetSocketId) {
@@ -478,7 +523,7 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 9. CLEAR HISTORY (/clear)
+                // 9. CLEAR HISTORY
                 else if (command === 'clear') {
                     messageHistory.length = 0;
                     await Message.deleteMany({}); 
