@@ -4,21 +4,26 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path'); 
+const fs = require('fs'); // NEW: Needed to read the text file
 
 const app = express();
 const server = http.createServer(app);
 
-// ==========================================
-//      👇 TYPE YOUR UPDATE MESSAGE HERE 👇
-// ==========================================
+// --- 1. AUTOMATIC UPDATE MESSAGE (THE FILE METHOD) ---
+let SERVER_BUILD_DESC = "System Update"; // Default fallback
+const SERVER_BUILD_ID = Date.now(); 
 
-const UPDATE_MSG = "i probably added something cool trust"; 
-
-// ==========================================
-//      👆 TYPE YOUR UPDATE MESSAGE HERE 👆
-// ==========================================
-
-const SERVER_BUILD_ID = Date.now(); // Forces the popup to show on restart
+try {
+    // This looks for a file created by Render during the build
+    if (fs.existsSync('build_desc.txt')) {
+        SERVER_BUILD_DESC = fs.readFileSync('build_desc.txt', 'utf8').trim();
+        console.log(`✅ Loaded Update Message from file: "${SERVER_BUILD_DESC}"`);
+    } else {
+        console.log("⚠️ build_desc.txt not found. Using default.");
+    }
+} catch (e) {
+    console.log("⚠️ Error reading build description file.");
+}
 
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
@@ -226,10 +231,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', async (socket) => {
     
-    // --- 2. SEND MANUAL MESSAGE TO CLIENT ---
+    // --- 2. SEND THE MESSAGE FROM FILE TO CLIENT ---
     socket.emit('system-version-check', {
         id: SERVER_BUILD_ID,
-        description: UPDATE_MSG // This reads from the top of the file
+        description: SERVER_BUILD_DESC
     });
 
     const clientIp = getClientIp(socket);
