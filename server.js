@@ -743,5 +743,10 @@ app.get('/ip', (req, res) => {
     res.redirect('https://www.youtube.com/watch?v=VCrxUN8luzI');
 });
 
+// --- SNOW RIDER GAME ROUTE ---
+app.get('/snowrider', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/snowrider.html'));
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
