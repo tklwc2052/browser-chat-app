@@ -4,13 +4,25 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path'); 
+const { execSync } = require('child_process'); // NEW: Needed to talk to Git
 
 const app = express();
 const server = http.createServer(app);
 
-// --- 1. NEW: GENERATE BUILD ID ---
-// This creates a unique ID every time the server restarts
-const SERVER_BUILD_ID = Date.now(); 
+// --- 1. AUTOMATIC GIT COMMIT MESSAGE FETCH ---
+let SERVER_BUILD_DESC = "Server Update"; // Default fallback
+let SERVER_BUILD_ID = Date.now(); 
+
+try {
+    // This command asks Git for the subject of the last commit
+    const commitMessage = execSync('git log -1 --format=%s').toString().trim();
+    if (commitMessage) {
+        SERVER_BUILD_DESC = commitMessage;
+        console.log(`✅ Loaded Update Message from Git: "${SERVER_BUILD_DESC}"`);
+    }
+} catch (e) {
+    console.log("⚠️ Could not load Git message (running in non-git environment?). Using default.");
+}
 
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
@@ -218,9 +230,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', async (socket) => {
     
-    // --- 2. NEW: SEND BUILD ID TO CLIENT ---
-    // Triggers the popup on the client side
-    socket.emit('system-version-check', SERVER_BUILD_ID);
+    // --- 2. SEND GIT COMMIT INFO TO CLIENT ---
+    socket.emit('system-version-check', {
+        id: SERVER_BUILD_ID,
+        description: SERVER_BUILD_DESC
+    });
 
     const clientIp = getClientIp(socket);
     
