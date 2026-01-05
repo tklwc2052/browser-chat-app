@@ -43,7 +43,7 @@ mongoose.connect(mongoURI)
             console.error("Error loading MOTD:", err);
         }
 
-        // 3. LOAD BANS (New: Restore bans on restart)
+        // 3. LOAD BANS
         try {
             const allBans = await Ban.find({});
             allBans.forEach(ban => {
@@ -58,7 +58,6 @@ mongoose.connect(mongoURI)
 
 // --- SCHEMAS ---
 
-// Updated: Stores lastIp so we can ban them offline
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     avatar: String,
@@ -67,7 +66,6 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
-// New: Persist bans so they survive server restarts
 const banSchema = new mongoose.Schema({
     username: String,
     ip: String,
@@ -123,7 +121,7 @@ const userAvatarCache = {};
 let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
 
 const mutedUsers = new Set(); 
-const bannedIPs = new Map();  // In-memory quick lookup
+const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
 
 // --- Utility Functions ---
@@ -217,7 +215,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', async (socket) => {
     const clientIp = getClientIp(socket);
     
-    // Check Ban Status immediately
     if (bannedIPs.has(clientIp)) {
         socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
         socket.disconnect(true);
@@ -254,14 +251,13 @@ io.on('connection', async (socket) => {
         userAvatarCache[username] = newAvatar;
         users[socket.id] = { username, avatar: newAvatar, id: socket.id };
 
-        // Save User to DB with IP Address (Crucial for offline banning)
         try {
             await User.findOneAndUpdate(
                 { username: username },
                 { 
                     avatar: newAvatar, 
                     lastSeen: Date.now(),
-                    lastIp: clientIp  // Save IP here
+                    lastIp: clientIp 
                 },
                 { upsert: true, new: true }
             );
@@ -364,7 +360,7 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 3. PRUNE (Nuclear Option)
+                // 3. PRUNE
                 else if (command === 'prune') {
                     if (!targetName) {
                         socket.emit('chat-message', formatMessage('System', 'Usage: /prune <username> OR /prune ALL'));
@@ -374,6 +370,7 @@ io.on('connection', async (socket) => {
                     if (targetName === 'ALL') {
                         let kickCount = 0;
                         io.sockets.sockets.forEach((s) => {
+                            // PROTECTION: Dont prune the admin
                             if (s.id !== socket.id) { 
                                 s.emit('chat-message', formatMessage('System', 'The user list has been pruned. Please refresh.'));
                                 s.disconnect(true);
@@ -385,6 +382,12 @@ io.on('connection', async (socket) => {
                         broadcastSidebarRefresh();
                     
                     } else {
+                        // SELF-PROTECTION
+                        if (targetName === ADMIN_USERNAME) {
+                            socket.emit('chat-message', formatMessage('System', '⚠️ You cannot prune yourself!'));
+                            return;
+                        }
+
                         // WIPE SPECIFIC USER
                         const targetSocketId = findSocketIdByUsername(targetName);
                         if (targetSocketId) {
@@ -409,39 +412,38 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 4. BAN (Offline Capable)
+                // 4. BAN
                 else if (command === 'ban') {
                     if (!targetName) {
                         socket.emit('chat-message', formatMessage('System', 'Usage: /ban <username>'));
                         return;
                     }
 
-                    // Attempt 1: Get IP from online socket
+                    // SELF-PROTECTION
+                    if (targetName === ADMIN_USERNAME) {
+                        socket.emit('chat-message', formatMessage('System', '⚠️ CRITICAL: You cannot ban yourself!'));
+                        return;
+                    }
+
                     let ipToBan = null;
                     const targetSocketId = findSocketIdByUsername(targetName);
                     
                     if (targetSocketId) {
                         const targetSocket = io.sockets.sockets.get(targetSocketId);
                         ipToBan = getClientIp(targetSocket);
-                        // Kick them immediately
                         targetSocket.emit('chat-message', formatMessage('System', 'You have been BANNED.'));
                         targetSocket.disconnect(true);
                     } 
                     
-                    // Attempt 2: If offline, get IP from Database
                     if (!ipToBan) {
                         try {
                             const dbUser = await User.findOne({ username: targetName });
-                            if (dbUser && dbUser.lastIp) {
-                                ipToBan = dbUser.lastIp;
-                            }
+                            if (dbUser && dbUser.lastIp) ipToBan = dbUser.lastIp;
                         } catch (e) { console.error("Ban DB lookup error", e); }
                     }
 
                     if (ipToBan) {
                         bannedIPs.set(ipToBan, true);
-                        
-                        // Save ban to Database so it persists
                         try {
                             await Ban.create({ username: targetName.toLowerCase(), ip: ipToBan, bannedBy: sender });
                         } catch (e) { console.error("Error saving ban", e); }
@@ -454,22 +456,16 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 5. UNBAN (Offline Capable)
+                // 5. UNBAN
                 else if (command === 'unban') {
                     if(!targetName) return;
-                    
-                    // Look up Ban Record in DB
                     try {
                         const banRecord = await Ban.findOne({ username: targetName.toLowerCase() });
-                        
                         if (banRecord) {
-                            // Unban the IP
                             bannedIPs.delete(banRecord.ip);
-                            // Remove record from DB
                             await Ban.deleteOne({ _id: banRecord._id });
                             socket.emit('chat-message', formatMessage('System', `User ${targetName} (IP: ${banRecord.ip}) has been UNBANNED.`));
                         } else {
-                            // Fallback: Check if admin typed a raw IP
                             if (bannedIPs.has(targetName)) {
                                 bannedIPs.delete(targetName);
                                 socket.emit('chat-message', formatMessage('System', `IP ${targetName} unbanned manually.`));
@@ -486,6 +482,10 @@ io.on('connection', async (socket) => {
 
                 // 6. MUTE
                 else if (command === 'mute') {
+                    if (targetName === ADMIN_USERNAME) {
+                        socket.emit('chat-message', formatMessage('System', 'You cannot mute yourself.'));
+                        return;
+                    }
                     if (targetName) {
                         mutedUsers.add(targetName.toLowerCase());
                         const muteMsg = formatMessage('System', `User ${targetName} has been muted.`);
@@ -511,6 +511,10 @@ io.on('connection', async (socket) => {
 
                 // 8. KICK
                 else if (command === 'kick') {
+                    if (targetName === ADMIN_USERNAME) {
+                        socket.emit('chat-message', formatMessage('System', 'You cannot kick yourself.'));
+                        return;
+                    }
                     const targetSocketId = findSocketIdByUsername(targetName);
                     if (targetSocketId) {
                         const targetSocket = io.sockets.sockets.get(targetSocketId);
@@ -720,13 +724,9 @@ io.on('connection', async (socket) => {
 });
 
 // --- EMERGENCY UNBAN ROUTE ---
-// 1. Visit https://your-app-name.onrender.com/i-like-my-toast-with-butter in your browser
-// 2. It will wipe the Ban database and unblock you.
 app.get('/i-like-my-toast-with-butter', async (req, res) => {
     try {
-        // 1. Wipe DB
         await Ban.deleteMany({});
-        // 2. Wipe Server Memory
         bannedIPs.clear();
         res.send("<h1>SUCCESS!</h1><p>All bans have been deleted. You can go back to the chat now.</p>");
         console.log("EMERGENCY: All bans cleared via web route.");
@@ -735,17 +735,13 @@ app.get('/i-like-my-toast-with-butter', async (req, res) => {
     }
 });
 
-// Visit: https://your-app-name.onrender.com/never-gonna-give-you-up
 app.get('/admin', (req, res) => {
-    // This command tells the browser to go somewhere else
     res.redirect('https://www.youtube.com/watch?v=xvFZjo5PgG0');
 });
 
 app.get('/ip', (req, res) => {
-    // This command tells the browser to go somewhere else
     res.redirect('https://www.youtube.com/watch?v=VCrxUN8luzI');
 });
-
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
