@@ -178,53 +178,42 @@
 
         socket.on('chat-message', appendMessage);
 
-        // --- 1. KEYBOARD PROTECTION ---
-        // Prevent game from hearing WASD or Arrow Keys while typing
-        ['keydown', 'keyup', 'keypress'].forEach(eventType => {
-            input.addEventListener(eventType, (e) => {
-                // Stop the event from bubbling up to the Game/Window
-                e.stopPropagation(); 
-            });
-        });
-
-        // Handle sending messages
+        // --- 1. PREVENT GAME FROM STEALING KEYS ---
+        // This ensures typing WASD doesn't move the sled.
         input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            
+            // Send message on Enter
             if (e.key === 'Enter' && input.value.trim()) {
                 socket.emit('chat-message', input.value.trim());
                 input.value = '';
             }
         });
         
-        // --- 2. AUTO-PAUSE & RE-FOCUS ---
-        // When you click the chat, we hit "Escape" for you to pause the game.
-        // Then we IMMEDIATELY focus the box again so you can type.
+        // Also stop keyup/keypress to be safe, but keep it lightweight to reduce lag
+        input.addEventListener('keyup', (e) => e.stopPropagation());
+        input.addEventListener('keypress', (e) => e.stopPropagation());
+
+
+        // --- 2. AUTO-PAUSE (LAG FIX) ---
+        // We use a flag (isPausing) to prevent the "Infinite Loop" that caused the lag.
+        let isPausing = false;
+
         input.addEventListener('focus', () => {
+            if (isPausing) return; // Stop if we are already handling the pause
             
-            // A. Create the Escape Event
-            const eventOptions = {
-                bubbles: true,
-                cancelable: true,
-                key: 'Escape',
-                code: 'Escape',
-                keyCode: 27,
-                which: 27
-            };
-            const escDown = new KeyboardEvent('keydown', eventOptions);
-            const escUp = new KeyboardEvent('keyup', eventOptions);
+            isPausing = true; 
 
-            // B. Send it to the game
-            window.dispatchEvent(escDown);
-            const gameCanvas = document.querySelector('canvas');
-            if(gameCanvas) gameCanvas.dispatchEvent(escDown);
-
-            // C. Finish the keypress
+            // Trigger Escape Key to pause game
+            const escEvent = new KeyboardEvent('keydown', {
+                bubbles: true, cancelable: true, key: 'Escape', keyCode: 27
+            });
+            window.dispatchEvent(escEvent);
+            
+            // Wait a tiny bit, then reset the flag so we can type
             setTimeout(() => {
-                window.dispatchEvent(escUp);
-                if(gameCanvas) gameCanvas.dispatchEvent(escUp);
-                
-                // D. THE FIX: Force the browser to look back at the input box!
-                input.focus();
-            }, 50);
+                isPausing = false;
+            }, 200);
         });
 
     </script>
