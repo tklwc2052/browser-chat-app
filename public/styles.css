@@ -376,19 +376,25 @@ body.transparent-mode .bubble-content {
 
 
 
-/* Name displayed above the message bubble */
+/* Container for the name + bubble column */
+.message-content-area {
+    display: flex;
+    flex-direction: column; /* Stacks name on top of bubble */
+    max-width: 70%;
+    position: relative; /* For the actions button */
+}
+
+/* The Name Tag */
 .message-sender-name {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: #888;
-    margin-bottom: 2px;
-    margin-left: 8px; /* For others */
+    margin-bottom: 4px; /* Space between name and bubble */
+    margin-left: 2px;
     font-weight: bold;
 }
 
 /* Align your own name to the right */
-.user-message .message-sender-name {
-    text-align: right;
-    margin-right: 8px;
-    margin-left: 0;
+.user-message .message-content-area {
+    align-items: flex-end; /* Aligns name and bubble to right */
 }
 
