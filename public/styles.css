@@ -370,3 +370,25 @@ body.transparent-mode .bubble-content {
     opacity: 0.95; 
     backdrop-filter: blur(2px);
 }
+
+
+
+
+
+
+/* Name displayed above the message bubble */
+.message-sender-name {
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 2px;
+    margin-left: 8px; /* For others */
+    font-weight: bold;
+}
+
+/* Align your own name to the right */
+.user-message .message-sender-name {
+    text-align: right;
+    margin-right: 8px;
+    margin-left: 0;
+}
+
