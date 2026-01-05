@@ -741,5 +741,11 @@ app.get('/admin', (req, res) => {
     res.redirect('https://www.youtube.com/watch?v=xvFZjo5PgG0');
 });
 
+app.get('/ip', (req, res) => {
+    // This command tells the browser to go somewhere else
+    res.redirect('https://www.youtube.com/watch?v=VCrxUN8luzI');
+});
+
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
