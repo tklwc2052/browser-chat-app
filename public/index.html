@@ -479,7 +479,8 @@
         return true; 
     }
 
-    function createMessageElement(msg, isContinuation = false) {
+function createMessageElement(msg, isContinuation = false) {
+        // 1. Handle Special System Messages (No change here)
         if (msg.type === 'motd') {
             const div = document.createElement('div');
             div.className = 'system-message motd-message';
@@ -494,6 +495,7 @@
             return sysDiv;
         }
 
+        // 2. Create the Main Container
         const messageEl = document.createElement('div');
         messageEl.className = 'message';
         if(msg.id) messageEl.setAttribute('data-id', msg.id); 
@@ -501,18 +503,27 @@
         const isMe = (msg.sender === currentUsername);
         isMe ? messageEl.classList.add('user-message') : messageEl.classList.add('other-message');
         
-        // Content Area
+        // --- NEW CODE STARTS HERE ---
+        // 3. Add Username Header (Only if it's NOT a continuation)
+        if (!isContinuation) {
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'message-sender-name';
+            nameDiv.innerText = msg.sender;
+            messageEl.appendChild(nameDiv);
+        }
+        // --- NEW CODE ENDS HERE ---
+
+        // 4. Content Area (The Bubble)
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         
-        // Action Buttons attached to contentArea
+        // Action Buttons
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
         const replyBtn = document.createElement('button');
         replyBtn.className = 'action-btn';
         replyBtn.innerHTML = '↩';
-        replyBtn.title = "Reply";
         replyBtn.onclick = () => window.initReply(msg.id, msg.sender, msg.text);
         actionsDiv.appendChild(replyBtn);
 
@@ -520,14 +531,12 @@
             const editBtn = document.createElement('button');
             editBtn.className = 'action-btn';
             editBtn.innerHTML = '✎';
-            editBtn.title = "Edit";
             editBtn.onclick = () => window.editMessage(msg.id, msg.text);
             actionsDiv.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
             delBtn.className = 'action-btn';
             delBtn.innerHTML = '🗑';
-            delBtn.title = "Delete";
             delBtn.onclick = () => window.deleteMessage(msg.id);
             actionsDiv.appendChild(delBtn);
         }
@@ -537,6 +546,7 @@
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
         
+        // Reply Context
         if (msg.replyTo) {
             const replyBlock = document.createElement('div');
             replyBlock.className = 'reply-context';
@@ -548,6 +558,7 @@
         const bubbleContent = document.createElement('div');
         bubbleContent.classList.add('bubble-content');
         
+        // Images
         if (msg.image) {
             const img = document.createElement('img');
             img.src = msg.image; 
@@ -557,6 +568,7 @@
             bubbleContent.appendChild(img);
         }
         
+        // Text
         if (msg.text) {
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
@@ -566,6 +578,7 @@
             bubbleContent.appendChild(textSpan);
         }
         
+        // Timestamp
         const timeDiv = document.createElement('div');
         timeDiv.classList.add('message-time');
         timeDiv.textContent = msg.time;
@@ -574,6 +587,7 @@
         contentWrapper.appendChild(timeDiv);
         contentArea.appendChild(contentWrapper);
         
+        // Avatars (Only show if not continuation)
         if (!isContinuation && msg.avatar) {
             const avatarImg = document.createElement('img');
             avatarImg.src = msg.avatar; 
