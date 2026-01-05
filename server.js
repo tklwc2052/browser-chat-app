@@ -4,25 +4,21 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path'); 
-const { execSync } = require('child_process'); // NEW: Needed to talk to Git
 
 const app = express();
 const server = http.createServer(app);
 
-// --- 1. AUTOMATIC GIT COMMIT MESSAGE FETCH ---
-let SERVER_BUILD_DESC = "Server Update"; // Default fallback
-let SERVER_BUILD_ID = Date.now(); 
+// ==========================================
+//      👇 TYPE YOUR UPDATE MESSAGE HERE 👇
+// ==========================================
 
-try {
-    // This command asks Git for the subject of the last commit
-    const commitMessage = execSync('git log -1 --format=%s').toString().trim();
-    if (commitMessage) {
-        SERVER_BUILD_DESC = commitMessage;
-        console.log(`✅ Loaded Update Message from Git: "${SERVER_BUILD_DESC}"`);
-    }
-} catch (e) {
-    console.log("⚠️ Could not load Git message (running in non-git environment?). Using default.");
-}
+const UPDATE_MSG = "i probably added something cool trust"; 
+
+// ==========================================
+//      👆 TYPE YOUR UPDATE MESSAGE HERE 👆
+// ==========================================
+
+const SERVER_BUILD_ID = Date.now(); // Forces the popup to show on restart
 
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
@@ -230,10 +226,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', async (socket) => {
     
-    // --- 2. SEND GIT COMMIT INFO TO CLIENT ---
+    // --- 2. SEND MANUAL MESSAGE TO CLIENT ---
     socket.emit('system-version-check', {
         id: SERVER_BUILD_ID,
-        description: SERVER_BUILD_DESC
+        description: UPDATE_MSG // This reads from the top of the file
     });
 
     const clientIp = getClientIp(socket);
