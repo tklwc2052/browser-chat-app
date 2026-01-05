@@ -8,6 +8,10 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
+// --- 1. NEW: GENERATE BUILD ID ---
+// This creates a unique ID every time the server restarts
+const SERVER_BUILD_ID = Date.now(); 
+
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7 
 });
@@ -213,6 +217,11 @@ async function broadcastSidebarRefresh() {
 app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', async (socket) => {
+    
+    // --- 2. NEW: SEND BUILD ID TO CLIENT ---
+    // Triggers the popup on the client side
+    socket.emit('system-version-check', SERVER_BUILD_ID);
+
     const clientIp = getClientIp(socket);
     
     if (bannedIPs.has(clientIp)) {
