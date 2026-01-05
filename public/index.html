@@ -6,6 +6,38 @@
 <title>The C&C Corp chat</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
+
+<style>
+    /* 1. Stack the Name and the Bubble vertically */
+    .message-content-area {
+        display: flex;
+        flex-direction: column;
+        max-width: 70%;
+        position: relative;
+    }
+
+    /* 2. Style the Name Tag */
+    .message-sender-name {
+        font-size: 0.75rem; /* Slightly smaller for cleanliness */
+        color: #888;
+        margin-bottom: 2px;
+        margin-left: 4px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    /* 3. Align your own messages to the right */
+    .user-message .message-content-area {
+        align-items: flex-end;
+    }
+    
+    /* Align your own name to the right */
+    .user-message .message-sender-name {
+        margin-right: 4px;
+        margin-left: 0;
+        color: #00ACE6; /* Make your own name blue so it stands out */
+    }
+</style>
 </head>
 <body>
 <div id="main-wrapper">
@@ -18,14 +50,14 @@
     <div id="chat-container">
         <div id="username-area">
             <div style="display:flex; align-items:center; gap:10px;">
-                <button id="avatar-upload-btn" title="Set Avatar">
+                <button id="avatar-upload-btn" title="Click to Change Avatar">
                     <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
                 </button>
-                <h3 id="chat-header-label">username:</h3>
+                <h3 id="chat-header-label">...</h3>
             </div>
             
             <div id="username-controls">
-                <input type="text" id="username-input" placeholder="whatr we callin ya">
+                <input type="text" id="username-input" placeholder="Change username...">
                 <button id="set-username-btn">Save</button>
             </div>
         </div>
@@ -462,7 +494,7 @@
         else { typingIndicator.classList.remove('active'); } 
     }
 
-    // --- RENDER HELPERS ---
+    // --- RENDER HELPERS (UPDATED FOR NAMES) ---
     function parseFormatting(text) {
         if (!text) return '';
         let temp = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -721,10 +753,22 @@
     removeImageBtn.onclick = () => { stagedImage = null; imagePreview.src = ''; imagePreviewArea.style.display = 'none'; hiddenFileInput.value = ''; };
     
     // --- AUTHENTICATION & SYNC (UPDATED) ---
-    // 1. Perform Login from Memory
     function performLogin() {
-        const storedUser = localStorage.getItem('chatUsername');
-        const storedAvatar = localStorage.getItem('chatAvatar');
+        let storedUser = localStorage.getItem('chatUsername');
+        let storedAvatar = localStorage.getItem('chatAvatar');
+
+        // --- NEW: HANDLE DEFAULT PROFILE ---
+        if (!storedUser) {
+            // Generate a random Guest ID so they can chat immediately
+            const randomId = Math.floor(Math.random() * 9000) + 1000;
+            storedUser = `Guest_${randomId}`;
+            storedAvatar = 'placeholder-avatar.png'; // Ensure you have this image
+
+            // Save it so they stay this Guest on refresh
+            localStorage.setItem('chatUsername', storedUser);
+            localStorage.setItem('chatAvatar', storedAvatar);
+        }
+        // -----------------------------------
 
         if (storedUser) {
             currentUsername = storedUser;
@@ -737,10 +781,10 @@
         }
     }
 
-    // 2. Run immediately on load
+    // Run immediately on load
     performLogin();
 
-    // 3. Listen for changes in other tabs
+    // Listen for changes in other tabs
     window.addEventListener('storage', (event) => {
         if (event.key === 'chatUsername' || event.key === 'chatAvatar') {
             console.log('Detected account change in another tab. Syncing...');
@@ -748,14 +792,13 @@
         }
     });
 
-    // 4. Save Button
+    // Save Button
     avatarUploadBtn.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = (e) => { const f = e.target.files[0]; if(f){ compressImage(f, (res) => { localStorage.setItem('chatAvatar', res); currentAvatarBase64 = res; performLogin(); }); } }; i.click(); };
     
     setUsernameBtn.onclick = () => { 
         const u = usernameInput.value.trim(); 
         if(u) { 
             localStorage.setItem('chatUsername', u); 
-            // Also update current session immediately
             performLogin();
         } 
     };
