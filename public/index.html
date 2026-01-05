@@ -130,7 +130,7 @@
     const avatarUploadBtn = document.getElementById('avatar-upload-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
     
-    // NEW: Reply Elements
+    // Reply Elements
     const replyBar = document.getElementById('reply-bar');
     const replyTargetName = document.getElementById('reply-target-name');
     const cancelReplyBtn = document.getElementById('cancel-reply-btn');
@@ -190,7 +190,7 @@
     let isMuted = false;
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- SIDEBAR LOGIC (No changes) ---
+    // --- SIDEBAR LOGIC ---
     function renderSidebar() {
         dmList.innerHTML = '';
         const mainChatCard = document.createElement('div');
@@ -505,7 +505,7 @@
         const contentArea = document.createElement('div');
         contentArea.classList.add('message-content-area');
         
-        // --- NEW: Action Buttons attached to contentArea ---
+        // Action Buttons attached to contentArea
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
@@ -533,7 +533,6 @@
         }
         
         contentArea.appendChild(actionsDiv); 
-        // ---------------------------
 
         const contentWrapper = document.createElement('div');
         contentWrapper.classList.add('message-content-wrapper');
@@ -670,7 +669,7 @@
         }
     }
 
-    // --- VC Logic (Same as before) ---
+    // --- VC Logic ---
     function createPeer(targetId, initiator = false) {
         const p = new RTCPeerConnection(rtcConfig);
         p.onicecandidate = (e) => { if (e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } }); };
@@ -692,7 +691,7 @@
     socket.on('vc-user-left', (id) => { if (peers[id]) { peers[id].close(); delete peers[id]; } const audioEl = document.getElementById(`audio-${id}`); if (audioEl) audioEl.remove(); });
     socket.on('vc-user-list-update', (users) => { vcUserList.innerHTML = ''; users.forEach(u => { const li = document.createElement('li'); li.innerHTML = `<span>${u.username}</span> ${u.isMuted ? '<span style="color:red">(Muted)</span>' : ''}`; vcUserList.appendChild(li); }); });
 
-    // --- GENERIC UI (Same as before) ---
+    // --- GENERIC UI ---
     if (btnCloakLauncher) btnCloakLauncher.onclick = () => { const newWindow = window.open('about:blank', '_blank'); if (!newWindow) return; newWindow.document.write(`<!DOCTYPE html><html><head><title>New Tab</title><style>body{margin:0;overflow:hidden;background:#000;}iframe{border:none;width:100vw;height:100vh;display:block;}</style></head><body><iframe src="https://tuff.speedslicer.dev/files/1_1UT8/WASM/"></iframe></body></html>`); };
     if(launchCustomWindowBtn) launchCustomWindowBtn.onclick = () => window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600,resizable=yes');
     notifHeader.onclick = () => { notifHeader.classList.toggle('active'); notifContent.classList.toggle('show'); };
@@ -716,6 +715,52 @@
     setUsernameBtn.onclick = () => { const u = usernameInput.value.trim(); if(u) { localStorage.setItem('chatUsername', u); currentUsername = u; socket.emit('set-username', {username: u, avatar: currentAvatarBase64 || 'placeholder-avatar.png'}); usernameInput.disabled = true; setUsernameBtn.disabled = true; } };
     sendButton.onclick = sendMessage; messageInput.onkeydown = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 </script>
+
+<div id="dev-modal" style="display:none; position: fixed; z-index: 99999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+    <div style="background-color: #252526; padding: 30px; border: 1px solid #00ACE6; border-radius: 8px; max-width: 450px; text-align: center; color: #f0f0f0; box-shadow: 0 0 30px rgba(0, 172, 230, 0.2); font-family: sans-serif;">
+        <h2 style="margin-top: 0; color: #00ACE6; text-transform: uppercase; letter-spacing: 1px;">⚠️ System Update</h2>
+        <p style="line-height: 1.6; color: #ddd; font-size: 1.1em;">
+            A new update has been deployed to the server.
+        </p>
+        <p style="margin-bottom: 25px; color: #aaa; font-size: 0.9em;">
+            By continuing, you acknowledge this is a development build and you may encounter new bugs. Please report them to the owner.
+        </p>
+        <button id="dev-ack-btn" style="padding: 12px 25px; background-color: #00ACE6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.2s;">
+            ACKNOWLEDGE & ENTER
+        </button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const modal = document.getElementById('dev-modal');
+        const btn = document.getElementById('dev-ack-btn');
+        let currentServerId = null;
+
+        if (typeof socket !== 'undefined') {
+            socket.on('system-version-check', (serverId) => {
+                currentServerId = serverId;
+                checkVersion(serverId);
+            });
+        }
+
+        function checkVersion(serverId) {
+            const lastSeenVersion = localStorage.getItem('agreed_build_version');
+            if (lastSeenVersion != serverId) {
+                modal.style.display = 'flex';
+            }
+        }
+
+        btn.onclick = function() {
+            modal.style.display = 'none';
+            if (currentServerId) {
+                localStorage.setItem('agreed_build_version', currentServerId);
+            }
+        };
+        
+        btn.onmouseover = () => btn.style.backgroundColor = '#008bb5';
+        btn.onmouseout = () => btn.style.backgroundColor = '#00ACE6';
+    })();
+</script>
 </body>
 </html>
-
