@@ -199,15 +199,17 @@
 
     <div id="dev-modal" style="display:none; position: fixed; z-index: 99999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center; backdrop-filter: blur(5px);">
         <div style="background-color: #252526; padding: 30px; border: 1px solid #00ACE6; border-radius: 8px; max-width: 450px; text-align: center; color: #f0f0f0; box-shadow: 0 0 30px rgba(0, 172, 230, 0.2); font-family: sans-serif;">
-            <h2 style="margin-top: 0; color: #00ACE6; text-transform: uppercase; letter-spacing: 1px;">⚠️ System Update</h2>
-            <p style="line-height: 1.6; color: #ddd; font-size: 1.1em;">
+            <h2 style="margin-top: 0; color: #00ACE6; text-transform: uppercase; letter-spacing: 1px;">⚠️ guys i might have added somthing cool oml </h2>
+            
+            <p id="update-msg" style="line-height: 1.6; color: #ddd; font-size: 1.1em;">
                 A new update has been deployed to the server.
             </p>
+            
             <p style="margin-bottom: 25px; color: #aaa; font-size: 0.9em;">
-                By continuing, you acknowledge this is a development build and you may encounter new bugs. Please report them to the owner.
+                if u press that button i like get to own your soul (iykyk)
             </p>
             <button id="dev-ack-btn" style="padding: 12px 25px; background-color: #00ACE6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.2s;">
-                ACKNOWLEDGE & ENTER
+                press it
             </button>
         </div>
     </div>
@@ -216,11 +218,19 @@
         (function() {
             const modal = document.getElementById('dev-modal');
             const btn = document.getElementById('dev-ack-btn');
+            const msgPara = document.getElementById('update-msg');
             let currentServerId = null;
 
             if (typeof socket !== 'undefined') {
-                socket.on('system-version-check', (serverId) => {
+                // UPDATED: Now accepts the data object to show the custom message
+                socket.on('system-version-check', (data) => {
+                    const serverId = data.id || data;
+                    const description = data.description || "A new update has been deployed.";
+                    
                     currentServerId = serverId;
+
+                    if(msgPara) msgPara.innerText = description;
+
                     checkVersion(serverId);
                 });
             }
