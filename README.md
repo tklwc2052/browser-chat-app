@@ -1,1 +1,1 @@
-aint too much to say here go back to the main page vro. make a fork and deploy to render fr
+this is the branch i just push regular updates on, nothing fancy. if you want a build that is like working fine (for me and my friends at least) go to the other branch that isnt the one for multiple sites (might never get that going) and follow the unfinished instructions there (idk if i will finish them)
