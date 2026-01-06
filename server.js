@@ -4,17 +4,29 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path'); 
-const fs = require('fs'); // NEW: Needed to read the text file
+const fs = require('fs'); 
+
+// --- CLOUDINARY IMPORTS ---
+const cloudinary = require('cloudinary').v2;
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' }); // Temp folder for uploads
 
 const app = express();
 const server = http.createServer(app);
+
+// --- CLOUDINARY CONFIGURATION ---
+// This grabs the keys you just saved in Render
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // --- 1. AUTOMATIC UPDATE MESSAGE (THE FILE METHOD) ---
 let SERVER_BUILD_DESC = "System Update"; // Default fallback
 const SERVER_BUILD_ID = Date.now(); 
 
 try {
-    // This looks for a file created by Render during the build
     if (fs.existsSync('build_desc.txt')) {
         SERVER_BUILD_DESC = fs.readFileSync('build_desc.txt', 'utf8').trim();
         console.log(`✅ Loaded Update Message from file: "${SERVER_BUILD_DESC}"`);
@@ -26,10 +38,32 @@ try {
 }
 
 const io = socketIo(server, {
-    maxHttpBufferSize: 1e8
+    maxHttpBufferSize: 1e7 
 });
 
 app.set('trust proxy', 1); 
+
+// --- NEW UPLOAD ROUTE ---
+// This receives the file, sends it to Cloudinary, and returns the link
+app.post('/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: "chat_app" 
+        });
+
+        // Delete the temp file from the server
+        fs.unlinkSync(req.file.path);
+
+        // Send the new URL back to the frontend
+        res.json({ url: result.secure_url });
+    } catch (e) {
+        console.error("Upload Error:", e);
+        res.status(500).json({ error: 'Upload failed' });
+    }
+});
 
 // --- MONGODB CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
