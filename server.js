@@ -26,7 +26,7 @@ try {
 }
 
 const io = socketIo(server, {
-    maxHttpBufferSize: 1e7 
+    maxHttpBufferSize: 1e9 // CHANGED: 1GB Limit (1,000,000,000 bytes)
 });
 
 app.set('trust proxy', 1); 
