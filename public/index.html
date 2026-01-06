@@ -739,7 +739,27 @@
     const loadSetting = (key, checkbox) => { const saved = localStorage.getItem(key); if (saved !== null) checkbox.checked = (saved === 'true'); }; loadSetting('notif-main', settingMain); loadSetting('notif-pm', settingPM); loadSetting('notif-vc', settingVC); loadSetting('notif-sound', settingSound);
     const savedBg = localStorage.getItem('custom-bg'); if (savedBg) { document.body.style.backgroundImage = `url(${savedBg})`; document.body.classList.add('transparent-mode'); }
     [settingMain, settingPM, settingVC, settingSound].forEach(el => el.onchange = () => { localStorage.setItem(el.id.replace('setting-', 'notif-'), el.checked); if (Notification.permission === 'default') Notification.requestPermission(); });
-    btnBgUpload.onclick = () => bgUploadInput.click(); bgUploadInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (evt) => { localStorage.setItem('custom-bg', evt.target.result); document.body.style.backgroundImage = `url(${evt.target.result})`; document.body.classList.add('transparent-mode'); }; reader.readAsDataURL(file); } };
+    
+    // --- UPDATED BACKGROUND UPLOAD LOGIC ---
+    btnBgUpload.onclick = () => bgUploadInput.click();
+    bgUploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // CHECK 50MB LIMIT
+            if (file.size > 50 * 1024 * 1024) {
+                alert("Background image too large! Max 50MB.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                localStorage.setItem('custom-bg', evt.target.result);
+                document.body.style.backgroundImage = `url(${evt.target.result})`;
+                document.body.classList.add('transparent-mode');
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     btnBgReset.onclick = () => { localStorage.removeItem('custom-bg'); document.body.style.backgroundImage = ''; document.body.classList.remove('transparent-mode'); };
     
     function playNotificationSound() { if (!settingSound.checked) return; const ctx = new (window.AudioContext || window.webkitAudioContext)(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.type = 'sine'; osc.frequency.setValueAtTime(500, ctx.currentTime); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1); osc.start(); osc.stop(ctx.currentTime + 0.1); }
