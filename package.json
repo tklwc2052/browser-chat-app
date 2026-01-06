@@ -10,8 +10,8 @@
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
     "mongoose": "^8.0.0",
-    "dotenv": "^16.3.1",        <-- Make sure there is a comma here!
-    "cloudinary": "^1.41.0",    <-- NEW
-    "multer": "^1.4.5-lts.1"    <-- NEW
+    "dotenv": "^16.3.1",        
+    "cloudinary": "^1.41.0",    
+    "multer": "^1.4.5-lts.1"    
   }
 
