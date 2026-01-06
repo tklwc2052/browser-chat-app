@@ -8,8 +8,10 @@ const fs = require('fs'); // NEW: Needed to read the text file
 // --- PASTE THIS UNDER const fs = require('fs'); ---
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' });
-
+const upload = multer({ 
+    dest: 'uploads/',
+    limits: { fileSize: 50 * 1024 * 1024 } // Allow up to 50 MB
+});
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -245,10 +247,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.post('/upload-image', upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file' });
-        const result = await cloudinary.uploader.upload(req.file.path, { folder: "chat_app" });
-        fs.unlinkSync(req.file.path); 
-        res.json({ url: result.secure_url });
+
+        // USE 'upload_large' FOR CHUNKING
+        const result = await cloudinary.uploader.upload_large(req.file.path, { 
+            folder: "chat_app",
+            resource_type: "auto", // Automatically handles Images OR Videos
+            chunk_size: 6000000    // Uploads in 6 MB chunks
+        });
+
+        fs.unlinkSync(req.file.path); // Delete the temp file
+        res.json({ url: result.secure_url }); // Send back the ONE final URL
     } catch (e) {
+        console.error("Upload Error:", e);
         res.status(500).json({ error: 'Upload failed' });
     }
 });
