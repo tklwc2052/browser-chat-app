@@ -152,7 +152,7 @@ let serverMOTD = "Welcome to the C&C Corp chat! Play nice.";
 
 const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
-const ADMIN_USERNAME = 'kl_'; 
+const ADMIN_USERNAME = ['kl_', 'dreamz.']; 
 
 // --- Utility Functions ---
 function generateId() {
@@ -393,7 +393,7 @@ io.on('connection', async (socket) => {
             } 
             
             // --- ADMIN COMMANDS ---
-            if (sender === ADMIN_USERNAME) {
+            if (ADMIN_USERNAMES.includes(sender)) {
                 const targetName = args[0];
                 
                 // 1. ANNOUNCEMENT
