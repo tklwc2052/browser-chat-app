@@ -140,7 +140,7 @@
     </div>
 </div>
 
-<div id="profile-modal-overlay" class="modal-overlay" style="display:none;">
+<div id="profile-modal-overlay" class="modal-overlay">
     <div class="profile-modal">
         <h2>Edit Profile</h2>
         <div class="profile-form">
@@ -253,7 +253,6 @@
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     // --- INITIAL LOGIN (Uses Username) ---
-    // Simple prompt for now, could be improved
     window.onload = () => {
         const savedUser = localStorage.getItem('simplechat_username');
         if (savedUser) {
@@ -267,16 +266,16 @@
         }
     };
 
-    // --- PROFILE MODAL LOGIC ---
+    // --- PROFILE MODAL LOGIC (UPDATED WITH CLASS TOGGLE) ---
     openProfileBtn.onclick = () => {
         profileUsernameInput.value = currentUsername;
         profileDisplayNameInput.value = currentDisplayName;
         profileAvatarUrlInput.value = currentAvatar.startsWith('data:') ? '' : currentAvatar;
-        profileModalOverlay.style.display = 'flex';
+        profileModalOverlay.classList.add('show-modal'); // Add Class
     };
 
     profileCancelBtn.onclick = () => {
-        profileModalOverlay.style.display = 'none';
+        profileModalOverlay.classList.remove('show-modal'); // Remove Class
     };
 
     profileSaveBtn.onclick = () => {
@@ -287,7 +286,7 @@
             displayName: newDisplay, 
             avatar: newAvatar 
         });
-        profileModalOverlay.style.display = 'none';
+        profileModalOverlay.classList.remove('show-modal'); // Remove Class
     };
 
     socket.on('profile-info', (data) => {
@@ -349,7 +348,7 @@
             wrapper.appendChild(unreadBadge);
             const name = document.createElement('div');
             name.className = 'dm-username';
-            name.innerText = u.displayName || u.username; // Use Display Name
+            name.innerText = u.displayName || u.username; 
             card.appendChild(wrapper);
             card.appendChild(name);
             card.onclick = () => switchToDm(u.username);
@@ -364,7 +363,6 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
-        // Find display name for header
         const userObj = allUsersCache.find(u => u.username === targetUser);
         const display = userObj ? (userObj.displayName || targetUser) : targetUser;
         chatHeaderLabel.innerText = `Chat with ${display}`;
@@ -514,7 +512,6 @@
     }
 
     function appendMessageToUI(msg) {
-        // System Messages
         if (msg.type === 'system') {
             const div = document.createElement('div');
             div.className = 'system-message';
@@ -525,7 +522,6 @@
             return;
         }
 
-        // Check continuity for grouping
         const isOwn = (msg.sender === currentUsername);
         const isContinuous = (lastMessageSender === msg.sender) && msg.type !== 'system';
         lastMessageSender = msg.sender;
@@ -548,11 +544,9 @@
         const contentArea = document.createElement('div');
         contentArea.className = 'message-content-area';
 
-        // NAME TAG (Display Name)
         if (!isContinuous) {
             const nameDiv = document.createElement('div');
             nameDiv.className = 'message-sender-name';
-            // Prefer senderDisplayName, fallback to sender (username)
             nameDiv.innerText = msg.senderDisplayName || msg.sender; 
             contentArea.appendChild(nameDiv);
         }
@@ -560,7 +554,6 @@
         const bubble = document.createElement('div');
         bubble.className = 'bubble-content';
         
-        // Reply Preview
         if (msg.replyTo) {
             const replyPreview = document.createElement('div');
             replyPreview.className = 'reply-preview';
@@ -568,7 +561,6 @@
             bubble.appendChild(replyPreview);
         }
 
-        // Image
         if (msg.image) {
             const imgEl = document.createElement('img');
             imgEl.src = msg.image;
@@ -577,7 +569,6 @@
             bubble.appendChild(imgEl);
         }
 
-        // Text
         if (msg.text) {
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
@@ -586,7 +577,6 @@
             bubble.appendChild(textSpan);
         }
 
-        // Time
         const timeSpan = document.createElement('span');
         timeSpan.className = 'timestamp';
         timeSpan.innerText = msg.time;
@@ -595,7 +585,6 @@
         contentArea.appendChild(bubble);
         msgDiv.appendChild(contentArea);
         
-        // Context Menu (Right Click)
         msgDiv.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             showContextMenu(e.clientX, e.clientY, msg, isOwn);
@@ -610,19 +599,17 @@
         }
     }
     
-    // --- FORMATTING & UTILS ---
     function parseFormatting(text) {
         if(!text) return '';
         let sanitized = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        sanitized = sanitized.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Bold
-        sanitized = sanitized.replace(/\*(.*?)\*/g, '<i>$1</i>');     // Italic
-        sanitized = sanitized.replace(/__(.*?)__/g, '<u>$1</u>');     // Underline
-        sanitized = sanitized.replace(/~~(.*?)~~/g, '<strike>$1</strike>'); // Strike
-        sanitized = sanitized.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:lightblue;text-decoration:underline;">$1</a>'); // Links
+        sanitized = sanitized.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); 
+        sanitized = sanitized.replace(/\*(.*?)\*/g, '<i>$1</i>');    
+        sanitized = sanitized.replace(/__(.*?)__/g, '<u>$1</u>');     
+        sanitized = sanitized.replace(/~~(.*?)~~/g, '<strike>$1</strike>');
+        sanitized = sanitized.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:lightblue;text-decoration:underline;">$1</a>');
         return sanitized;
     }
 
-    // --- FILE UPLOAD ---
     fileUploadBtn.onclick = () => hiddenFileInput.click();
     hiddenFileInput.onchange = () => {
         const file = hiddenFileInput.files[0];
@@ -642,7 +629,6 @@
         hiddenFileInput.value = ''; 
     };
 
-    // --- SEND MESSAGE ---
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
         else { handleTyping(); }
@@ -678,7 +664,6 @@
         typingTimeout = setTimeout(() => socket.emit('stop-typing'), 2000);
     }
 
-    // --- TYPING INDICATOR ---
     socket.on('typing', (username) => {
         typingUsers.add(username);
         updateTypingDisplay();
@@ -698,7 +683,6 @@
         }
     }
     
-    // --- CONTEXT MENU ---
     const ctxMenu = document.createElement('div');
     ctxMenu.id = 'ctx-menu';
     document.body.appendChild(ctxMenu);
@@ -716,7 +700,7 @@
         replyOption.onclick = () => {
             currentReplyTo = msg;
             replyBar.style.display = 'flex';
-            replyTargetName.innerText = msg.senderDisplayName || msg.sender; // Use Display Name
+            replyTargetName.innerText = msg.senderDisplayName || msg.sender; 
             messageInput.focus();
         };
         ctxMenu.appendChild(replyOption);
@@ -747,7 +731,6 @@
         replyBar.style.display = 'none';
     };
 
-    // --- NOTIFICATIONS & SOUND ---
     const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.m4a');
     function playNotificationSound() {
         if (settingSound.checked) notifSound.play().catch(e=>{});
@@ -761,7 +744,6 @@
         }
     }
     
-    // --- DROPDOWN & PANEL TOGGLES ---
     notifHeader.onclick = () => {
         notifContent.classList.toggle('show');
     };
@@ -785,4 +767,24 @@
         window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600');
     };
     
-    // --- DRAG & DROP BG
+    btnBgUpload.onclick = () => bgUploadInput.click();
+    bgUploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.body.style.backgroundImage = `url('${ev.target.result}')`;
+                localStorage.setItem('custom_bg', ev.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    btnBgReset.onclick = () => {
+        document.body.style.backgroundImage = 'none';
+        localStorage.removeItem('custom_bg');
+    };
+    const savedBg = localStorage.getItem('custom_bg');
+    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+</script>
+</body>
+</html>
