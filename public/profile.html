@@ -30,6 +30,11 @@
             </div>
 
             <div class="form-group">
+                <label>Pronouns</label>
+                <input type="text" id="input-pronouns" placeholder="e.g. he/him, they/them">
+            </div>
+
+            <div class="form-group">
                 <label>Avatar URL</label>
                 <input type="text" id="input-avatar" placeholder="https://example.com/image.png">
                 <small id="avatar-hint" style="color:#666;">Paste a direct link to an image.</small>
@@ -40,129 +45,4 @@
                 <textarea id="input-description" rows="4" placeholder="Tell us about yourself..."></textarea>
             </div>
             
-            <div class="form-group" id="last-seen-group" style="display:none;">
-                <label>Last Seen</label>
-                <input type="text" id="input-lastseen" readonly disabled>
-            </div>
-
-            <div class="profile-actions">
-                <button id="btn-save" class="primary-btn" style="width: 100%;">Save Changes</button>
-                <button id="btn-back" class="secondary-btn" style="width: 100%; margin-top: 10px;">Back to Chat</button>
-            </div>
-            
-            <div id="status-msg" style="margin-top: 15px; text-align: center; height: 20px; font-weight: bold;"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-    const socket = io();
-    const myUsername = localStorage.getItem('simplechat_username');
-    
-    // Check URL params
-    const urlParams = new URLSearchParams(window.location.search);
-    const targetUser = urlParams.get('user');
-    const mode = urlParams.get('mode'); // 'view' or null
-
-    if (!myUsername) {
-        window.location.href = '/';
-    }
-
-    const pageTitle = document.getElementById('page-title');
-    const inputUsername = document.getElementById('input-username');
-    const inputDisplay = document.getElementById('input-displayname');
-    const inputAvatar = document.getElementById('input-avatar');
-    const inputDescription = document.getElementById('input-description');
-    const inputLastSeen = document.getElementById('input-lastseen');
-    const lastSeenGroup = document.getElementById('last-seen-group');
-    const imgPreview = document.getElementById('profile-preview-img');
-    const btnSave = document.getElementById('btn-save');
-    const btnBack = document.getElementById('btn-back');
-    const statusMsg = document.getElementById('status-msg');
-    const avatarHint = document.getElementById('avatar-hint');
-
-    // --- READ-ONLY MODE ---
-    if (mode === 'view' || (targetUser && targetUser !== myUsername)) {
-        pageTitle.innerText = "Viewing Profile";
-        btnSave.style.display = 'none'; // Hide Save Button
-        avatarHint.style.display = 'none';
-        
-        // Disable inputs
-        inputDisplay.disabled = true;
-        inputAvatar.disabled = true;
-        inputDescription.disabled = true;
-
-        // Fetch Data
-        socket.emit('get-user-profile', targetUser);
-
-        socket.on('user-profile-data', (data) => {
-            if (data.notFound) {
-                inputUsername.value = data.username;
-                inputDisplay.value = "User not found or has never logged in.";
-                return;
-            }
-            inputUsername.value = data.username;
-            inputDisplay.value = data.displayName || data.username;
-            inputAvatar.value = data.avatar || '';
-            inputDescription.value = data.description || 'No description provided.';
-            imgPreview.src = data.avatar || 'placeholder-avatar.png';
-            
-            if (data.lastSeen) {
-                lastSeenGroup.style.display = 'flex';
-                inputLastSeen.value = new Date(data.lastSeen).toLocaleString();
-            }
-        });
-
-    } 
-    // --- EDIT MODE (MY PROFILE) ---
-    else {
-        // Connect as myself to get my own data via the login flow
-        socket.emit('set-username', { username: myUsername });
-
-        socket.on('profile-info', (data) => {
-            inputUsername.value = data.username;
-            inputDisplay.value = data.displayName || data.username;
-            inputAvatar.value = data.avatar === 'placeholder-avatar.png' ? '' : data.avatar;
-            inputDescription.value = data.description || '';
-            imgPreview.src = data.avatar || 'placeholder-avatar.png';
-        });
-
-        // Live Preview of Avatar
-        inputAvatar.addEventListener('input', () => {
-            const val = inputAvatar.value.trim();
-            imgPreview.src = val || 'placeholder-avatar.png';
-        });
-
-        // Save
-        btnSave.onclick = () => {
-            const newDisplay = inputDisplay.value.trim() || myUsername;
-            const newAvatar = inputAvatar.value.trim() || 'placeholder-avatar.png';
-            const newDesc = inputDescription.value.trim();
-
-            socket.emit('update-profile', {
-                displayName: newDisplay,
-                avatar: newAvatar,
-                description: newDesc
-            });
-            
-            btnSave.disabled = true;
-            btnSave.innerText = "Saving...";
-        };
-
-        socket.on('chat-message', (msg) => {
-            if (msg.text.includes('Profile updated')) {
-                statusMsg.style.color = 'var(--color-accent-green)';
-                statusMsg.innerText = "Saved Successfully!";
-                btnSave.disabled = false;
-                btnSave.innerText = "Save Changes";
-                setTimeout(() => statusMsg.innerText = "", 3000);
-            }
-        });
-    }
-
-    btnBack.onclick = () => {
-        window.location.href = '/';
-    };
-</script>
-</body>
-</html>
+            <div class="form-group" id="
