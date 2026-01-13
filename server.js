@@ -144,7 +144,6 @@ async function broadcastSidebarRefresh() {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- NEW ROUTE FOR PROFILE PAGE ---
 app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
@@ -171,8 +170,6 @@ io.on('connection', async (socket) => {
         if (!username) return;
         const usernameLower = username.toLowerCase();
         
-        // MODIFIED: Check for duplicates but DO NOT BLOCK
-        // This allows opening /profile in a new tab without "Username taken" errors
         const isAlreadyOnline = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -201,7 +198,6 @@ io.on('connection', async (socket) => {
             broadcastVCUserList();
         }
         
-        // Only announce join if they weren't already online (avoids spam when opening profile)
         if (!isAlreadyOnline) {
             const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
             io.emit('chat-message', joinMsg);
@@ -212,6 +208,30 @@ io.on('connection', async (socket) => {
         broadcastSidebarRefresh();
         socket.emit('profile-info', { username, displayName, avatar });
         io.emit('user-status-change', { username, displayName, online: true, avatar });
+    });
+
+    // --- GET OTHER USER PROFILE (NEW READ-ONLY FETCHER) ---
+    socket.on('get-user-profile', async (targetUsername) => {
+        try {
+            const dbUser = await User.findOne({ username: targetUsername }).lean();
+            if (dbUser) {
+                socket.emit('user-profile-data', {
+                    username: dbUser.username,
+                    displayName: dbUser.displayName || dbUser.username,
+                    avatar: dbUser.avatar || 'placeholder-avatar.png',
+                    lastSeen: dbUser.lastSeen
+                });
+            } else {
+                socket.emit('user-profile-data', {
+                    username: targetUsername,
+                    displayName: targetUsername,
+                    avatar: 'placeholder-avatar.png',
+                    notFound: true
+                });
+            }
+        } catch (e) {
+            console.error("Fetch Profile Error", e);
+        }
     });
 
     // --- UPDATE PROFILE ---
@@ -344,7 +364,6 @@ io.on('connection', async (socket) => {
         if (user) {
             delete users[socket.id];
             if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
-            // Only announce leave if no other sockets for this user exist
             const isStillOnline = Object.values(users).some(u => u.username === user.username);
             if (!isStillOnline) {
                 const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
