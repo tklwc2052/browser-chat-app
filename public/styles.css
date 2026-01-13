@@ -314,13 +314,4 @@ body.transparent-mode #dm-sidebar,
 body.transparent-mode #right-panel {
     background-color: transparent; 
     backdrop-filter: none;
-    border-color: rgba(255,255,255,0.1);
-}
-body.transparent-mode #username-area,
-body.transparent-mode #message-input-area {
-    background-color: rgba(30, 30, 30, 0.3);
-}
-body.transparent-mode .bubble-content {
-    opacity: 0.95; 
-    backdrop-filter: blur(2px);
-}
+    border-color: rgba(255,
