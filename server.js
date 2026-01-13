@@ -9,14 +9,14 @@ const fs = require('fs');
 const app = express();
 const server = http.createServer(app);
 
-// --- 1. AUTOMATIC UPDATE MESSAGE (THE FILE METHOD) ---
+// --- 1. AUTOMATIC UPDATE MESSAGE ---
 let SERVER_BUILD_DESC = "System Update"; 
 const SERVER_BUILD_ID = Date.now(); 
 
 try {
     if (fs.existsSync('build_desc.txt')) {
         SERVER_BUILD_DESC = fs.readFileSync('build_desc.txt', 'utf8').trim();
-        console.log(`✅ Loaded Update Message from file: "${SERVER_BUILD_DESC}"`);
+        console.log(`✅ Loaded Update Message: "${SERVER_BUILD_DESC}"`);
     } else {
         console.log("⚠️ build_desc.txt not found. Using default.");
     }
@@ -36,7 +36,6 @@ mongoose.connect(mongoURI)
     .then(async () => {
         console.log('MongoDB Connected');
         
-        // 1. LOAD PUBLIC HISTORY
         try {
             const savedMessages = await Message.find()
                 .sort({ timestamp: -1 })
@@ -48,7 +47,6 @@ mongoose.connect(mongoURI)
             console.error("Error loading chat history:", err);
         }
 
-        // 2. LOAD MOTD
         try {
             const savedMotd = await Config.findOne({ key: 'motd' });
             if (savedMotd) {
@@ -59,7 +57,6 @@ mongoose.connect(mongoURI)
             console.error("Error loading MOTD:", err);
         }
 
-        // 3. LOAD BANS
         try {
             const allBans = await Ban.find({});
             allBans.forEach(ban => {
@@ -72,16 +69,17 @@ mongoose.connect(mongoURI)
     })
     .catch(err => console.log('MongoDB Connection Error:', err));
 
-// --- SCHEMAS ---
+// --- SCHEMAS (FIXED TO PREVENT OVERWRITE ERROR) ---
 
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
-    displayName: String, // NEW: Display Name
+    displayName: String, 
     avatar: String,
     lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
 });
-const User = mongoose.model('User', userSchema);
+// Use existing model if available to prevent "OverwriteModelError"
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 const banSchema = new mongoose.Schema({
     username: String,
@@ -89,12 +87,12 @@ const banSchema = new mongoose.Schema({
     bannedAt: { type: Date, default: Date.now },
     bannedBy: String
 });
-const Ban = mongoose.model('Ban', banSchema);
+const Ban = mongoose.models.Ban || mongoose.model('Ban', banSchema);
 
 const messageSchema = new mongoose.Schema({
     id: String,
     sender: String,
-    senderDisplayName: String, // NEW: Store display name in message
+    senderDisplayName: String, 
     text: String,
     image: String,
     avatar: String,
@@ -105,7 +103,7 @@ const messageSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 messageSchema.index({ timestamp: -1 }); 
-const Message = mongoose.model('Message', messageSchema);
+const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 
 const dmSchema = new mongoose.Schema({
     participants: [String], 
@@ -113,7 +111,7 @@ const dmSchema = new mongoose.Schema({
         id: String,
         replyTo: Object,
         sender: String,
-        senderDisplayName: String, // NEW
+        senderDisplayName: String,
         text: String,
         image: String,
         avatar: String,
@@ -123,13 +121,13 @@ const dmSchema = new mongoose.Schema({
     }]
 });
 dmSchema.index({ participants: 1 });
-const DM = mongoose.model('DM', dmSchema);
+const DM = mongoose.models.DM || mongoose.model('DM', dmSchema);
 
 const configSchema = new mongoose.Schema({
     key: { type: String, unique: true },
     value: String
 });
-const Config = mongoose.model('Config', configSchema);
+const Config = mongoose.models.Config || mongoose.model('Config', configSchema);
 
 // --- State Management ---
 const users = {}; 
@@ -148,7 +146,6 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-// Updated formatMessage to include senderDisplayName
 function formatMessage(sender, text, avatar = null, image = null, isPm = false, replyTo = null, senderDisplayName = null) {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -228,7 +225,7 @@ async function broadcastSidebarRefresh() {
         const allDbUsers = await User.find({}).lean();
         const sidebarList = allDbUsers.map(u => ({
             username: u.username,
-            displayName: u.displayName || u.username, // Send displayName to sidebar
+            displayName: u.displayName || u.username, 
             avatar: u.avatar,
             online: Object.values(users).some(live => live.username === u.username)
         }));
@@ -263,12 +260,11 @@ io.on('connection', async (socket) => {
 
     socket.on('get-history', () => { socket.emit('history', messageHistory); });
 
-    // --- REGISTER / LOGIN (SET USERNAME ID) ---
+    // --- REGISTER / LOGIN ---
     socket.on('set-username', async ({ username }) => {
         if (!username) return;
 
         const usernameLower = username.toLowerCase();
-        // Check if username is taken by another connected socket
         const isDuplicate = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -278,7 +274,6 @@ io.on('connection', async (socket) => {
             return;
         }
 
-        // Fetch existing user to get displayName and avatar
         let dbUser = null;
         try {
             dbUser = await User.findOne({ username: username });
@@ -290,14 +285,12 @@ io.on('connection', async (socket) => {
         userAvatarCache[username] = avatar;
         users[socket.id] = { username, displayName, avatar, id: socket.id };
 
-        // Save/Update basic stats
         try {
             await User.findOneAndUpdate(
                 { username: username },
                 { 
                     lastSeen: Date.now(),
                     lastIp: clientIp,
-                    // If new, set defaults
                     $setOnInsert: { displayName: username, avatar: 'placeholder-avatar.png' }
                 },
                 { upsert: true, new: true }
@@ -317,26 +310,23 @@ io.on('connection', async (socket) => {
         savePublicMessage(joinMsg); 
         broadcastSidebarRefresh();
         
-        // Send profile info back to the user
         socket.emit('profile-info', { username, displayName, avatar });
         io.emit('user-status-change', { username, displayName, online: true, avatar });
     });
 
-    // --- UPDATE PROFILE (NEW) ---
+    // --- UPDATE PROFILE ---
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
 
         const { displayName, avatar } = data;
         
-        // Update Local State
         if (displayName) user.displayName = displayName;
         if (avatar) {
             user.avatar = avatar;
             userAvatarCache[user.username] = avatar;
         }
 
-        // Update DB
         try {
             await User.findOneAndUpdate(
                 { username: user.username },
@@ -344,10 +334,8 @@ io.on('connection', async (socket) => {
             );
         } catch(e) { console.error("Profile Update Error", e); }
 
-        // Notify Everyone
         broadcastSidebarRefresh();
         
-        // If in VC, update that too
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].displayName = user.displayName;
             vcUsers[socket.id].avatar = user.avatar;
@@ -385,7 +373,6 @@ io.on('connection', async (socket) => {
             const command = parts[0].toLowerCase();
             const args = parts.slice(1);
 
-            // --- PRIVATE MESSAGING ---
             if (command === 'msg') {
                 const targetUsername = parts[1];
                 const privateText = parts.slice(2).join(' ').trim();
@@ -417,11 +404,9 @@ io.on('connection', async (socket) => {
                 return;
             }
 
-            // --- ADMIN COMMANDS ---
             if (sender === ADMIN_USERNAME) {
                 const targetName = args[0];
                 
-                // 1. ANNOUNCEMENT
                 if (command === 'server' && args.length > 0) {
                     const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
                     io.emit('chat-message', serverMsg);
@@ -430,7 +415,6 @@ io.on('connection', async (socket) => {
                     return;
                 }
                 
-                // 2. MUTE
                 if (command === 'mute' && targetName) {
                     mutedUsers.add(targetName.toLowerCase());
                     const muteMsg = formatMessage('System', `User ${targetName} has been muted.`);
@@ -440,7 +424,6 @@ io.on('connection', async (socket) => {
                     return;
                 }
                 
-                // 3. UNMUTE
                 if (command === 'unmute' && targetName) {
                     mutedUsers.delete(targetName.toLowerCase());
                     const unmuteMsg = formatMessage('System', `User ${targetName} has been unmuted.`);
@@ -450,7 +433,6 @@ io.on('connection', async (socket) => {
                     return;
                 }
                 
-                // 4. BAN
                 if (command === 'ban' && targetName) {
                     const targetId = findSocketIdByUsername(targetName);
                     if (targetId) {
@@ -475,7 +457,6 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 5. PRUNE (Clear History)
                 if (command === 'prune') {
                     messageHistory.length = 0; 
                     await Message.deleteMany({}); 
@@ -485,7 +466,6 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // 6. SET MOTD
                 if (command === 'motd' && args.length > 0) {
                     serverMOTD = args.join(' ');
                     try {
@@ -499,21 +479,19 @@ io.on('connection', async (socket) => {
             }
         }
 
-        // --- REGULAR MESSAGE ---
         const messageObject = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo, senderDisplayName);
         io.emit('chat-message', messageObject);
         addToHistory(messageObject);
         savePublicMessage(messageObject);
     });
 
-    // --- VOICE CHAT SIGNALING ---
     socket.on('join-vc', () => {
         const user = users[socket.id];
         if(user) {
             vcUsers[socket.id] = { 
                 id: socket.id, 
                 username: user.username, 
-                displayName: user.displayName, // Include displayName
+                displayName: user.displayName, 
                 avatar: user.avatar 
             };
             broadcastVCUserList();
@@ -549,7 +527,6 @@ io.on('connection', async (socket) => {
     });
 });
 
-// --- EMERGENCY UNBAN ROUTE ---
 app.get('/i-like-my-toast-with-butter', async (req, res) => {
     try {
         await Ban.deleteMany({});
