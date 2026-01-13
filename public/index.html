@@ -15,8 +15,6 @@
         max-width: 70%;
         position: relative;
     }
-
-    /* 2. Style the Name Tag */
     .message-sender-name {
         font-size: 0.75rem; 
         color: #888;
@@ -25,18 +23,8 @@
         font-weight: 700;
         letter-spacing: 0.5px;
     }
-
-    /* 3. Align your own messages to the right */
-    .user-message .message-content-area {
-        align-items: flex-end;
-    }
-    
-    /* Align your own name to the right */
-    .user-message .message-sender-name {
-        margin-right: 4px;
-        margin-left: 0;
-        color: #00ACE6; 
-    }
+    .user-message .message-content-area { align-items: flex-end; }
+    .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
 </style>
 </head>
 <body>
@@ -61,9 +49,7 @@
         </div>
         
         <div id="messages"></div>
-        
         <button id="scroll-down-btn">↓ New Messages</button>
-
         <div id="typing-indicator"></div>
 
         <div id="message-input-area">
@@ -71,12 +57,10 @@
                 <span>Replying to <b id="reply-target-name">User</b></span>
                 <button id="cancel-reply-btn">X</button>
             </div>
-
             <div id="image-preview-area" style="display:none;">
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
-
             <div id="input-row">
                 <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
                 <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
@@ -140,30 +124,6 @@
     </div>
 </div>
 
-<div id="profile-modal-overlay" class="modal-overlay">
-    <div class="profile-modal">
-        <h2>Edit Profile</h2>
-        <div class="profile-form">
-            <div class="form-group">
-                <label>Username (ID)</label>
-                <input type="text" id="profile-username" readonly disabled title="Username cannot be changed">
-            </div>
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" id="profile-display-name" placeholder="How people see you">
-            </div>
-            <div class="form-group">
-                <label>Profile Picture URL</label>
-                <input type="text" id="profile-avatar-url" placeholder="https://example.com/image.png">
-            </div>
-            <div class="form-actions">
-                <button id="profile-cancel-btn" class="secondary-btn">Cancel</button>
-                <button id="profile-save-btn" class="primary-btn">Save Changes</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('mode') === 'popup') {
@@ -172,8 +132,6 @@
     }
 
     const socket = io();
-
-    // DOM Elements
     const messagesDiv = document.getElementById('messages');
     const scrollDownBtn = document.getElementById('scroll-down-btn');
     const messageInput = document.getElementById('message-input');
@@ -181,21 +139,16 @@
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
     
-    // Profile Modal Elements
+    // UPDATED: Navigate to profile page
     const openProfileBtn = document.getElementById('open-profile-btn');
-    const profileModalOverlay = document.getElementById('profile-modal-overlay');
-    const profileUsernameInput = document.getElementById('profile-username');
-    const profileDisplayNameInput = document.getElementById('profile-display-name');
-    const profileAvatarUrlInput = document.getElementById('profile-avatar-url');
-    const profileSaveBtn = document.getElementById('profile-save-btn');
-    const profileCancelBtn = document.getElementById('profile-cancel-btn');
+    openProfileBtn.onclick = () => {
+        window.location.href = '/profile';
+    };
 
-    // Reply Elements
     const replyBar = document.getElementById('reply-bar');
     const replyTargetName = document.getElementById('reply-target-name');
     const cancelReplyBtn = document.getElementById('cancel-reply-btn');
     
-    // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcBtnLeave = document.getElementById('vc-btn-leave'); 
@@ -209,12 +162,10 @@
     const removeImageBtn = document.getElementById('remove-image-btn');
     const typingIndicator = document.getElementById('typing-indicator');
 
-    // Sidebar
     const dmList = document.getElementById('dm-list');
     const chatHeaderLabel = document.getElementById('chat-header-label');
     const chatHeaderSublabel = document.getElementById('chat-header-sublabel');
 
-    // Settings & Panels
     const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
     const settingMain = document.getElementById('setting-main');
     const settingPM = document.getElementById('setting-pm');
@@ -226,7 +177,6 @@
     const notifHeader = document.getElementById('notif-dropdown-header');
     const notifContent = document.getElementById('notif-dropdown-content');
 
-    // State
     let currentUsername = '';
     let currentDisplayName = '';
     let currentAvatar = '';
@@ -240,19 +190,16 @@
     let lastMessageSender = null; 
     let currentReplyTo = null;
 
-    // Cache
     let globalMessagesCache = [];
     let dmMessagesCache = {}; 
     const MAX_VISIBLE_MESSAGES = 100;
 
-    // VC State
     let localStream = null;
     let peers = {}; 
     let isInVC = false;
     let isMuted = false;
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- INITIAL LOGIN (Uses Username) ---
     window.onload = () => {
         const savedUser = localStorage.getItem('simplechat_username');
         if (savedUser) {
@@ -266,29 +213,6 @@
         }
     };
 
-    // --- PROFILE MODAL LOGIC (UPDATED WITH CLASS TOGGLE) ---
-    openProfileBtn.onclick = () => {
-        profileUsernameInput.value = currentUsername;
-        profileDisplayNameInput.value = currentDisplayName;
-        profileAvatarUrlInput.value = currentAvatar.startsWith('data:') ? '' : currentAvatar;
-        profileModalOverlay.classList.add('show-modal'); // Add Class
-    };
-
-    profileCancelBtn.onclick = () => {
-        profileModalOverlay.classList.remove('show-modal'); // Remove Class
-    };
-
-    profileSaveBtn.onclick = () => {
-        const newDisplay = profileDisplayNameInput.value.trim() || currentUsername;
-        const newAvatar = profileAvatarUrlInput.value.trim() || currentAvatar;
-        
-        socket.emit('update-profile', { 
-            displayName: newDisplay, 
-            avatar: newAvatar 
-        });
-        profileModalOverlay.classList.remove('show-modal'); // Remove Class
-    };
-
     socket.on('profile-info', (data) => {
         currentUsername = data.username;
         currentDisplayName = data.displayName;
@@ -299,7 +223,6 @@
         currentAvatarPreview.src = currentAvatar;
     });
 
-    // --- SIDEBAR LOGIC ---
     function renderSidebar() {
         dmList.innerHTML = '';
         const mainChatCard = document.createElement('div');
@@ -394,7 +317,6 @@
         }
     }
 
-    // --- SCROLL HELPER ---
     let userScrolledUp = false;
     messagesDiv.addEventListener('scroll', () => {
         const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 50;
@@ -417,7 +339,6 @@
         setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 100);
     }
 
-    // --- SOCKET HANDLERS ---
     socket.on('sidebar-user-list', (list) => { allUsersCache = list; renderSidebar(); });
     socket.on('user-status-change', (data) => {
         const user = allUsersCache.find(u => u.username === data.username);
@@ -505,7 +426,6 @@
         messagesDiv.appendChild(motdDiv);
     });
 
-    // --- RENDER MESSAGES ---
     function renderMessageBatch(msgs) {
         msgs.forEach(msg => appendMessageToUI(msg));
         forceScrollToBottom();
