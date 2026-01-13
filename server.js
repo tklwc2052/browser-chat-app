@@ -92,7 +92,7 @@ const mutedUsers = new Set();
 const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
 
-// NEW: Track pending disconnects to prevent messages on page refresh/nav
+// Track pending disconnects to prevent messages on page refresh/nav
 const disconnectTimeouts = {}; 
 
 // --- Utility Functions ---
@@ -175,11 +175,13 @@ io.on('connection', async (socket) => {
         if (!username) return;
         const usernameLower = username.toLowerCase();
         
-        // 1. CANCEL PENDING LEAVE MESSAGE
-        // If they just refreshed or came from profile page, cancel the "User left" timer.
+        let isReconnecting = false; // Flag to skip Join Message
+
+        // 1. CHECK IF RETURNING FROM NAV (Grace Period)
         if (disconnectTimeouts[usernameLower]) {
             clearTimeout(disconnectTimeouts[usernameLower]);
             delete disconnectTimeouts[usernameLower];
+            isReconnecting = true; // They are back!
         }
 
         const isAlreadyOnline = Object.keys(users).some(id => 
@@ -212,8 +214,8 @@ io.on('connection', async (socket) => {
             broadcastVCUserList();
         }
         
-        // Only announce join if they weren't already online
-        if (!isAlreadyOnline) {
+        // 2. ONLY ANNOUNCE IF NOT RECONNECTING AND NOT ALREADY ONLINE
+        if (!isAlreadyOnline && !isReconnecting) {
             const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
             io.emit('chat-message', joinMsg);
             addToHistory(joinMsg);
@@ -392,7 +394,6 @@ io.on('connection', async (socket) => {
             const username = user.username.toLowerCase();
             delete users[socket.id];
             
-            // Clean up VC immediately
             if (vcUsers[socket.id]) { 
                 delete vcUsers[socket.id]; 
                 broadcastVCUserList(); 
@@ -400,12 +401,9 @@ io.on('connection', async (socket) => {
             }
 
             // --- GRACE PERIOD LOGIC ---
-            // Don't announce "Left" immediately. Wait 2 seconds.
-            // If they reconnect (e.g. page navigation) within 2s, we cancel this.
             if (disconnectTimeouts[username]) clearTimeout(disconnectTimeouts[username]);
 
             disconnectTimeouts[username] = setTimeout(() => {
-                // Check if the user is really gone (no other sockets with this username)
                 const isStillOnline = Object.values(users).some(u => u.username.toLowerCase() === username);
                 
                 if (!isStillOnline) {
