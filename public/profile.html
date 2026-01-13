@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Profile - C&C Corp</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="profile-page-body">
+
+<div class="profile-page-container">
+    <h1 style="color: var(--color-accent-blue); margin-bottom: 20px;">Profile Settings</h1>
+    
+    <div class="profile-card">
+        <div class="profile-avatar-section">
+            <img id="profile-preview-img" src="placeholder-avatar.png" alt="Profile Preview">
+        </div>
+
+        <div class="profile-form-section">
+            <div class="form-group">
+                <label>Unique ID (Username)</label>
+                <input type="text" id="input-username" readonly disabled title="You cannot change your ID">
+                <small style="color:#666;">This is how the system identifies you.</small>
+            </div>
+
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="input-displayname" placeholder="Enter a nickname">
+                <small style="color:#666;">This is what others see in chat.</small>
+            </div>
+
+            <div class="form-group">
+                <label>Avatar URL</label>
+                <input type="text" id="input-avatar" placeholder="https://example.com/image.png">
+                <small style="color:#666;">Paste a direct link to an image.</small>
+            </div>
+
+            <div class="profile-actions">
+                <button id="btn-save" class="primary-btn" style="width: 100%;">Save Changes</button>
+                <button id="btn-back" class="secondary-btn" style="width: 100%; margin-top: 10px;">Back to Chat</button>
+            </div>
+            
+            <div id="status-msg" style="margin-top: 15px; text-align: center; height: 20px; font-weight: bold;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    const username = localStorage.getItem('simplechat_username');
+
+    if (!username) {
+        window.location.href = '/';
+    }
+
+    const inputUsername = document.getElementById('input-username');
+    const inputDisplay = document.getElementById('input-displayname');
+    const inputAvatar = document.getElementById('input-avatar');
+    const imgPreview = document.getElementById('profile-preview-img');
+    const btnSave = document.getElementById('btn-save');
+    const btnBack = document.getElementById('btn-back');
+    const statusMsg = document.getElementById('status-msg');
+
+    // 1. Connect and Identify
+    socket.emit('set-username', { username: username });
+
+    // 2. Receive current info
+    socket.on('profile-info', (data) => {
+        inputUsername.value = data.username;
+        inputDisplay.value = data.displayName || data.username;
+        inputAvatar.value = data.avatar === 'placeholder-avatar.png' ? '' : data.avatar;
+        imgPreview.src = data.avatar || 'placeholder-avatar.png';
+    });
+
+    // 3. Live Preview of Avatar
+    inputAvatar.addEventListener('input', () => {
+        const val = inputAvatar.value.trim();
+        imgPreview.src = val || 'placeholder-avatar.png';
+    });
+
+    // 4. Save
+    btnSave.onclick = () => {
+        const newDisplay = inputDisplay.value.trim() || username;
+        const newAvatar = inputAvatar.value.trim() || 'placeholder-avatar.png';
+
+        socket.emit('update-profile', {
+            displayName: newDisplay,
+            avatar: newAvatar
+        });
+        
+        btnSave.disabled = true;
+        btnSave.innerText = "Saving...";
+    };
+
+    // 5. Feedback
+    socket.on('chat-message', (msg) => {
+        // We use the system message as confirmation since server sends one on update
+        if (msg.text.includes('Profile updated')) {
+            statusMsg.style.color = 'var(--color-accent-green)';
+            statusMsg.innerText = "Saved Successfully!";
+            btnSave.disabled = false;
+            btnSave.innerText = "Save Changes";
+            setTimeout(() => statusMsg.innerText = "", 3000);
+        }
+    });
+
+    btnBack.onclick = () => {
+        window.location.href = '/';
+    };
+</script>
+</body>
+</html>
