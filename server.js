@@ -52,6 +52,7 @@ mongoose.connect(mongoURI)
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     displayName: String, 
+    description: { type: String, default: "" }, // NEW: Profile Description
     avatar: String,
     lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
@@ -179,9 +180,10 @@ io.on('connection', async (socket) => {
 
         const displayName = dbUser ? (dbUser.displayName || username) : username;
         const avatar = dbUser ? (dbUser.avatar || 'placeholder-avatar.png') : 'placeholder-avatar.png';
+        const description = dbUser ? (dbUser.description || "") : ""; // NEW
 
         userAvatarCache[username] = avatar;
-        users[socket.id] = { username, displayName, avatar, id: socket.id };
+        users[socket.id] = { username, displayName, avatar, description, id: socket.id };
 
         try {
             await User.findOneAndUpdate(
@@ -206,11 +208,12 @@ io.on('connection', async (socket) => {
         }
 
         broadcastSidebarRefresh();
-        socket.emit('profile-info', { username, displayName, avatar });
+        // Send description in profile info
+        socket.emit('profile-info', { username, displayName, avatar, description });
         io.emit('user-status-change', { username, displayName, online: true, avatar });
     });
 
-    // --- GET OTHER USER PROFILE (NEW READ-ONLY FETCHER) ---
+    // --- GET OTHER USER PROFILE ---
     socket.on('get-user-profile', async (targetUsername) => {
         try {
             const dbUser = await User.findOne({ username: targetUsername }).lean();
@@ -219,6 +222,7 @@ io.on('connection', async (socket) => {
                     username: dbUser.username,
                     displayName: dbUser.displayName || dbUser.username,
                     avatar: dbUser.avatar || 'placeholder-avatar.png',
+                    description: dbUser.description || "", // NEW
                     lastSeen: dbUser.lastSeen
                 });
             } else {
@@ -226,6 +230,7 @@ io.on('connection', async (socket) => {
                     username: targetUsername,
                     displayName: targetUsername,
                     avatar: 'placeholder-avatar.png',
+                    description: "", 
                     notFound: true
                 });
             }
@@ -238,18 +243,19 @@ io.on('connection', async (socket) => {
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
-        const { displayName, avatar } = data;
+        const { displayName, avatar, description } = data; // NEW: get description
         
         if (displayName) user.displayName = displayName;
         if (avatar) {
             user.avatar = avatar;
             userAvatarCache[user.username] = avatar;
         }
+        if (description !== undefined) user.description = description;
 
         try {
             await User.findOneAndUpdate(
                 { username: user.username },
-                { displayName: user.displayName, avatar: user.avatar }
+                { displayName: user.displayName, avatar: user.avatar, description: user.description }
             );
         } catch(e) { console.error("Profile Update Error", e); }
 
@@ -262,7 +268,7 @@ io.on('connection', async (socket) => {
         }
 
         socket.emit('chat-message', formatMessage('System', 'Profile updated successfully.'));
-        socket.emit('profile-info', { username: user.username, displayName: user.displayName, avatar: user.avatar });
+        socket.emit('profile-info', { username: user.username, displayName: user.displayName, avatar: user.avatar, description: user.description });
     });
 
     socket.on('chat-message', async (payload) => {
