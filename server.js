@@ -53,7 +53,7 @@ const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     displayName: String, 
     description: { type: String, default: "" }, 
-    pronouns: { type: String, default: "" }, // NEW: Pronouns
+    pronouns: { type: String, default: "" },
     avatar: String,
     lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
@@ -91,6 +91,9 @@ let serverMOTD = "Welcome to the C&C Corp chat! Play nice.";
 const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
+
+// NEW: Track pending disconnects to prevent messages on page refresh/nav
+const disconnectTimeouts = {}; 
 
 // --- Utility Functions ---
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
@@ -172,6 +175,13 @@ io.on('connection', async (socket) => {
         if (!username) return;
         const usernameLower = username.toLowerCase();
         
+        // 1. CANCEL PENDING LEAVE MESSAGE
+        // If they just refreshed or came from profile page, cancel the "User left" timer.
+        if (disconnectTimeouts[usernameLower]) {
+            clearTimeout(disconnectTimeouts[usernameLower]);
+            delete disconnectTimeouts[usernameLower];
+        }
+
         const isAlreadyOnline = Object.keys(users).some(id => 
             id !== socket.id && users[id].username.toLowerCase() === usernameLower
         );
@@ -182,7 +192,7 @@ io.on('connection', async (socket) => {
         const displayName = dbUser ? (dbUser.displayName || username) : username;
         const avatar = dbUser ? (dbUser.avatar || 'placeholder-avatar.png') : 'placeholder-avatar.png';
         const description = dbUser ? (dbUser.description || "") : "";
-        const pronouns = dbUser ? (dbUser.pronouns || "") : ""; // NEW
+        const pronouns = dbUser ? (dbUser.pronouns || "") : "";
 
         userAvatarCache[username] = avatar;
         users[socket.id] = { username, displayName, avatar, description, pronouns, id: socket.id };
@@ -202,6 +212,7 @@ io.on('connection', async (socket) => {
             broadcastVCUserList();
         }
         
+        // Only announce join if they weren't already online
         if (!isAlreadyOnline) {
             const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
             io.emit('chat-message', joinMsg);
@@ -210,7 +221,6 @@ io.on('connection', async (socket) => {
         }
 
         broadcastSidebarRefresh();
-        // Send pronouns in profile info
         socket.emit('profile-info', { username, displayName, avatar, description, pronouns });
         io.emit('user-status-change', { username, displayName, online: true, avatar });
     });
@@ -225,7 +235,7 @@ io.on('connection', async (socket) => {
                     displayName: dbUser.displayName || dbUser.username,
                     avatar: dbUser.avatar || 'placeholder-avatar.png',
                     description: dbUser.description || "",
-                    pronouns: dbUser.pronouns || "", // NEW
+                    pronouns: dbUser.pronouns || "",
                     lastSeen: dbUser.lastSeen
                 });
             } else {
@@ -247,7 +257,7 @@ io.on('connection', async (socket) => {
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
-        const { displayName, avatar, description, pronouns } = data; // NEW: get pronouns
+        const { displayName, avatar, description, pronouns } = data;
         
         if (displayName) user.displayName = displayName;
         if (avatar) {
@@ -255,7 +265,7 @@ io.on('connection', async (socket) => {
             userAvatarCache[user.username] = avatar;
         }
         if (description !== undefined) user.description = description;
-        if (pronouns !== undefined) user.pronouns = pronouns; // NEW
+        if (pronouns !== undefined) user.pronouns = pronouns;
 
         try {
             await User.findOneAndUpdate(
@@ -379,14 +389,34 @@ io.on('connection', async (socket) => {
     socket.on('disconnect', () => {
         const user = users[socket.id];
         if (user) {
+            const username = user.username.toLowerCase();
             delete users[socket.id];
-            if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
-            const isStillOnline = Object.values(users).some(u => u.username === user.username);
-            if (!isStillOnline) {
-                const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
-                io.emit('chat-message', leaveMsg); addToHistory(leaveMsg); savePublicMessage(leaveMsg);
+            
+            // Clean up VC immediately
+            if (vcUsers[socket.id]) { 
+                delete vcUsers[socket.id]; 
+                broadcastVCUserList(); 
+                socket.broadcast.emit('vc-user-left', socket.id); 
             }
-            io.emit('user-status-change', { username: user.username, online: isStillOnline });
+
+            // --- GRACE PERIOD LOGIC ---
+            // Don't announce "Left" immediately. Wait 2 seconds.
+            // If they reconnect (e.g. page navigation) within 2s, we cancel this.
+            if (disconnectTimeouts[username]) clearTimeout(disconnectTimeouts[username]);
+
+            disconnectTimeouts[username] = setTimeout(() => {
+                // Check if the user is really gone (no other sockets with this username)
+                const isStillOnline = Object.values(users).some(u => u.username.toLowerCase() === username);
+                
+                if (!isStillOnline) {
+                    const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
+                    io.emit('chat-message', leaveMsg); 
+                    addToHistory(leaveMsg); 
+                    savePublicMessage(leaveMsg);
+                    io.emit('user-status-change', { username: user.username, online: false });
+                }
+                delete disconnectTimeouts[username];
+            }, 2000); 
         }
     });
 });
