@@ -11,6 +11,11 @@ const stream = require('stream');
 const app = express();
 const server = http.createServer(app);
 
+// --- MISSING LINE RESTORED HERE ---
+const io = socketIo(server, { 
+    maxHttpBufferSize: 1e8 // Allow larger packets for stability
+});
+
 // --- CLOUDINARY CONFIG ---
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -22,7 +27,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // --- MONGODB CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
-mongoose.connect(mongoURI).then(() => console.log('MongoDB Connected')).catch(err => console.log(err));
+mongoose.connect(mongoURI)
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.log('MongoDB Error:', err));
 
 // --- SCHEMAS ---
 const userSchema = new mongoose.Schema({
@@ -131,7 +138,6 @@ io.on('connection', async (socket) => {
         
         // --- DM LOGIC ---
         if (target && target !== 'null') {
-            console.log(`Sending PM from ${user.username} to ${target}`);
             const recipientSocketId = Object.keys(users).find(id => users[id].username === target);
             
             const pm = formatMessage(user.username, text, user.avatar, image, true, replyTo, user.displayName);
