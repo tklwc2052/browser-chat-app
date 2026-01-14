@@ -25,39 +25,8 @@
     --d-bg-card: #111214;
     --d-bg-body: #232428;
     --d-input-bg: #1e1f22;
-    --d-banner-h: 210px;
+    --d-banner-h: 300px;       /* CHANGED: Made banner taller (was 210px) */
     --d-avatar-s: 120px;
-}
-
-
-
-
-
-/* --- NEW INPUT GROUP FOR UPLOADS --- */
-.d-input-group {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.d-upload-btn {
-    background-color: var(--bg-input);
-    border: 1px solid #444;
-    color: var(--color-text);
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1.2em;
-    transition: background 0.2s;
-}
-.d-upload-btn:hover {
-    background-color: #555;
-}
-
-.d-input-line {
-    flex-grow: 1; /* Input takes remaining space */
-    border: none; border-bottom: 1px solid #444; background: transparent; 
-    color: white; font-size: 14px; padding: 4px 0;
 }
 
 html, body {
@@ -349,7 +318,8 @@ body.transparent-mode .bubble-content {
 /* 2. The Avatar Wrapper (Absolute Positioning) */
 .d-avatar-wrapper {
     position: absolute;
-    top: 146px; /* Banner (210) - Half Avatar (60) - Border (4) approx */
+    /* Calculated: Banner height - (Avatar Size / 2) - Border Width(approx 4) */
+    top: calc(var(--d-banner-h) - 64px); 
     left: 20px;
     z-index: 10;
 }
@@ -459,7 +429,28 @@ body.transparent-mode .bubble-content {
 .d-btn-secondary { background-color: #4f545c; color: white; }
 .d-btn-secondary:hover { background-color: #686d73; }
 
+.d-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.d-upload-btn {
+    background-color: var(--bg-input);
+    border: 1px solid #444;
+    color: var(--color-text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.2em;
+    transition: background 0.2s;
+}
+.d-upload-btn:hover {
+    background-color: #555;
+}
+
 .d-input-line {
+    flex-grow: 1; 
     border: none; border-bottom: 1px solid #444; background: transparent; 
-    color: white; font-size: 14px; width: 100%; padding: 4px 0;
+    color: white; font-size: 14px; padding: 4px 0;
 }
