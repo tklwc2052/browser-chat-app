@@ -6,707 +6,506 @@
 <title>The C&C Corp chat</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
-
-<style>
-    .message-content-area {
-        display: flex;
-        flex-direction: column;
-        max-width: 70%;
-        position: relative;
-    }
-    .message-sender-name {
-        font-size: 0.75rem; 
-        color: #888;
-        margin-bottom: 2px;
-        margin-left: 4px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        cursor: pointer;
-        transition: color 0.2s;
-    }
-    .message-sender-name:hover {
-        color: #00ACE6;
-        text-decoration: underline;
-    }
-    .user-message .message-content-area { align-items: flex-end; }
-    .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
-</style>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="dm-sidebar">
-        <div id="dm-header">Contacts</div>
-        <div id="dm-list"></div>
+        <div id="dm-header">C&C Corp</div>
+        <div id="dm-list">
+            <div class="dm-user-card active" onclick="switchChannel(null)">
+                <div class="dm-avatar-wrapper">
+                    <div style="width:40px; height:40px; background:#5865F2; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">#</div>
+                </div>
+                <div class="dm-username">General Chat</div>
+            </div>
+            </div>
+        
+        <div id="username-area">
+            <div id="username-controls">
+                <img id="current-avatar-preview" src="placeholder-avatar.png">
+                <span id="current-username-display">Loading...</span>
+            </div>
+            <button id="open-profile-btn">⚙️</button>
+        </div>
     </div>
 
     <div id="chat-container">
-        <div id="username-area">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
-                <div>
-                   <h3 id="chat-header-label" style="margin:0;">...</h3>
-                   <span id="chat-header-sublabel" style="font-size:0.8em; color:var(--color-muted);">@username</span>
-                </div>
-            </div>
-            <button id="open-profile-btn">Edit Profile</button>
+        <div id="messages">
+            <div class="motd-message">Welcome to the chat!</div>
         </div>
-        
-        <div id="messages"></div>
-        <button id="scroll-down-btn">↓ New Messages</button>
-        <div id="typing-indicator"></div>
 
         <div id="message-input-area">
             <div id="reply-bar" style="display:none;">
-                <span>Replying to <b id="reply-target-name">User</b></span>
-                <button id="cancel-reply-btn">X</button>
+                <span id="replying-to-text">Replying...</span>
+                <button id="cancel-reply-btn">x</button>
             </div>
             <div id="image-preview-area" style="display:none;">
-                <img id="image-preview" src="" alt="Image Preview">
+                <img id="image-preview" src="">
                 <button id="remove-image-btn">X</button>
             </div>
             <div id="input-row">
-                <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
-                <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
-                <button id="file-upload-btn" title="Upload Image">📁</button>
-                <button id="send-button">Send</button>
+                <button id="file-upload-btn">➕</button>
+                <input type="file" id="file-input" accept="image/*" style="display: none;">
+                <input type="text" id="message-input" placeholder="Message #general" autocomplete="off">
+                <button id="send-button">➤</button>
             </div>
         </div>
     </div>
-    
+
     <div id="right-panel">
         <div class="panel-top-group">
-            <div>
-                <h4 class="panel-title">other stuff</h4>
-                <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-            </div>
-            <div>
-                <h4 class="panel-title">voice chat</h4>
-                <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <div style="display: flex; gap: 5px;">
-                    <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
-                    <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
-                </div>
-                <ul id="vc-user-list"></ul>
-                <div id="audio-container"></div>
-            </div>
+            <div class="panel-title">Voice Chat</div>
+            <button id="vc-btn-join" class="panel-btn">Join Voice</button>
+            <ul id="vc-user-list"></ul>
         </div>
         <div class="panel-bottom-group">
-            <h4 class="panel-title">Browser</h4>
-            <button id="btn-cloak-launcher" class="panel-btn">Launch New Tab</button>
-            <div style="margin-bottom: 15px;"></div> 
-            <h4 class="panel-title">Appearance</h4>
-            <div class="settings-panel">
-                <ul class="settings-list">
-                    <li class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size:0.9em; color:#aaa;">Custom BG</span>
-                            <div style="display: flex; gap: 5px;">
-                                <button id="btn-bg-upload" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px;">Upload</button>
-                                <button id="btn-bg-reset" class="panel-btn" style="font-size: 0.8em; margin: 0; width: auto; padding: 4px 8px; background-color: var(--color-vc-red);">Reset</button>
-                            </div>
-                        </div>
-                        <input type="file" id="bg-upload-input" accept="image/*" style="display: none;">
-                    </li>
-                </ul>
-            </div>
-            <div class="dropdown-wrapper">
-                <div class="dropdown-header" id="notif-dropdown-header">
-                    <span>Notifications</span>
-                    <span class="dropdown-arrow">▼</span>
-                </div>
-                <div class="dropdown-content" id="notif-dropdown-content">
-                    <ul class="settings-list">
-                        <li class="setting-item"><span>Main Messages</span><input type="checkbox" id="setting-main" checked></li>
-                        <li class="setting-item"><span>Private Messages</span><input type="checkbox" id="setting-pm" checked></li>
-                        <li class="setting-item"><span>VC Joins/Leaves</span><input type="checkbox" id="setting-vc" checked></li>
-                        <li class="setting-item"><span>Sound</span><input type="checkbox" id="setting-sound" checked></li>
-                    </ul>
-                </div>
-            </div>
+            <div class="panel-title">Online - <span id="online-count">0</span></div>
+            <div id="online-user-list"></div>
         </div>
+    </div>
+
+</div>
+
+<div id="ctx-menu">
+    <div id="ctx-reply">Reply</div>
+    <div id="ctx-edit">Edit Message</div>
+    <div id="ctx-delete" style="color:#ff4444;">Delete Message</div>
+    <div id="ctx-copy">Copy ID</div>
+</div>
+
+<div id="username-modal" style="display:flex; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:#2f3136; padding:20px; border-radius:8px; text-align:center;">
+        <h3>Enter Username</h3>
+        <input type="text" id="username-input-modal" style="padding:10px; border-radius:4px; border:none;" placeholder="Username">
+        <button id="username-submit-btn" style="padding:10px 20px; background:#5865F2; color:white; border:none; border-radius:4px; margin-left:10px; cursor:pointer;">Join</button>
     </div>
 </div>
 
 <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('mode') === 'popup') {
-        document.getElementById('right-panel').style.display = 'none';
-        document.getElementById('main-wrapper').style.maxWidth = '100%';
-    }
-
     const socket = io();
-    const messagesDiv = document.getElementById('messages');
-    const scrollDownBtn = document.getElementById('scroll-down-btn');
-    const messageInput = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
-    const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
-    const currentAvatarPreview = document.getElementById('current-avatar-preview');
-    const openProfileBtn = document.getElementById('open-profile-btn');
-    const replyBar = document.getElementById('reply-bar');
-    const replyTargetName = document.getElementById('reply-target-name');
-    const cancelReplyBtn = document.getElementById('cancel-reply-btn');
-    const vcBtnJoin = document.getElementById('vc-btn-join');
-    const vcBtnMute = document.getElementById('vc-btn-mute');
-    const vcBtnLeave = document.getElementById('vc-btn-leave'); 
-    const vcUserList = document.getElementById('vc-user-list');
-    const audioContainer = document.getElementById('audio-container');
-    const fileUploadBtn = document.getElementById('file-upload-btn');
-    const hiddenFileInput = document.getElementById('hidden-file-input');
-    const imagePreviewArea = document.getElementById('image-preview-area');
-    const imagePreview = document.getElementById('image-preview');
-    const removeImageBtn = document.getElementById('remove-image-btn');
-    const typingIndicator = document.getElementById('typing-indicator');
-    const dmList = document.getElementById('dm-list');
-    const chatHeaderLabel = document.getElementById('chat-header-label');
-    const chatHeaderSublabel = document.getElementById('chat-header-sublabel');
-    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
-    const settingMain = document.getElementById('setting-main');
-    const settingPM = document.getElementById('setting-pm');
-    const settingVC = document.getElementById('setting-vc');
-    const settingSound = document.getElementById('setting-sound');
-    const btnBgUpload = document.getElementById('btn-bg-upload');
-    const btnBgReset = document.getElementById('btn-bg-reset');
-    const bgUploadInput = document.getElementById('bg-upload-input');
-    const notifHeader = document.getElementById('notif-dropdown-header');
-    const notifContent = document.getElementById('notif-dropdown-content');
-
-    let currentUsername = '';
-    let currentDisplayName = '';
-    let currentAvatar = '';
-    let stagedImage = null; 
-    let typingTimeout = null;
-    const typingUsers = new Set();
-    let currentChatMode = 'global'; 
-    let currentDmTarget = null;
-    let allUsersCache = []; 
-    let unreadCounts = {}; 
-    let lastMessageSender = null; 
-    let currentReplyTo = null;
-    let globalMessagesCache = [];
-    let dmMessagesCache = {}; 
-    const MAX_VISIBLE_MESSAGES = 100;
+    let myUsername = localStorage.getItem('simplechat_username');
+    let currentDMTarget = null; // null = General, string = username
+    let replyToMsg = null;
+    let imageToUpload = null;
+    let peers = {}; // WebRTC Peers
     let localStream = null;
-    let peers = {}; 
-    let isInVC = false;
-    let isMuted = false;
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    openProfileBtn.onclick = () => { window.location.href = '/profile'; };
+    // --- DOM ELEMENTS ---
+    const messagesDiv = document.getElementById('messages');
+    const msgInput = document.getElementById('message-input');
+    const dmListDiv = document.getElementById('dm-list');
+    const onlineListDiv = document.getElementById('online-user-list');
+    const vcListDiv = document.getElementById('vc-user-list');
+    const ctxMenu = document.getElementById('ctx-menu');
+    
+    // --- AUTH ---
+    if(!myUsername) {
+        document.getElementById('username-modal').style.display = 'flex';
+    } else {
+        document.getElementById('username-modal').style.display = 'none';
+        socket.emit('set-username', { username: myUsername });
+    }
 
-    window.onload = () => {
-        const savedUser = localStorage.getItem('simplechat_username');
-        if (savedUser) {
-            socket.emit('set-username', { username: savedUser });
-        } else {
-            const user = prompt("Enter your unique Username (ID):");
-            if (user) {
-                localStorage.setItem('simplechat_username', user);
-                socket.emit('set-username', { username: user });
-            }
+    document.getElementById('username-submit-btn').onclick = () => {
+        const val = document.getElementById('username-input-modal').value.trim();
+        if(val) {
+            myUsername = val;
+            localStorage.setItem('simplechat_username', val);
+            socket.emit('set-username', { username: val });
+            document.getElementById('username-modal').style.display = 'none';
         }
     };
 
+    // --- PROFILE ---
+    document.getElementById('open-profile-btn').onclick = () => {
+        window.location.href = '/profile';
+    };
     socket.on('profile-info', (data) => {
-        currentUsername = data.username;
-        currentDisplayName = data.displayName;
-        currentAvatar = data.avatar;
-        chatHeaderLabel.innerText = currentDisplayName;
-        chatHeaderSublabel.innerText = '@' + currentUsername;
-        currentAvatarPreview.src = currentAvatar;
+        document.getElementById('current-username-display').innerText = data.displayName;
+        document.getElementById('current-avatar-preview').src = data.avatar || 'placeholder-avatar.png';
+        if(data.customBackground) document.body.style.backgroundImage = `url('${data.customBackground}')`;
     });
 
-    function renderSidebar() {
-        dmList.innerHTML = '';
-        const mainChatCard = document.createElement('div');
-        mainChatCard.className = 'dm-user-card';
-        if (currentChatMode === 'global') mainChatCard.classList.add('active');
-        const mainWrapper = document.createElement('div');
-        mainWrapper.className = 'dm-avatar-wrapper';
-        const mainImg = document.createElement('img');
-        mainImg.src = 'placeholder-avatar.png'; 
-        const mainStatus = document.createElement('div');
-        mainStatus.className = 'status-bubble status-online';
-        mainWrapper.appendChild(mainImg);
-        mainWrapper.appendChild(mainStatus);
-        const mainName = document.createElement('div');
-        mainName.className = 'dm-username';
-        mainName.innerText = "Main Chat";
-        mainChatCard.appendChild(mainWrapper);
-        mainChatCard.appendChild(mainName);
-        mainChatCard.onclick = () => switchToGlobal();
-        dmList.appendChild(mainChatCard);
-
-        const sortedUsers = [...allUsersCache].sort((a, b) => {
-            if (a.online === b.online) return a.displayName.localeCompare(b.displayName);
-            return a.online ? -1 : 1;
-        });
-
-        sortedUsers.forEach(u => {
-            if (u.username === currentUsername) return;
-            const card = document.createElement('div');
-            card.className = 'dm-user-card';
-            if (currentChatMode === 'dm' && currentDmTarget === u.username) card.classList.add('active');
-            const wrapper = document.createElement('div');
-            wrapper.className = 'dm-avatar-wrapper';
-            const img = document.createElement('img');
-            img.src = u.avatar || 'placeholder-avatar.png';
-            const statusBubble = document.createElement('div');
-            statusBubble.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
-            const unreadBadge = document.createElement('div');
-            unreadBadge.className = 'unread-badge';
-            if (unreadCounts[u.username] > 0) {
-                unreadBadge.innerText = unreadCounts[u.username];
-                unreadBadge.classList.add('visible');
-            }
-            wrapper.appendChild(img);
-            wrapper.appendChild(statusBubble);
-            wrapper.appendChild(unreadBadge);
-            const name = document.createElement('div');
-            name.className = 'dm-username';
-            name.innerText = u.displayName || u.username; 
-            card.appendChild(wrapper);
-            card.appendChild(name);
-            card.onclick = () => switchToDm(u.username);
-            dmList.appendChild(card);
-        });
-    }
-
-    function switchToDm(targetUser) {
-        currentChatMode = 'dm';
-        currentDmTarget = targetUser;
-        unreadCounts[targetUser] = 0;
-        typingUsers.clear();
-        updateTypingDisplay();
-        renderSidebar();
-        const userObj = allUsersCache.find(u => u.username === targetUser);
-        const display = userObj ? (userObj.displayName || targetUser) : targetUser;
-        chatHeaderLabel.innerText = `Chat with ${display}`;
-        chatHeaderSublabel.innerText = '@' + targetUser;
-
-        messagesDiv.innerHTML = '';
-        lastMessageSender = null; 
-        if (dmMessagesCache[targetUser]) {
-            renderMessageBatch(dmMessagesCache[targetUser]);
-        } else {
-            socket.emit('fetch-dm-history', targetUser);
-        }
-    }
-
-    function switchToGlobal() {
-        currentChatMode = 'global';
-        currentDmTarget = null;
-        typingUsers.clear();
-        updateTypingDisplay();
-        renderSidebar();
-        chatHeaderLabel.innerText = currentDisplayName || '...';
-        chatHeaderSublabel.innerText = currentUsername ? ('@' + currentUsername) : '';
-        messagesDiv.innerHTML = '';
-        lastMessageSender = null; 
-        if (globalMessagesCache.length > 0) {
-            renderMessageBatch(globalMessagesCache);
-        } else {
-            socket.emit('get-history');
-        }
-    }
-
-    let userScrolledUp = false;
-    messagesDiv.addEventListener('scroll', () => {
-        const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 50;
-        if (isAtBottom) {
-            userScrolledUp = false;
-            scrollDownBtn.style.display = 'none'; 
-        } else {
-            userScrolledUp = true;
-        }
-    });
-
-    scrollDownBtn.onclick = () => {
-        forceScrollToBottom();
-        scrollDownBtn.style.display = 'none';
-        userScrolledUp = false;
-    };
-
-    function forceScrollToBottom() {
-        setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 10);
-        setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight + 1000; }, 100);
-    }
-
-    socket.on('sidebar-user-list', (list) => { allUsersCache = list; renderSidebar(); });
-    socket.on('user-status-change', (data) => {
-        const user = allUsersCache.find(u => u.username === data.username);
-        if (user) { 
-            user.online = data.online; 
-            if(data.avatar) user.avatar = data.avatar; 
-            if(data.displayName) user.displayName = data.displayName;
-        } 
-        else { 
-            allUsersCache.push({ 
-                username: data.username, 
-                displayName: data.displayName || data.username,
-                online: data.online, 
-                avatar: data.avatar 
-            }); 
-        }
-        renderSidebar();
-    });
-    
-    socket.on('message-updated', (data) => {
-        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
-        if (targetCache) {
-            const msg = targetCache.find(m => m.id === data.id);
-            if (msg) { msg.text = data.text; msg.isEdited = true; }
-        }
-        const msgEl = document.querySelector(`.message[data-id="${data.id}"]`);
-        if (msgEl) {
-            const textSpan = msgEl.querySelector('.message-text');
-            if (textSpan) {
-                textSpan.innerHTML = parseFormatting(data.text) + ' <span class="edited-tag">(edited)</span>';
-            }
-        }
-    });
-    socket.on('message-deleted', (id) => {
-        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
-        if (targetCache) {
-            const idx = targetCache.findIndex(m => m.id === id);
-            if (idx !== -1) targetCache.splice(idx, 1);
-        }
-        const msgEl = document.querySelector(`.message[data-id="${id}"]`);
-        if (msgEl) msgEl.remove();
-    });
-    socket.on('dm-history', (data) => {
-        dmMessagesCache[data.target] = data.messages;
-        if (currentChatMode === 'dm' && currentDmTarget === data.target) {
-            messagesDiv.innerHTML = '';
-            lastMessageSender = null; 
-            renderMessageBatch(data.messages);
-        }
-    });
-    socket.on('history', (history) => {
-        globalMessagesCache = history;
-        if (currentChatMode === 'global') {
-            messagesDiv.innerHTML = '';
-            lastMessageSender = null;
-            renderMessageBatch(history);
-        }
-    });
-    socket.on('dm-received', (data) => {
-        const partner = (data.from === currentUsername) ? data.to : data.from;
-        if (!dmMessagesCache[partner]) dmMessagesCache[partner] = [];
-        dmMessagesCache[partner].push(data.message);
-
-        if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
-            appendMessageToUI(data.message);
-            if (document.hidden && settingPM.checked) triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image');
-        } else if (data.from !== currentUsername) {
-            if (!unreadCounts[data.from]) unreadCounts[data.from] = 0;
-            unreadCounts[data.from]++;
-            renderSidebar();
-            if (settingPM.checked) {
-                playNotificationSound();
-                if (document.hidden) triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image', true);
-            }
-        }
-    });
-    socket.on('chat-message', (msg) => {
-        globalMessagesCache.push(msg);
-        if (currentChatMode === 'global') appendMessageToUI(msg);
-    });
-    socket.on('motd', (motdText) => {
-        const motdDiv = document.createElement('div');
-        motdDiv.className = 'system-message motd-message';
-        motdDiv.innerHTML = `★ MOTD: ${parseFormatting(motdText)} ★`;
-        messagesDiv.appendChild(motdDiv);
-    });
-
-    function renderMessageBatch(msgs) {
-        msgs.forEach(msg => appendMessageToUI(msg));
-        forceScrollToBottom();
-    }
-
-    function appendMessageToUI(msg) {
-        if (msg.type === 'system') {
-            const div = document.createElement('div');
-            div.className = 'system-message';
-            div.innerText = msg.text;
-            messagesDiv.appendChild(div);
-            lastMessageSender = 'System';
-            if (!userScrolledUp) forceScrollToBottom();
-            return;
-        }
-
-        const isOwn = (msg.sender === currentUsername);
-        const isContinuous = (lastMessageSender === msg.sender) && msg.type !== 'system';
-        lastMessageSender = msg.sender;
-
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${isOwn ? 'user-message' : 'other-message'}`;
-        msgDiv.setAttribute('data-id', msg.id);
-
-        if (!isOwn && !isContinuous) {
-            const avatarImg = document.createElement('img');
-            avatarImg.className = 'message-avatar';
-            avatarImg.src = msg.avatar || 'placeholder-avatar.png';
-            
-            // --- UPDATED: CLICK TO VIEW PROFILE (EXPLICIT VIEW MODE) ---
-            avatarImg.style.cursor = 'pointer';
-            avatarImg.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
-            
-            msgDiv.appendChild(avatarImg);
-        } else if (!isOwn && isContinuous) {
-            const spacer = document.createElement('div');
-            spacer.className = 'message-avatar-spacer';
-            msgDiv.appendChild(spacer);
-        }
-
-        const contentArea = document.createElement('div');
-        contentArea.className = 'message-content-area';
-
-        if (!isContinuous) {
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'message-sender-name';
-            nameDiv.innerText = msg.senderDisplayName || msg.sender; 
-            
-            // --- UPDATED: CLICK TO VIEW PROFILE (EXPLICIT VIEW MODE) ---
-            nameDiv.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
-
-            contentArea.appendChild(nameDiv);
-        }
-
-        const bubble = document.createElement('div');
-        bubble.className = 'bubble-content';
+    // --- CHANNELS / DMS ---
+    window.switchChannel = (targetUser) => {
+        currentDMTarget = targetUser;
         
-        if (msg.replyTo) {
-            const replyPreview = document.createElement('div');
-            replyPreview.className = 'reply-preview';
-            replyPreview.innerHTML = `<small>Replying to <b>${msg.replyTo.sender}</b>:</small><br><span style="color:#ccc;">${msg.replyTo.text.substring(0,30)}${msg.replyTo.text.length>30?'...':''}</span>`;
-            bubble.appendChild(replyPreview);
-        }
-
-        if (msg.image) {
-            const imgEl = document.createElement('img');
-            imgEl.src = msg.image;
-            imgEl.className = 'message-image';
-            imgEl.onclick = () => window.open(msg.image, '_blank');
-            bubble.appendChild(imgEl);
-        }
-
-        if (msg.text) {
-            const textSpan = document.createElement('span');
-            textSpan.className = 'message-text';
-            textSpan.innerHTML = parseFormatting(msg.text);
-            if (msg.isEdited) textSpan.innerHTML += ' <span class="edited-tag">(edited)</span>';
-            bubble.appendChild(textSpan);
-        }
-
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'timestamp';
-        timeSpan.innerText = msg.time;
-        bubble.appendChild(timeSpan);
-
-        contentArea.appendChild(bubble);
-        msgDiv.appendChild(contentArea);
+        // Update UI visuals
+        document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
         
-        msgDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showContextMenu(e.clientX, e.clientY, msg, isOwn);
-        });
-
-        messagesDiv.appendChild(msgDiv);
-        if (!userScrolledUp) forceScrollToBottom();
-
-        if (!isOwn && document.hidden && settingMain.checked) {
-             playNotificationSound();
-             triggerNotification(msg.senderDisplayName || msg.sender, msg.text || 'Sent an image');
+        if(targetUser) {
+            // Find user card and make active
+            // (Simple selector logic for now)
+            msgInput.placeholder = `Message @${targetUser}`;
+            msgInput.style.backgroundColor = '#3c3847'; // Slight purple tint
+        } else {
+            // General
+            document.querySelector('.dm-user-card').classList.add('active'); // First one is general
+            msgInput.placeholder = `Message #general`;
+            msgInput.style.backgroundColor = '';
         }
-    }
-    
-    function parseFormatting(text) {
-        if(!text) return '';
-        let sanitized = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        sanitized = sanitized.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); 
-        sanitized = sanitized.replace(/\*(.*?)\*/g, '<i>$1</i>');    
-        sanitized = sanitized.replace(/__(.*?)__/g, '<u>$1</u>');     
-        sanitized = sanitized.replace(/~~(.*?)~~/g, '<strike>$1</strike>');
-        sanitized = sanitized.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:lightblue;text-decoration:underline;">$1</a>');
-        return sanitized;
-    }
-
-    fileUploadBtn.onclick = () => hiddenFileInput.click();
-    hiddenFileInput.onchange = () => {
-        const file = hiddenFileInput.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                stagedImage = e.target.result;
-                imagePreview.src = stagedImage;
-                imagePreviewArea.style.display = 'flex';
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-    removeImageBtn.onclick = () => {
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = ''; 
+        
+        // Note: Realistically we should filter messagesDiv here, but for now we just change sending behavior
     };
 
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-        else { handleTyping(); }
-    });
-    sendButton.onclick = sendMessage;
-
+    // --- MESSAGING ---
     function sendMessage() {
-        const text = messageInput.value.trim();
-        if (!text && !stagedImage) return;
+        const text = msgInput.value.trim();
+        if ((!text && !imageToUpload)) return;
 
-        const payload = { 
-            text: text, 
-            image: stagedImage, 
-            replyTo: currentReplyTo 
+        const payload = {
+            text: text,
+            image: imageToUpload,
+            replyTo: replyToMsg,
+            target: currentDMTarget // Send this to server
         };
 
         socket.emit('chat-message', payload);
+        msgInput.value = '';
+        cancelReply();
+        cancelImage();
+    }
+
+    document.getElementById('send-button').onclick = sendMessage;
+    msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+    socket.on('chat-message', (msg) => {
+        // Filter logic:
+        // If it's a PM: Only show if I am sender OR I am receiver
+        // If I am in General: Show General msgs. Hide PMs? 
+        // For simplicity in this version: Show everything but style PMs differently
         
-        messageInput.value = '';
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = '';
+        appendMessage(msg);
+    });
+
+    function appendMessage(msg) {
+        const div = document.createElement('div');
+        div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
+        div.id = `msg-${msg.id}`;
         
-        if (currentReplyTo) {
-            currentReplyTo = null;
-            replyBar.style.display = 'none';
+        if (msg.type === 'pm') div.style.borderLeft = "2px solid #9b59b6"; // Visual indicator for PMs
+
+        // Avatar
+        const avatarImg = document.createElement('img');
+        avatarImg.className = 'message-avatar';
+        avatarImg.src = msg.avatar || 'placeholder-avatar.png';
+        
+        // Content
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'bubble-content';
+        
+        // Name
+        const nameDiv = document.createElement('div');
+        nameDiv.style.fontSize = '0.75em';
+        nameDiv.style.fontWeight = 'bold';
+        nameDiv.style.marginBottom = '2px';
+        nameDiv.style.color = msg.type === 'pm' ? '#d09ae6' : '#888';
+        nameDiv.innerText = msg.senderDisplayName + (msg.type === 'pm' ? ' (Private)' : '');
+        
+        // Reply Preview
+        if (msg.replyTo) {
+            const replyDiv = document.createElement('div');
+            replyDiv.className = 'reply-preview';
+            replyDiv.innerText = `Replying to: ${msg.replyTo.text.substring(0, 30)}...`;
+            contentDiv.appendChild(replyDiv);
         }
-    }
 
-    function handleTyping() {
-        if (typingTimeout) clearTimeout(typingTimeout);
-        socket.emit('typing', currentChatMode === 'dm' ? currentDmTarget : null);
-        typingTimeout = setTimeout(() => socket.emit('stop-typing'), 2000);
-    }
+        // Image
+        if (msg.image) {
+            const img = document.createElement('img');
+            img.src = msg.image;
+            img.className = 'message-image';
+            img.onclick = () => window.open(msg.image, '_blank');
+            contentDiv.appendChild(img);
+        }
 
-    socket.on('typing', (username) => {
-        typingUsers.add(username);
-        updateTypingDisplay();
-    });
-    socket.on('stop-typing', (username) => {
-        typingUsers.delete(username);
-        updateTypingDisplay();
-    });
+        // Text
+        const textSpan = document.createElement('div');
+        textSpan.className = 'msg-text';
+        textSpan.innerText = msg.text;
+        
+        // Edited Tag
+        if (msg.isEdited) {
+            const editTag = document.createElement('span');
+            editTag.style.fontSize = '0.7em';
+            editTag.style.color = '#aaa';
+            editTag.innerText = ' (edited)';
+            textSpan.appendChild(editTag);
+        }
 
-    function updateTypingDisplay() {
-        if (typingUsers.size > 0) {
-            const names = Array.from(typingUsers).join(', ');
-            typingIndicator.innerText = `${names} is typing...`;
-            typingIndicator.style.opacity = 1;
+        contentDiv.appendChild(nameDiv);
+        contentDiv.appendChild(textSpan);
+        
+        if (msg.sender === myUsername) {
+            div.appendChild(contentDiv);
+            div.appendChild(avatarImg);
         } else {
-            typingIndicator.style.opacity = 0;
+            div.appendChild(avatarImg);
+            div.appendChild(contentDiv);
         }
+
+        // Context Menu Event
+        div.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e, msg);
+        });
+
+        messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
-    
-    const ctxMenu = document.createElement('div');
-    ctxMenu.id = 'ctx-menu';
-    document.body.appendChild(ctxMenu);
-    
-    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
-    
-    function showContextMenu(x, y, msg, isOwn) {
+
+    // --- CONTEXT MENU (EDIT / DELETE) ---
+    let ctxTargetMsg = null;
+    function showContextMenu(e, msg) {
+        ctxTargetMsg = msg;
         ctxMenu.style.display = 'block';
-        ctxMenu.style.left = x + 'px';
-        ctxMenu.style.top = y + 'px';
-        ctxMenu.innerHTML = '';
+        ctxMenu.style.left = `${e.pageX}px`;
+        ctxMenu.style.top = `${e.pageY}px`;
         
-        const replyOption = document.createElement('div');
-        replyOption.innerText = 'Reply';
-        replyOption.onclick = () => {
-            currentReplyTo = msg;
-            replyBar.style.display = 'flex';
-            replyTargetName.innerText = msg.senderDisplayName || msg.sender; 
-            messageInput.focus();
-        };
-        ctxMenu.appendChild(replyOption);
+        // Only show edit/delete if it's my message
+        const isMine = msg.sender === myUsername;
+        document.getElementById('ctx-edit').style.display = isMine ? 'block' : 'none';
+        document.getElementById('ctx-delete').style.display = isMine ? 'block' : 'none';
+    }
 
-        if (isOwn) {
-            const editOption = document.createElement('div');
-            editOption.innerText = 'Edit';
-            editOption.onclick = () => {
-                const newText = prompt("Edit your message:", msg.text);
-                if (newText !== null && newText !== msg.text) {
-                    socket.emit('edit-message', { id: msg.id, newText });
-                }
-            };
-            ctxMenu.appendChild(editOption);
+    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+
+    document.getElementById('ctx-delete').onclick = () => {
+        if(ctxTargetMsg) socket.emit('delete-message', ctxTargetMsg.id);
+    };
+
+    document.getElementById('ctx-edit').onclick = () => {
+        if(ctxTargetMsg) {
+            const newText = prompt("Edit message:", ctxTargetMsg.text);
+            if(newText !== null) socket.emit('edit-message', { id: ctxTargetMsg.id, newText });
+        }
+    };
+    
+    document.getElementById('ctx-reply').onclick = () => {
+        if(ctxTargetMsg) {
+            replyToMsg = ctxTargetMsg;
+            document.getElementById('reply-bar').style.display = 'flex';
+            document.getElementById('replying-to-text').innerText = `Replying to ${ctxTargetMsg.senderDisplayName}`;
+            msgInput.focus();
+        }
+    };
+
+    socket.on('message-deleted', (id) => {
+        const el = document.getElementById(`msg-${id}`);
+        if(el) el.remove();
+    });
+
+    socket.on('message-edited', ({ id, text }) => {
+        const el = document.getElementById(`msg-${id}`);
+        if(el) {
+            const textEl = el.querySelector('.msg-text');
+            if(textEl) {
+                textEl.innerText = text;
+                const tag = document.createElement('span');
+                tag.style.fontSize='0.7em'; tag.style.color='#aaa'; tag.innerText=' (edited)';
+                textEl.appendChild(tag);
+            }
+        }
+    });
+
+    // --- SIDEBAR LIST ---
+    socket.on('sidebar-user-list', (list) => {
+        // Clear except General
+        const generalBtn = dmListDiv.firstElementChild;
+        dmListDiv.innerHTML = '';
+        dmListDiv.appendChild(generalBtn);
+        
+        list.forEach(u => {
+            if(u.username === myUsername) return; // Don't show self
             
-            const deleteOption = document.createElement('div');
-            deleteOption.innerText = 'Delete';
-            deleteOption.style.color = 'salmon';
-            deleteOption.onclick = () => {
-                if(confirm("Delete this message?")) socket.emit('delete-message', msg.id);
-            };
-            ctxMenu.appendChild(deleteOption);
-        }
-    }
+            const div = document.createElement('div');
+            div.className = 'dm-user-card';
+            div.onclick = () => switchChannel(u.username);
+            
+            const avWrap = document.createElement('div');
+            avWrap.className = 'dm-avatar-wrapper';
+            
+            const img = document.createElement('img');
+            img.src = u.avatar || 'placeholder-avatar.png';
+            
+            const status = document.createElement('div');
+            status.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
+            
+            avWrap.appendChild(img);
+            avWrap.appendChild(status);
+            
+            const name = document.createElement('div');
+            name.className = 'dm-username';
+            name.innerText = u.displayName;
+            
+            div.appendChild(avWrap);
+            div.appendChild(name);
+            dmListDiv.appendChild(div);
+        });
+    });
+
+    // --- FILE UPLOAD ---
+    const fileBtn = document.getElementById('file-upload-btn');
+    const fileInput = document.getElementById('file-input');
+    fileBtn.onclick = () => fileInput.click();
     
-    cancelReplyBtn.onclick = () => {
-        currentReplyTo = null;
-        replyBar.style.display = 'none';
+    fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if(!file) return;
+        
+        // Optimistic Preview
+        document.getElementById('image-preview-area').style.display = 'flex';
+        document.getElementById('image-preview').src = 'loading.gif'; // Or spinner
+
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            if(data.url) {
+                imageToUpload = data.url;
+                document.getElementById('image-preview').src = data.url;
+            }
+        } catch(e) { console.error(e); }
     };
 
-    const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.m4a');
-    function playNotificationSound() {
-        if (settingSound.checked) notifSound.play().catch(e=>{});
+    function cancelImage() {
+        imageToUpload = null;
+        document.getElementById('image-preview-area').style.display = 'none';
+        fileInput.value = '';
     }
-    function triggerNotification(title, body, focus = false) {
-        if (Notification.permission === 'granted') {
-            const n = new Notification(title, { body, icon: 'placeholder-avatar.png' });
-            if (focus) n.onclick = () => window.focus();
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission();
+    document.getElementById('remove-image-btn').onclick = cancelImage;
+    document.getElementById('cancel-reply-btn').onclick = cancelReply;
+    function cancelReply() {
+        replyToMsg = null;
+        document.getElementById('reply-bar').style.display = 'none';
+    }
+
+    // --- VOICE CHAT (RAW WEBRTC) ---
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    let isVcJoined = false;
+
+    document.getElementById('vc-btn-join').onclick = async () => {
+        if(isVcJoined) {
+            leaveVoice();
+        } else {
+            await joinVoice();
+        }
+    };
+
+    async function joinVoice() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            socket.emit('join-vc');
+            isVcJoined = true;
+            document.getElementById('vc-btn-join').innerText = "Leave Voice";
+            document.getElementById('vc-btn-join').style.backgroundColor = '#dc3545';
+        } catch(e) {
+            alert("Could not access microphone.");
         }
     }
-    
-    notifHeader.onclick = () => {
-        notifContent.classList.toggle('show');
-    };
-    
-    btnCloakLauncher.onclick = () => {
-        const win = window.open('about:blank', '_blank');
-        if (win) {
-            win.document.body.style.margin = '0';
-            win.document.body.style.height = '100vh';
-            const iframe = win.document.createElement('iframe');
-            iframe.style.border = 'none';
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.margin = '0';
-            iframe.src = window.location.href + '?mode=popup';
-            win.document.body.appendChild(iframe);
+
+    function leaveVoice() {
+        socket.emit('leave-vc');
+        if(localStream) localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+        isVcJoined = false;
+        document.getElementById('vc-btn-join').innerText = "Join Voice";
+        document.getElementById('vc-btn-join').style.backgroundColor = '#23a559';
+        // Close all peers
+        Object.values(peers).forEach(p => p.close());
+        peers = {};
+    }
+
+    // When someone else joins, we call them
+    socket.on('vc-user-joined', async (userId) => {
+        if(!isVcJoined) return;
+        createPeer(userId, true);
+    });
+
+    socket.on('vc-user-left', (userId) => {
+        if(peers[userId]) {
+            peers[userId].close();
+            delete peers[userId];
         }
-    };
-    
-    launchCustomWindowBtn.onclick = () => {
-        window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600');
-    };
-    
-    btnBgUpload.onclick = () => bgUploadInput.click();
-    bgUploadInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.body.style.backgroundImage = `url('${ev.target.result}')`;
-                localStorage.setItem('custom_bg', ev.target.result);
-            };
-            reader.readAsDataURL(file);
+    });
+
+    socket.on('signal', async ({ sender, signal }) => {
+        if(!isVcJoined) return;
+        if(!peers[sender]) createPeer(sender, false);
+        try {
+            await peers[sender].setRemoteDescription(new RTCSessionDescription(signal));
+            if(signal.type === 'offer') {
+                const answer = await peers[sender].createAnswer();
+                await peers[sender].setLocalDescription(answer);
+                socket.emit('signal', { target: sender, signal: peers[sender].localDescription });
+            }
+        } catch(e) { console.error(e); }
+    });
+
+    socket.on('vc-user-list-update', (list) => {
+        vcListDiv.innerHTML = '';
+        list.forEach(u => {
+            const li = document.createElement('li');
+            li.innerText = u.displayName;
+            vcListDiv.appendChild(li);
+        });
+    });
+
+    function createPeer(targetId, initiator) {
+        const pc = new RTCPeerConnection(rtcConfig);
+        peers[targetId] = pc;
+
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('signal', { target: targetId, signal: { type: 'candidate', candidate: event.candidate } });
+            }
+        };
+        
+        // Handle incoming audio
+        pc.ontrack = (event) => {
+            const audio = new Audio();
+            audio.srcObject = event.streams[0];
+            audio.play();
+        };
+
+        if (initiator) {
+            pc.createOffer().then(offer => {
+                pc.setLocalDescription(offer);
+                socket.emit('signal', { target: targetId, signal: offer });
+            });
         }
-    };
-    btnBgReset.onclick = () => {
-        document.body.style.backgroundImage = 'none';
-        localStorage.removeItem('custom_bg');
-    };
-    const savedBg = localStorage.getItem('custom_bg');
-    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+    }
+
+    // Re-handling candidates specifically
+    // Note: The simple signal handler above tries to handle everything. 
+    // Ideally, we split 'offer'/'answer' from 'candidate'.
+    // Refined Signal Handler:
+    socket.off('signal'); // Remove previous to avoid dupes
+    socket.on('signal', async ({ sender, signal }) => {
+        if(!isVcJoined) return;
+        
+        if(!peers[sender]) createPeer(sender, false);
+        const pc = peers[sender];
+
+        if(signal.candidate) {
+             try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
+        } else {
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                if(signal.type === 'offer') {
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    socket.emit('signal', { target: sender, signal: pc.localDescription });
+                }
+            } catch(e) { console.error(e); }
+        }
+    });
+
 </script>
 </body>
 </html>
