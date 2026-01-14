@@ -6,383 +6,614 @@
 <title>The C&C Corp chat</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
+
+<style>
+    .message-content-area {
+        display: flex;
+        flex-direction: column;
+        max-width: 70%;
+        position: relative;
+    }
+    .message-sender-name {
+        font-size: 0.75rem; 
+        color: #888;
+        margin-bottom: 2px;
+        margin-left: 4px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .message-sender-name:hover {
+        color: #00ACE6;
+        text-decoration: underline;
+    }
+    .user-message .message-content-area { align-items: flex-end; }
+    .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
+</style>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="dm-sidebar">
-        <div id="dm-header">C&C Corp</div>
-        <div id="dm-list">
-            <div class="dm-user-card active" onclick="switchChannel(null)">
-                <div class="dm-avatar-wrapper">
-                    <div style="width:40px; height:40px; background:#5865F2; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white;">#</div>
-                </div>
-                <div class="dm-username">General Chat</div>
-            </div>
-        </div>
-        
-        <div id="username-area">
-            <div id="username-controls">
-                <img id="current-avatar-preview" src="placeholder-avatar.png">
-                <span id="current-username-display">Loading...</span>
-            </div>
-            <button id="open-profile-btn">⚙️</button>
-        </div>
+        <div id="dm-header">Contacts</div>
+        <div id="dm-list"></div>
     </div>
 
     <div id="chat-container">
-        <div id="messages"></div>
+        
+        <div id="chat-header">
+            <button id="toggle-sidebar-btn" class="header-btn">☰</button>
+            <div id="header-title">The C&C Corp chat</div>
+            <div id="connection-status">Connecting...</div>
+            <button id="profile-btn" class="header-btn" style="margin-left: auto;">Profile</button>
+            <button id="settings-btn" class="header-btn">⚙️</button>
+        </div>
 
-        <div id="message-input-area">
-            <div id="reply-bar" style="display:none;">
-                <span id="replying-to-text">Replying...</span>
-                <button id="cancel-reply-btn">x</button>
-            </div>
-            <div id="image-preview-area" style="display:none;">
-                <img id="image-preview" src="">
-                <button id="remove-image-btn">X</button>
-            </div>
-            <div id="input-row">
-                <button id="file-upload-btn">➕</button>
-                <input type="file" id="file-input" accept="image/*" style="display: none;">
-                <input type="text" id="message-input" placeholder="Message #general" autocomplete="off">
-                <button id="send-button">➤</button>
-            </div>
+        <div id="chat-box"></div>
+        
+        <div id="reply-bar">
+            <span>Replying to <b id="reply-target-name">...</b></span>
+            <button id="cancel-reply">✕</button>
+        </div>
+
+        <div id="image-preview-area">
+            <img id="image-preview-img" src="" alt="Preview">
+            <button id="remove-image-btn">✕</button>
+        </div>
+
+        <div id="input-area">
+            <button id="upload-btn" title="Upload Image">+</button>
+            <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+            
+            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+            <button id="send-btn">Send</button>
         </div>
     </div>
 
-    <div id="right-panel">
-        <div class="panel-top-group">
-            <div class="panel-title">Voice Chat</div>
-            <button id="vc-btn-join" class="panel-btn">Join Voice</button>
-            <ul id="vc-user-list"></ul>
+    <div id="user-sidebar">
+        <div class="sidebar-section-title">Voice Chat</div>
+        <div id="vc-controls">
+            <button id="join-vc-btn" class="vc-btn-join">Join Voice</button>
+            <button id="leave-vc-btn" class="vc-btn-leave" style="display:none;">Leave Voice</button>
         </div>
-        <div class="panel-bottom-group">
-            <div class="panel-title">Online</div>
-            <div id="online-user-list"></div>
-        </div>
+        <div id="vc-user-list"></div>
+
+        <div class="sidebar-section-title">Online Users</div>
+        <ul id="user-list"></ul>
     </div>
+
 </div>
 
-<div id="ctx-menu">
-    <div id="ctx-reply">Reply</div>
-    <div id="ctx-edit">Edit Message</div>
-    <div id="ctx-delete" style="color:#ff4444;">Delete Message</div>
-</div>
-
-<div id="username-modal" style="display:flex; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
-    <div style="background:#2f3136; padding:20px; border-radius:8px; text-align:center;">
-        <h3>Enter Username</h3>
-        <input type="text" id="username-input-modal" style="padding:10px;" placeholder="Username">
-        <button id="username-submit-btn" style="padding:10px 20px;">Join</button>
+<div id="settings-modal" class="modal">
+    <div class="modal-content">
+        <span id="close-settings" class="close">&times;</span>
+        <h2>Settings</h2>
+        <div class="setting-item">
+            <button id="btn-cloak-launcher" class="d-btn d-btn-secondary">Launch in Cloaked Tab</button>
+            <p style="font-size: 0.8rem; color: #aaa;">Opens chat in about:blank to hide from history.</p>
+        </div>
+        <div class="setting-item">
+            <button id="btn-custom-window" class="d-btn d-btn-secondary">Popout Chat Window</button>
+        </div>
+        <div class="setting-item">
+            <label>Custom Chat Background</label><br>
+            <button id="btn-bg-upload" class="d-btn d-btn-primary">Upload Background</button>
+            <button id="btn-bg-reset" class="d-btn d-btn-secondary">Reset</button>
+            <input type="file" id="bg-upload-input" accept="image/*" style="display:none">
+        </div>
     </div>
 </div>
 
 <script>
     const socket = io();
-    let myUsername = localStorage.getItem('simplechat_username');
-    let currentDMTarget = null;
-    let replyToMsg = null;
-    let imageToUpload = null;
     
-    // Voice Chat State
-    let localStream = null;
-    let peers = {}; 
-    let isVcJoined = false;
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    // Elements
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const userList = document.getElementById('user-list');
+    const connectionStatus = document.getElementById('connection-status');
+    const headerTitle = document.getElementById('header-title');
     
-    // --- SETUP ---
-    const messagesDiv = document.getElementById('messages');
-    const msgInput = document.getElementById('message-input');
-    const ctxMenu = document.getElementById('ctx-menu');
-    
-    if(!myUsername) document.getElementById('username-modal').style.display = 'flex';
-    else socket.emit('set-username', { username: myUsername });
+    // Uploads
+    const uploadBtn = document.getElementById('upload-btn');
+    const hiddenFileInput = document.getElementById('hidden-file-input');
+    const imagePreviewArea = document.getElementById('image-preview-area');
+    const imagePreviewImg = document.getElementById('image-preview-img');
+    const removeImageBtn = document.getElementById('remove-image-btn');
 
-    document.getElementById('username-submit-btn').onclick = () => {
-        const val = document.getElementById('username-input-modal').value.trim();
-        if(val) {
-            myUsername = val;
-            localStorage.setItem('simplechat_username', val);
-            socket.emit('set-username', { username: val });
-            document.getElementById('username-modal').style.display = 'none';
-        }
-    };
+    // Reply
+    const replyBar = document.getElementById('reply-bar');
+    const replyTargetName = document.getElementById('reply-target-name');
+    const cancelReplyBtn = document.getElementById('cancel-reply');
 
-    document.getElementById('open-profile-btn').onclick = () => window.location.href = '/profile';
+    // DM & Sidebar
+    const dmSidebar = document.getElementById('dm-sidebar');
+    const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+    const dmListEl = document.getElementById('dm-list');
 
-    socket.on('profile-info', (data) => {
-        document.getElementById('current-username-display').innerText = data.displayName || data.username;
-        document.getElementById('current-avatar-preview').src = data.avatar || 'placeholder-avatar.png';
-        if(data.customBackground) document.body.style.backgroundImage = `url('${data.customBackground}')`;
+    // VC
+    const joinVcBtn = document.getElementById('join-vc-btn');
+    const leaveVcBtn = document.getElementById('leave-vc-btn');
+    const vcUserList = document.getElementById('vc-user-list');
+
+    // Settings
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettings = document.getElementById('close-settings');
+    const btnCloakLauncher = document.getElementById('btn-cloak-launcher');
+    const launchCustomWindowBtn = document.getElementById('btn-custom-window');
+    const btnBgUpload = document.getElementById('btn-bg-upload');
+    const btnBgReset = document.getElementById('btn-bg-reset');
+    const bgUploadInput = document.getElementById('bg-upload-input');
+    const profileBtn = document.getElementById('profile-btn');
+
+    // State
+    let currentUsername = "";
+    let stagedImage = null; // URL or Base64 of image to send
+    let currentReplyTo = null; // Object of message being replied to
+    let currentChatMode = 'global'; // 'global' or 'dm'
+    let currentDmTarget = null;
+    let dmMessagesCache = {}; // { username: [msgObjects] }
+    let unreadCounts = {}; // { username: count }
+
+    // Init from LocalStorage
+    const savedBg = localStorage.getItem('custom_bg');
+    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+
+    // --- AUTH ---
+    const username = prompt("Enter your username:") || "Guest" + Math.floor(Math.random() * 1000);
+    currentUsername = username;
+    socket.emit('join', username);
+
+    // --- SOCKET EVENTS ---
+
+    socket.on('connect', () => {
+        connectionStatus.innerText = "Online";
+        connectionStatus.style.color = "#43b581";
     });
 
-    // --- CHANNEL SWITCHING ---
-    window.switchChannel = (target) => {
-        currentDMTarget = target;
-        document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
-        
-        // Reset message view (simple clear for now to avoid confusion)
-        messagesDiv.innerHTML = '';
-        socket.emit('request-history-refresh'); // Optional: In a full app we'd reload relevant history
+    socket.on('disconnect', () => {
+        connectionStatus.innerText = "Offline";
+        connectionStatus.style.color = "#f04747";
+    });
 
-        if(target) {
-            msgInput.placeholder = `Message @${target}`;
-            msgInput.style.backgroundColor = '#3c3847';
+    socket.on('server-build-info', (data) => {
+        const savedId = localStorage.getItem('build_id');
+        if (savedId && savedId != data.id) {
+            // Update detected
+            const sysMsg = document.createElement('div');
+            sysMsg.className = 'system-message';
+            sysMsg.innerHTML = `<span>🚀 UPDATE: ${data.desc}. Refreshing...</span>`;
+            chatBox.appendChild(sysMsg);
+            localStorage.setItem('build_id', data.id);
+            setTimeout(() => window.location.reload(), 3000);
         } else {
-            document.querySelector('.dm-user-card').classList.add('active'); 
-            msgInput.placeholder = "Message #general";
-            msgInput.style.backgroundColor = '';
-            // Reload general history locally if stored, or just wait for new msgs
-            // For this simple version, we just let new messages come in
-            const motd = document.createElement('div');
-            motd.className = 'motd-message'; motd.innerText = "Switched to General"; messagesDiv.appendChild(motd);
+            localStorage.setItem('build_id', data.id);
         }
-    };
-
-    socket.on('sidebar-user-list', (list) => {
-        const dmList = document.getElementById('dm-list');
-        while(dmList.children.length > 1) dmList.removeChild(dmList.lastChild);
-        
-        list.forEach(u => {
-            if(u.username === myUsername) return;
-            const div = document.createElement('div');
-            div.className = 'dm-user-card';
-            div.innerHTML = `<div class="dm-avatar-wrapper"><img src="${u.avatar || 'placeholder-avatar.png'}"><div class="status-bubble ${u.online?'status-online':'status-offline'}"></div></div><div class="dm-username">${u.displayName}</div>`;
-            div.onclick = (e) => {
-                // simple visual toggle
-                document.querySelectorAll('.dm-user-card').forEach(x => x.classList.remove('active'));
-                div.classList.add('active');
-                switchChannel(u.username);
-            };
-            dmList.appendChild(div);
-        });
     });
 
-    // --- MESSAGING ---
-    function sendMessage() {
-        const text = msgInput.value.trim();
-        if ((!text && !imageToUpload)) return;
-        
-        socket.emit('chat-message', {
-            text, image: imageToUpload, replyTo: replyToMsg, target: currentDMTarget
-        });
-        
-        msgInput.value = '';
-        imageToUpload = null; replyToMsg = null;
-        document.getElementById('image-preview-area').style.display = 'none';
-        document.getElementById('reply-bar').style.display = 'none';
-    }
-    
-    document.getElementById('send-button').onclick = sendMessage;
-    msgInput.addEventListener('keypress', (e) => { if(e.key==='Enter') sendMessage(); });
+    socket.on('load-history', (messages) => {
+        chatBox.innerHTML = '';
+        messages.forEach(msg => appendMessage(msg));
+        chatBox.scrollTop = chatBox.scrollHeight;
+    });
 
     socket.on('chat-message', (msg) => {
-        // --- FILTER LOGIC ---
-        // If we are in General, only show General messages
-        if (currentDMTarget === null) {
-            if (msg.type === 'pm') return; // Hide PMs from General view
-        } 
-        // If we are in a DM, only show DMs with THAT person
-        else {
-            if (msg.type !== 'pm') return; // Hide General messages from DM view
-            // Only show if it involves me and the target
-            const isWithTarget = (msg.sender === currentDMTarget) || (msg.sender === myUsername && currentDMTarget);
-            if (!isWithTarget) return; 
-        }
-
-        const div = document.createElement('div');
-        div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
-        div.id = `msg-${msg.id}`;
-        if (msg.type === 'pm') div.style.borderLeft = "2px solid #9b59b6"; 
-
-        const contentHtml = `
-            <div class="bubble-content">
-                ${msg.replyTo ? `<div class="reply-preview">Replying to: ${msg.replyTo.text.substring(0,20)}...</div>` : ''}
-                ${msg.image ? `<img src="${msg.image}" class="message-image" onclick="window.open('${msg.image}')">` : ''}
-                <div style="font-size:0.75em; font-weight:bold; margin-bottom:2px; color:${msg.type==='pm'?'#d09ae6':'#888'}">${msg.senderDisplayName}</div>
-                <div class="msg-text">${msg.text}${msg.isEdited?' <span style="font-size:0.7em;color:#aaa">(edited)</span>':''}</div>
-            </div>`;
-            
-        const avatarHtml = `<img class="message-avatar" src="${msg.avatar}">`;
-        div.innerHTML = msg.sender === myUsername ? (contentHtml + avatarHtml) : (avatarHtml + contentHtml);
-        
-        div.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            ctxTargetMsg = msg;
-            ctxMenu.style.display = 'block';
-            ctxMenu.style.left = e.pageX + 'px';
-            ctxMenu.style.top = e.pageY + 'px';
-            document.getElementById('ctx-edit').style.display = (msg.sender === myUsername) ? 'block' : 'none';
-            document.getElementById('ctx-delete').style.display = (msg.sender === myUsername) ? 'block' : 'none';
-        });
-
-        messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-
-    // History Loader
-    socket.on('history', (history) => {
-        if(currentDMTarget === null) {
-            history.forEach(msg => {
-                // Only append general messages to history on load
-                if(msg.type !== 'pm') {
-                    // Reuse the append logic by manually calling the listener or extracting it
-                    // For simplicity, we just trigger the event handler logic manually or rely on socket.io
-                    // Copying basic append logic here for startup:
-                    const div = document.createElement('div');
-                    div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
-                    div.id = `msg-${msg.id}`;
-                    div.innerHTML = `<img class="message-avatar" src="${msg.avatar}"><div class="bubble-content"><div style="font-size:0.75em;color:#888;font-weight:bold">${msg.senderDisplayName}</div><div class="msg-text">${msg.text}</div></div>`;
-                    if(msg.sender === myUsername) div.appendChild(div.firstChild); // Swap
-                    messagesDiv.appendChild(div);
-                }
-            });
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-    });
-
-    // --- CONTEXT MENU ACTIONS ---
-    let ctxTargetMsg = null;
-    document.addEventListener('click', () => ctxMenu.style.display = 'none');
-    
-    document.getElementById('ctx-delete').onclick = () => socket.emit('delete-message', ctxTargetMsg.id);
-    document.getElementById('ctx-edit').onclick = () => {
-        const newText = prompt("Edit message:", ctxTargetMsg.text);
-        if(newText) socket.emit('edit-message', { id: ctxTargetMsg.id, newText });
-    };
-    document.getElementById('ctx-reply').onclick = () => {
-        replyToMsg = ctxTargetMsg;
-        document.getElementById('reply-bar').style.display = 'flex';
-        document.getElementById('replying-to-text').innerText = `Replying to ${ctxTargetMsg.senderDisplayName}`;
-    };
-
-    socket.on('message-deleted', (id) => { document.getElementById(`msg-${id}`)?.remove(); });
-    socket.on('message-edited', ({id, text}) => {
-        const el = document.getElementById(`msg-${id}`);
-        if(el) el.querySelector('.msg-text').innerHTML = text + ' <span style="font-size:0.7em;color:#aaa">(edited)</span>';
-    });
-
-    // --- FILE UPLOAD ---
-    const fileIn = document.getElementById('file-input');
-    document.getElementById('file-upload-btn').onclick = () => fileIn.click();
-    fileIn.onchange = async () => {
-        const f = fileIn.files[0];
-        if(!f) return;
-        const form = new FormData(); form.append('file', f);
-        try {
-            const res = await fetch('/upload', { method:'POST', body:form });
-            const d = await res.json();
-            if(d.url) {
-                imageToUpload = d.url;
-                document.getElementById('image-preview-area').style.display = 'flex';
-                document.getElementById('image-preview').src = d.url;
-            }
-        } catch(e) { console.error(e); }
-    };
-    document.getElementById('remove-image-btn').onclick = () => {
-        imageToUpload = null; document.getElementById('image-preview-area').style.display = 'none';
-    };
-    document.getElementById('cancel-reply-btn').onclick = () => {
-        replyToMsg = null; document.getElementById('reply-bar').style.display = 'none';
-    };
-
-    // --- VOICE CHAT (FIXED) ---
-    document.getElementById('vc-btn-join').onclick = () => isVcJoined ? leaveVoice() : joinVoice();
-
-    async function joinVoice() {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            socket.emit('join-vc');
-            isVcJoined = true;
-            document.getElementById('vc-btn-join').innerText = "Leave Voice";
-            document.getElementById('vc-btn-join').style.backgroundColor = '#dc3545';
-        } catch(e) { 
-            console.error(e);
-            alert("Could not access microphone. Ensure site is HTTPS."); 
-        }
-    }
-
-    function leaveVoice() {
-        socket.emit('leave-vc');
-        if(localStream) localStream.getTracks().forEach(t => t.stop());
-        Object.values(peers).forEach(p => p.pc.close()); // Close stored PCs
-        peers = {}; isVcJoined = false;
-        document.getElementById('vc-btn-join').innerText = "Join Voice";
-        document.getElementById('vc-btn-join').style.backgroundColor = '#23a559';
-    }
-
-    socket.on('vc-user-joined', (id) => { if(isVcJoined) createPeer(id, true); });
-    socket.on('vc-user-left', (id) => { if(peers[id]) { peers[id].pc.close(); delete peers[id]; } });
-    
-    // Improved Signal Handler with Queue
-    socket.on('signal', async ({ sender, signal }) => {
-        if(!isVcJoined) return;
-        
-        if(!peers[sender]) createPeer(sender, false);
-        const pObj = peers[sender];
-        const pc = pObj.pc;
-
-        if (signal.candidate) {
-            // Queue candidate if remote description isn't set yet
-            if (pc.remoteDescription) {
-                try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
-            } else {
-                pObj.candidates.push(signal.candidate);
-            }
+        if (currentChatMode === 'global') {
+            appendMessage(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
         } else {
-            // Handle Offer/Answer
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(signal));
-                
-                // Process any queued candidates now that description is set
-                while(pObj.candidates.length) {
-                    await pc.addIceCandidate(new RTCIceCandidate(pObj.candidates.shift()));
-                }
-
-                if (signal.type === 'offer') {
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    socket.emit('signal', { target: sender, signal: pc.localDescription });
-                }
-            } catch(e) { console.error("Signal Error:", e); }
+            // Received global msg while in DM -> Notification?
         }
     });
 
-    socket.on('vc-user-list-update', (list) => {
-        const ul = document.getElementById('vc-user-list');
-        ul.innerHTML = '';
-        list.forEach(u => {
+    socket.on('dm-received', (data) => {
+        const otherUser = (data.from === currentUsername) ? data.to : data.from;
+        
+        // Cache it
+        if (!dmMessagesCache[otherUser]) dmMessagesCache[otherUser] = [];
+        dmMessagesCache[otherUser].push(data.message);
+
+        // Update UI if open
+        if (currentChatMode === 'dm' && currentDmTarget === otherUser) {
+            appendMessage(data.message);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        } else {
+            // Increment unread
+            unreadCounts[otherUser] = (unreadCounts[otherUser] || 0) + 1;
+            renderDmList();
+        }
+    });
+
+    socket.on('update-user-list', (users) => {
+        userList.innerHTML = '';
+        renderDmList(users); // Refresh DM list with online status
+
+        users.forEach(user => {
             const li = document.createElement('li');
-            li.innerText = u.displayName;
-            ul.appendChild(li);
+            li.innerHTML = `
+                <div class="user-item">
+                    <img src="${user.avatar || 'placeholder-avatar.png'}" class="user-avatar">
+                    <div class="user-info">
+                        <div class="user-displayname">${user.displayName}</div>
+                        <div class="user-username">@${user.username}</div>
+                    </div>
+                </div>
+            `;
+            li.onclick = () => openDm(user.username);
+            userList.appendChild(li);
         });
     });
 
-    function createPeer(targetId, initiator) {
-        const pc = new RTCPeerConnection(rtcConfig);
-        // Store PC and a Candidate Queue
-        peers[targetId] = { pc: pc, candidates: [] };
-        
-        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-        
-        pc.onicecandidate = (e) => {
-            if(e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } });
-        };
-        
-        pc.ontrack = (e) => {
-            const audio = new Audio();
-            audio.srcObject = e.streams[0];
-            audio.play();
+    socket.on('clear-chat', () => {
+        chatBox.innerHTML = '';
+        const note = document.createElement('div');
+        note.className = 'system-message';
+        note.innerText = 'Chat history was cleared by an admin.';
+        chatBox.appendChild(note);
+    });
+
+    socket.on('profile-updated', (msg) => {
+        alert(msg);
+    });
+
+    // --- FUNCTIONS ---
+
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text && !stagedImage) return;
+
+        // FIX: Check if we are in DM mode and grab the target username
+        const target = (currentChatMode === 'dm') ? currentDmTarget : null;
+
+        const payload = { 
+            text: text, 
+            image: stagedImage, 
+            replyTo: currentReplyTo,
+            target: target // <-- Send the target to the server
         };
 
-        if(initiator) {
-            pc.createOffer().then(o => {
-                pc.setLocalDescription(o);
-                socket.emit('signal', { target: targetId, signal: o });
-            });
+        socket.emit('chat-message', payload);
+        
+        messageInput.value = '';
+        stagedImage = null;
+        imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = '';
+        
+        if (currentReplyTo) {
+            currentReplyTo = null;
+            replyBar.style.display = 'none';
         }
     }
+
+    function appendMessage(msg) {
+        const div = document.createElement('div');
+        const isSelf = msg.sender === currentUsername;
+        const isSystem = msg.isSystem;
+        const isPm = msg.isPm;
+
+        div.classList.add('message');
+        if (isSystem) div.classList.add('system-message');
+        else if (isSelf) div.classList.add('user-message');
+        else div.classList.add('other-message');
+        
+        if (isPm) div.classList.add('pm-message');
+
+        // Check Reply
+        let replyHTML = '';
+        if (msg.replyTo) {
+            replyHTML = `
+                <div class="message-reply-preview">
+                    <div class="reply-line"></div>
+                    <span class="reply-sender">@${msg.replyTo.sender}</span>: 
+                    <span class="reply-text">${msg.replyTo.text || '[Image]'}</span>
+                </div>
+            `;
+        }
+
+        const time = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        // Avatar
+        const avatarImg = `<img src="${msg.avatar || 'placeholder-avatar.png'}" class="msg-avatar" onclick="openProfile('${msg.sender}')">`;
+
+        // Content
+        let contentHTML = '';
+        if (msg.image) {
+            contentHTML += `<img src="${msg.image}" class="message-image" onclick="window.open(this.src)">`;
+        }
+        if (msg.text) {
+            contentHTML += `<div class="message-text">${linkify(msg.text)}</div>`;
+        }
+
+        if (isSystem) {
+            div.innerText = msg.text;
+        } else {
+            div.innerHTML = `
+                ${!isSelf ? avatarImg : ''}
+                <div class="message-content-area">
+                    ${replyHTML}
+                    ${!isSelf ? `<div class="message-sender-name" onclick="openProfile('${msg.sender}')">${msg.displayName || msg.sender} <span style="font-weight:400; font-size:0.6rem; color:#666;">${time}</span></div>` : ''}
+                    <div class="bubble">
+                        ${contentHTML}
+                    </div>
+                </div>
+                ${isSelf ? avatarImg : ''}
+            `;
+        }
+        
+        // Reply Handler
+        if (!isSystem) {
+            div.ondblclick = () => setupReply(msg);
+        }
+
+        chatBox.appendChild(div);
+    }
+
+    function setupReply(msgObject) {
+        currentReplyTo = msgObject;
+        replyBar.style.display = 'flex';
+        replyTargetName.innerText = msgObject.displayName || msgObject.sender;
+        messageInput.focus();
+    }
+
+    function openDm(targetUsername) {
+        if (targetUsername === currentUsername) return;
+        currentChatMode = 'dm';
+        currentDmTarget = targetUsername;
+        unreadCounts[targetUsername] = 0; // Clear unread
+        
+        headerTitle.innerText = `@${targetUsername}`;
+        chatBox.innerHTML = ''; // Clear Global chat
+
+        // Load cached messages
+        if (dmMessagesCache[targetUsername]) {
+            dmMessagesCache[targetUsername].forEach(m => appendMessage(m));
+        }
+
+        renderDmList(); // Update UI highlighting
+        toggleSidebarBtn.click(); // Close sidebar on mobile
+    }
+
+    function renderDmList(onlineUsers = []) {
+        // Simple distinct list of people we've DMed or who DMed us
+        const cachedUsers = Object.keys(dmMessagesCache);
+        // Also include online users if you want, but usually DM list is distinct history
+        // For simplicity, let's just show people we have history with + a button to return to global
+        
+        dmListEl.innerHTML = '';
+
+        // Global Chat Button
+        const globalBtn = document.createElement('div');
+        globalBtn.className = `dm-item ${currentChatMode === 'global' ? 'active' : ''}`;
+        globalBtn.innerText = "# global-chat";
+        globalBtn.onclick = () => {
+            currentChatMode = 'global';
+            headerTitle.innerText = "The C&C Corp chat";
+            chatBox.innerHTML = '';
+            socket.emit('get-history'); // Re-fetch global history (or cache it locally)
+            // Ideally we should have cached global history too, but for now reload it:
+            location.reload(); // Lazy reload to get back global history cleanly
+        };
+        dmListEl.appendChild(globalBtn);
+
+        cachedUsers.forEach(u => {
+            const div = document.createElement('div');
+            const unread = unreadCounts[u] ? `<span class="badge">${unreadCounts[u]}</span>` : '';
+            div.className = `dm-item ${currentDmTarget === u && currentChatMode === 'dm' ? 'active' : ''}`;
+            div.innerHTML = `@${u} ${unread}`;
+            div.onclick = () => openDm(u);
+            dmListEl.appendChild(div);
+        });
+    }
+
+    function linkify(text) {
+        // Basic URL replacer
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
+    }
+
+    function openProfile(username) {
+        window.location.href = `/profile.html?user=${username}`;
+    }
+
+    // --- EVENT LISTENERS ---
+    
+    sendBtn.onclick = sendMessage;
+    
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    uploadBtn.onclick = () => hiddenFileInput.click();
+    
+    hiddenFileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Upload to server immediately to get URL (or stage base64)
+        // For this app, let's upload to server endpoint /upload
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            uploadBtn.innerText = "⏳";
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if (data.url) {
+                stagedImage = data.url;
+                imagePreviewArea.style.display = 'flex';
+                imagePreviewImg.src = stagedImage;
+            }
+        } catch (err) {
+            alert("Upload failed");
+        } finally {
+            uploadBtn.innerText = "+";
+        }
+    };
+
+    removeImageBtn.onclick = () => {
+        stagedImage = null;
+        imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = '';
+    };
+
+    cancelReplyBtn.onclick = () => {
+        currentReplyTo = null;
+        replyBar.style.display = 'none';
+    };
+
+    toggleSidebarBtn.onclick = () => {
+        dmSidebar.classList.toggle('open');
+    };
+
+    profileBtn.onclick = () => {
+        window.location.href = `/profile.html?user=${currentUsername}`;
+    };
+
+    // --- SETTINGS MODAL ---
+    settingsBtn.onclick = () => settingsModal.style.display = "block";
+    closeSettings.onclick = () => settingsModal.style.display = "none";
+    window.onclick = (event) => {
+        if (event.target == settingsModal) settingsModal.style.display = "none";
+    }
+    
+    btnCloakLauncher.onclick = () => {
+        const win = window.open('about:blank', '_blank');
+        if (win) {
+            win.document.body.style.margin = '0';
+            win.document.body.style.height = '100vh';
+            const iframe = win.document.createElement('iframe');
+            iframe.style.border = 'none';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.margin = '0';
+            iframe.src = window.location.href + '?mode=popup';
+            win.document.body.appendChild(iframe);
+        }
+    };
+    
+    launchCustomWindowBtn.onclick = () => {
+        window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600');
+    };
+    
+    btnBgUpload.onclick = () => bgUploadInput.click();
+    bgUploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.body.style.backgroundImage = `url('${ev.target.result}')`;
+                localStorage.setItem('custom_bg', ev.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    btnBgReset.onclick = () => {
+        document.body.style.backgroundImage = 'none';
+        localStorage.removeItem('custom_bg');
+    };
+
+    // --- VOICE CHAT (SIMPLE) ---
+    // Note: Full WebRTC implementation requires STUN/TURN and peer management.
+    // This is a placeholder/basic signaling setup.
+    let localStream;
+    let peers = {}; 
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    joinVcBtn.onclick = async () => {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            socket.emit('join-vc');
+            joinVcBtn.style.display = 'none';
+            leaveVcBtn.style.display = 'inline-block';
+        } catch (e) {
+            alert("Could not access microphone");
+        }
+    };
+
+    leaveVcBtn.onclick = () => {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        socket.emit('leave-vc');
+        joinVcBtn.style.display = 'inline-block';
+        leaveVcBtn.style.display = 'none';
+        // Close peers
+        Object.values(peers).forEach(p => p.close());
+        peers = {};
+    };
+
+    socket.on('update-vc-list', (users) => {
+        vcUserList.innerHTML = '';
+        users.forEach(u => {
+            const div = document.createElement('div');
+            div.className = 'vc-user';
+            div.innerText = `🔊 ${u}`;
+            vcUserList.appendChild(div);
+        });
+    });
+
+    socket.on('vc-user-joined', async (socketId) => {
+        if (!localStream) return;
+        // Initiate peer connection
+        const pc = new RTCPeerConnection(rtcConfig);
+        peers[socketId] = pc;
+        
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        
+        pc.onicecandidate = event => {
+            if (event.candidate) {
+                socket.emit('signal', { target: socketId, signal: { candidate: event.candidate } });
+            }
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('signal', { target: socketId, signal: { sdp: offer } });
+    });
+
+    socket.on('signal', async (data) => {
+        if (!localStream) return;
+        const senderId = data.sender;
+        
+        if (!peers[senderId]) {
+             const pc = new RTCPeerConnection(rtcConfig);
+             peers[senderId] = pc;
+             
+             pc.ontrack = (e) => {
+                 const audio = new Audio();
+                 audio.srcObject = e.streams[0];
+                 audio.play();
+             };
+
+             pc.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('signal', { target: senderId, signal: { candidate: event.candidate } });
+                }
+             };
+
+             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        }
+
+        const pc = peers[senderId];
+        const signal = data.signal;
+
+        if (signal.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (signal.sdp.type === 'offer') {
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                socket.emit('signal', { target: senderId, signal: { sdp: answer } });
+            }
+        } else if (signal.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+    });
+
 </script>
 </body>
 </html>
