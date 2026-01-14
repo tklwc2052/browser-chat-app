@@ -55,6 +55,8 @@ const userSchema = new mongoose.Schema({
     description: { type: String, default: "" }, 
     pronouns: { type: String, default: "" },
     avatar: String,
+    banner: { type: String, default: "" },           // NEW
+    customBackground: { type: String, default: "" }, // NEW
     lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
 });
@@ -92,7 +94,6 @@ const mutedUsers = new Set();
 const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
 
-// Track pending disconnects to prevent messages on page refresh/nav
 const disconnectTimeouts = {}; 
 
 // --- Utility Functions ---
@@ -175,13 +176,11 @@ io.on('connection', async (socket) => {
         if (!username) return;
         const usernameLower = username.toLowerCase();
         
-        let isReconnecting = false; // Flag to skip Join Message
-
-        // 1. CHECK IF RETURNING FROM NAV (Grace Period)
+        let isReconnecting = false;
         if (disconnectTimeouts[usernameLower]) {
             clearTimeout(disconnectTimeouts[usernameLower]);
             delete disconnectTimeouts[usernameLower];
-            isReconnecting = true; // They are back!
+            isReconnecting = true;
         }
 
         const isAlreadyOnline = Object.keys(users).some(id => 
@@ -195,6 +194,8 @@ io.on('connection', async (socket) => {
         const avatar = dbUser ? (dbUser.avatar || 'placeholder-avatar.png') : 'placeholder-avatar.png';
         const description = dbUser ? (dbUser.description || "") : "";
         const pronouns = dbUser ? (dbUser.pronouns || "") : "";
+        const banner = dbUser ? (dbUser.banner || "") : "";
+        const customBackground = dbUser ? (dbUser.customBackground || "") : "";
 
         userAvatarCache[username] = avatar;
         users[socket.id] = { username, displayName, avatar, description, pronouns, id: socket.id };
@@ -214,7 +215,6 @@ io.on('connection', async (socket) => {
             broadcastVCUserList();
         }
         
-        // 2. ONLY ANNOUNCE IF NOT RECONNECTING AND NOT ALREADY ONLINE
         if (!isAlreadyOnline && !isReconnecting) {
             const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
             io.emit('chat-message', joinMsg);
@@ -223,7 +223,11 @@ io.on('connection', async (socket) => {
         }
 
         broadcastSidebarRefresh();
-        socket.emit('profile-info', { username, displayName, avatar, description, pronouns });
+        
+        socket.emit('profile-info', { 
+            username, displayName, avatar, description, pronouns, banner, customBackground 
+        });
+        
         io.emit('user-status-change', { username, displayName, online: true, avatar });
     });
 
@@ -238,6 +242,8 @@ io.on('connection', async (socket) => {
                     avatar: dbUser.avatar || 'placeholder-avatar.png',
                     description: dbUser.description || "",
                     pronouns: dbUser.pronouns || "",
+                    banner: dbUser.banner || "",
+                    customBackground: dbUser.customBackground || "",
                     lastSeen: dbUser.lastSeen
                 });
             } else {
@@ -247,6 +253,8 @@ io.on('connection', async (socket) => {
                     avatar: 'placeholder-avatar.png',
                     description: "", 
                     pronouns: "",
+                    banner: "",
+                    customBackground: "",
                     notFound: true
                 });
             }
@@ -259,7 +267,8 @@ io.on('connection', async (socket) => {
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
-        const { displayName, avatar, description, pronouns } = data;
+        
+        const { displayName, avatar, description, pronouns, banner, customBackground } = data;
         
         if (displayName) user.displayName = displayName;
         if (avatar) {
@@ -269,10 +278,21 @@ io.on('connection', async (socket) => {
         if (description !== undefined) user.description = description;
         if (pronouns !== undefined) user.pronouns = pronouns;
 
+        // DB Update Object
+        const updateFields = { 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description, 
+            pronouns: user.pronouns 
+        };
+        
+        if (banner !== undefined) updateFields.banner = banner;
+        if (customBackground !== undefined) updateFields.customBackground = customBackground;
+
         try {
             await User.findOneAndUpdate(
                 { username: user.username },
-                { displayName: user.displayName, avatar: user.avatar, description: user.description, pronouns: user.pronouns }
+                updateFields
             );
         } catch(e) { console.error("Profile Update Error", e); }
 
@@ -290,7 +310,9 @@ io.on('connection', async (socket) => {
             displayName: user.displayName, 
             avatar: user.avatar, 
             description: user.description,
-            pronouns: user.pronouns
+            pronouns: user.pronouns,
+            banner: banner || "",
+            customBackground: customBackground || ""
         });
     });
 
