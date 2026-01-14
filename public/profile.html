@@ -22,9 +22,7 @@
         
         <div class="d-header-info">
             <input type="text" id="p-displayname" class="d-displayname" placeholder="Display Name" readonly>
-            
             <div id="p-username" class="d-username">@loading...</div>
-            
             <input type="text" id="p-pronouns" class="d-pronouns" placeholder="Add pronouns" readonly>
         </div>
 
@@ -35,9 +33,19 @@
             <textarea id="p-about" class="d-text-area" rows="3" placeholder="No description set." readonly></textarea>
         </div>
 
-        <div class="d-section" id="section-avatar-url" style="display:none;">
-            <label class="d-label">Avatar Image Link</label>
-            <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste image link here...">
+        <div id="section-images" style="display:none;">
+            <div class="d-section">
+                <label class="d-label">Avatar Link</label>
+                <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste image link here...">
+            </div>
+            <div class="d-section">
+                <label class="d-label">Banner Link</label>
+                <input type="text" id="p-banner-url" class="d-input-line" placeholder="Paste image link here...">
+            </div>
+            <div class="d-section">
+                <label class="d-label">Page Background Link</label>
+                <input type="text" id="p-bg-url" class="d-input-line" placeholder="Paste image link here...">
+            </div>
         </div>
 
         <div class="d-section">
@@ -74,8 +82,12 @@
     const elPronouns = document.getElementById('p-pronouns');
     const elAbout = document.getElementById('p-about');
     const elLastSeen = document.getElementById('p-lastseen');
+    
+    // Image Inputs
+    const sectionImages = document.getElementById('section-images');
     const elAvatarUrl = document.getElementById('p-avatar-url');
-    const sectionAvatarUrl = document.getElementById('section-avatar-url');
+    const elBannerUrl = document.getElementById('p-banner-url');
+    const elBgUrl = document.getElementById('p-bg-url');
     
     const btnSave = document.getElementById('btn-save');
     const btnClose = document.getElementById('btn-close');
@@ -91,7 +103,7 @@
     if (isSelf) {
         // EDIT MODE
         btnSave.style.display = 'block';
-        sectionAvatarUrl.style.display = 'block'; // Show avatar link input
+        sectionImages.style.display = 'block'; // Show extra inputs
         
         // Make inputs editable
         elDisplay.readOnly = false;
@@ -103,13 +115,16 @@
         socket.emit('set-username', { username: myUsername });
         socket.on('profile-info', (data) => {
             populateData(data);
+            // Pre-fill inputs
             elAvatarUrl.value = (data.avatar && data.avatar !== 'placeholder-avatar.png') ? data.avatar : '';
+            elBannerUrl.value = data.banner || '';
+            elBgUrl.value = data.customBackground || '';
         });
 
-        // Live preview for avatar
-        elAvatarUrl.addEventListener('input', () => {
-            elAvatar.src = elAvatarUrl.value || 'placeholder-avatar.png';
-        });
+        // Live previews
+        elAvatarUrl.addEventListener('input', () => { elAvatar.src = elAvatarUrl.value || 'placeholder-avatar.png'; });
+        elBannerUrl.addEventListener('input', () => { elBanner.style.backgroundImage = elBannerUrl.value ? `url('${elBannerUrl.value}')` : 'none'; });
+        elBgUrl.addEventListener('input', () => { document.body.style.backgroundImage = elBgUrl.value ? `url('${elBgUrl.value}')` : 'none'; });
 
         // SAVE Handler
         btnSave.onclick = () => {
@@ -117,7 +132,9 @@
                 displayName: elDisplay.value,
                 description: elAbout.value,
                 pronouns: elPronouns.value,
-                avatar: elAvatarUrl.value || 'placeholder-avatar.png'
+                avatar: elAvatarUrl.value || 'placeholder-avatar.png',
+                banner: elBannerUrl.value,
+                customBackground: elBgUrl.value
             };
             socket.emit('update-profile', updates);
             btnSave.innerText = "Saved!";
@@ -127,7 +144,7 @@
     } else {
         // VIEW MODE (Read Only)
         btnSave.style.display = 'none';
-        sectionAvatarUrl.style.display = 'none';
+        sectionImages.style.display = 'none';
         
         // Fetch target data
         socket.emit('get-user-profile', targetUser);
@@ -148,7 +165,21 @@
         elAbout.value = data.description || "";
         elAvatar.src = data.avatar || 'placeholder-avatar.png';
         
-        setBannerColor(data.username);
+        // Handle Banner
+        if (data.banner) {
+            elBanner.style.backgroundImage = `url('${data.banner}')`;
+        } else {
+            elBanner.style.backgroundImage = 'none';
+            setBannerColor(data.username);
+        }
+
+        // Handle Page Background
+        if (data.customBackground) {
+            document.body.style.backgroundImage = `url('${data.customBackground}')`;
+        } else {
+            document.body.style.backgroundImage = 'none';
+            document.body.style.backgroundColor = '#000';
+        }
 
         // Handle Last Seen
         if (data.lastSeen) {
