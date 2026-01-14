@@ -68,7 +68,6 @@ function formatMessage(sender, text, avatar, image, isPm, replyTo, displayName) 
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Upload Route
 app.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file' });
     const uploadStream = cloudinary.uploader.upload_stream({ folder: 'chat_assets', resource_type: 'auto' }, (error, result) => {
@@ -83,6 +82,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
 app.get('/profile', (req, res) => res.sendFile(path.join(__dirname, 'public', 'profile.html')));
 
 io.on('connection', async (socket) => {
+    // Send history only on load
     socket.emit('history', messageHistory);
     io.emit('vc-user-list-update', Object.values(vcUsers));
 
@@ -96,13 +96,10 @@ io.on('connection', async (socket) => {
         userAvatarCache[username] = avatar;
         users[socket.id] = { username, displayName, avatar, id: socket.id };
         
-        // Send profile data to self
         if (dbUser) socket.emit('profile-info', dbUser);
         
-        // Notify others
         io.emit('user-status-change', { username, displayName, online: true, avatar });
         
-        // If reconnecting to VC
         if (vcUsers[socket.id]) {
             vcUsers[socket.id].displayName = displayName;
             vcUsers[socket.id].avatar = avatar;
@@ -115,10 +112,8 @@ io.on('connection', async (socket) => {
         const u = users[socket.id];
         if (!u) return;
         await User.findOneAndUpdate({ username: u.username }, data, { upsert: true });
-        
         if (data.displayName) u.displayName = data.displayName;
         if (data.avatar) { u.avatar = data.avatar; userAvatarCache[u.username] = data.avatar; }
-        
         io.emit('user-status-change', { username: u.username, displayName: u.displayName, online: true, avatar: u.avatar });
     });
 
@@ -127,30 +122,43 @@ io.on('connection', async (socket) => {
         socket.emit('user-profile-data', dbUser || { notFound: true, username: target });
     });
 
-    // --- MESSAGING (FIXED) ---
+    // --- MESSAGING ---
     socket.on('chat-message', async (payload) => {
         const user = users[socket.id];
         if (!user) return;
 
         let { text, image, replyTo, target } = typeof payload === 'object' ? payload : { text: payload };
         
-        // DM Logic
-        if (target) {
-            const recipientSocket = Object.keys(users).find(id => users[id].username === target);
+        // --- DM LOGIC ---
+        if (target && target !== 'null') {
+            console.log(`Sending PM from ${user.username} to ${target}`);
+            const recipientSocketId = Object.keys(users).find(id => users[id].username === target);
+            
             const pm = formatMessage(user.username, text, user.avatar, image, true, replyTo, user.displayName);
-            socket.emit('chat-message', pm); // Send to self
-            if (recipientSocket) io.to(recipientSocket).emit('chat-message', pm); // Send to them
-        } else {
-            // General Chat
-            const msg = formatMessage(user.username, text, user.avatar, image, false, replyTo, user.displayName);
-            messageHistory.push(msg);
-            if (messageHistory.length > 50) messageHistory.shift();
-            io.emit('chat-message', msg);
-            new Message(msg).save().catch(e => console.log(e));
+            
+            // Send to SENDER
+            socket.emit('chat-message', pm);
+            
+            // Send to RECEIVER (if online)
+            if (recipientSocketId) {
+                io.to(recipientSocketId).emit('chat-message', pm);
+            }
+            
+            // CRITICAL: Return here so we don't save to public history
+            return; 
         }
+
+        // --- PUBLIC LOGIC ---
+        const msg = formatMessage(user.username, text, user.avatar, image, false, replyTo, user.displayName);
+        messageHistory.push(msg);
+        if (messageHistory.length > 50) messageHistory.shift();
+        
+        io.emit('chat-message', msg);
+        
+        try { await new Message(msg).save(); } catch(e) { console.error(e); }
     });
 
-    // --- RESTORED: EDIT / DELETE ---
+    // --- EDIT / DELETE ---
     socket.on('delete-message', async (id) => {
         const idx = messageHistory.findIndex(m => m.id === id);
         if (idx !== -1 && messageHistory[idx].sender === users[socket.id].username) {
@@ -170,12 +178,13 @@ io.on('connection', async (socket) => {
         }
     });
 
-    // --- RESTORED: VOICE CHAT ---
+    // --- VOICE CHAT (SIGNALING) ---
     socket.on('join-vc', () => {
         const u = users[socket.id];
         if (u) {
             vcUsers[socket.id] = u;
             io.emit('vc-user-list-update', Object.values(vcUsers));
+            // Tell everyone else "I am here, call me"
             socket.broadcast.emit('vc-user-joined', socket.id);
         }
     });
@@ -189,6 +198,7 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('signal', (data) => {
+        // Pass the WebRTC signal to the specific target
         io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal });
     });
 
