@@ -3,60 +3,53 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Profile - C&C Corp</title>
+<title>User Profile</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body class="profile-page-body">
 
-<div class="profile-page-container">
-    <h1 id="page-title" style="color: var(--color-accent-blue); margin-bottom: 20px;">Profile Settings</h1>
+<div class="d-profile-card">
     
-    <div class="profile-card">
-        <div class="profile-avatar-section">
-            <img id="profile-preview-img" src="placeholder-avatar.png" alt="Profile Preview">
+    <div class="d-banner" id="p-banner"></div>
+
+    <div class="d-avatar-wrapper">
+        <img id="p-avatar" class="d-avatar" src="placeholder-avatar.png">
+        <div class="d-status-indicator" id="p-status"></div>
+    </div>
+
+    <div class="d-content">
+        
+        <div class="d-header-info">
+            <input type="text" id="p-displayname" class="d-displayname" placeholder="Display Name" readonly>
+            
+            <div id="p-username" class="d-username">@loading...</div>
+            
+            <input type="text" id="p-pronouns" class="d-pronouns" placeholder="Add pronouns" readonly>
         </div>
 
-        <div class="profile-form-section">
-            <div class="form-group">
-                <label>Unique ID (Username)</label>
-                <input type="text" id="input-username" readonly disabled title="You cannot change your ID">
-                <small id="id-hint" style="color:#666;">This is how the system identifies this user.</small>
-            </div>
+        <div style="height: 1px; background-color: #3f4147; width: 100%; margin: 10px 0;"></div>
 
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" id="input-displayname" placeholder="Enter a nickname">
-            </div>
-
-            <div class="form-group">
-                <label>Pronouns</label>
-                <input type="text" id="input-pronouns" placeholder="e.g. he/him, they/them">
-            </div>
-
-            <div class="form-group">
-                <label>Avatar URL</label>
-                <input type="text" id="input-avatar" placeholder="https://example.com/image.png">
-                <small id="avatar-hint" style="color:#666;">Paste a direct link to an image.</small>
-            </div>
-            
-            <div class="form-group">
-                <label>About Me</label>
-                <textarea id="input-description" rows="4" placeholder="Tell us about yourself..."></textarea>
-            </div>
-            
-            <div class="form-group" id="last-seen-group" style="display:none;">
-                <label>Last Seen</label>
-                <input type="text" id="input-lastseen" readonly disabled>
-            </div>
-
-            <div class="profile-actions">
-                <button id="btn-save" class="primary-btn" style="width: 100%;">Save Changes</button>
-                <button id="btn-back" class="secondary-btn" style="width: 100%; margin-top: 10px;">Back to Chat</button>
-            </div>
-            
-            <div id="status-msg" style="margin-top: 15px; text-align: center; height: 20px; font-weight: bold;"></div>
+        <div class="d-section">
+            <label class="d-label">About Me</label>
+            <textarea id="p-about" class="d-text-area" rows="3" placeholder="No description set." readonly></textarea>
         </div>
+
+        <div class="d-section" id="section-avatar-url" style="display:none;">
+            <label class="d-label">Avatar Image Link</label>
+            <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste image link here...">
+        </div>
+
+        <div class="d-section">
+            <label class="d-label">Last Seen</label>
+            <div id="p-lastseen" class="d-text-static">Now</div>
+        </div>
+
+        <div class="d-edit-controls">
+            <button id="btn-save" class="d-btn d-btn-primary" style="display:none;">Save Profile</button>
+            <button id="btn-close" class="d-btn d-btn-secondary">Close</button>
+        </div>
+        
     </div>
 </div>
 
@@ -64,116 +57,110 @@
     const socket = io();
     const myUsername = localStorage.getItem('simplechat_username');
     
-    // Check URL params
+    // Parse URL params
     const urlParams = new URLSearchParams(window.location.search);
-    const targetUser = urlParams.get('user');
-    const mode = urlParams.get('mode'); // 'view' or null
+    const targetParam = urlParams.get('user');
+    
+    // Determine if we are editing OURSELVES or viewing SOMEONE ELSE
+    const isSelf = !targetParam || (targetParam.toLowerCase() === myUsername.toLowerCase());
+    const targetUser = targetParam || myUsername;
 
-    if (!myUsername) {
-        window.location.href = '/';
+    // DOM Elements
+    const elBanner = document.getElementById('p-banner');
+    const elAvatar = document.getElementById('p-avatar');
+    const elStatus = document.getElementById('p-status');
+    const elDisplay = document.getElementById('p-displayname');
+    const elUser = document.getElementById('p-username');
+    const elPronouns = document.getElementById('p-pronouns');
+    const elAbout = document.getElementById('p-about');
+    const elLastSeen = document.getElementById('p-lastseen');
+    const elAvatarUrl = document.getElementById('p-avatar-url');
+    const sectionAvatarUrl = document.getElementById('section-avatar-url');
+    
+    const btnSave = document.getElementById('btn-save');
+    const btnClose = document.getElementById('btn-close');
+
+    // --- SETUP COLORS ---
+    const bannerColors = ['#5865F2', '#ED4245', '#3BA55C', '#FAA61A', '#EB459E', '#00ACE6'];
+    function setBannerColor(name) {
+        const index = name.length % bannerColors.length;
+        elBanner.style.backgroundColor = bannerColors[index];
     }
 
-    const pageTitle = document.getElementById('page-title');
-    const inputUsername = document.getElementById('input-username');
-    const inputDisplay = document.getElementById('input-displayname');
-    const inputPronouns = document.getElementById('input-pronouns'); // NEW
-    const inputAvatar = document.getElementById('input-avatar');
-    const inputDescription = document.getElementById('input-description');
-    const inputLastSeen = document.getElementById('input-lastseen');
-    const lastSeenGroup = document.getElementById('last-seen-group');
-    const imgPreview = document.getElementById('profile-preview-img');
-    const btnSave = document.getElementById('btn-save');
-    const btnBack = document.getElementById('btn-back');
-    const statusMsg = document.getElementById('status-msg');
-    const avatarHint = document.getElementById('avatar-hint');
-
-    // --- READ-ONLY MODE ---
-    if (mode === 'view' || (targetUser && targetUser !== myUsername)) {
-        pageTitle.innerText = "Viewing Profile";
-        btnSave.style.display = 'none'; // Hide Save Button
-        avatarHint.style.display = 'none';
+    // --- INITIALIZE UI ---
+    if (isSelf) {
+        // EDIT MODE
+        btnSave.style.display = 'block';
+        sectionAvatarUrl.style.display = 'block'; // Show avatar link input
         
-        // Disable inputs
-        inputDisplay.disabled = true;
-        inputAvatar.disabled = true;
-        inputDescription.disabled = true;
-        inputPronouns.disabled = true; // NEW
-
-        // Fetch Data
-        socket.emit('get-user-profile', targetUser);
-
-        socket.on('user-profile-data', (data) => {
-            if (data.notFound) {
-                inputUsername.value = data.username;
-                inputDisplay.value = "User not found or has never logged in.";
-                return;
-            }
-            inputUsername.value = data.username;
-            inputDisplay.value = data.displayName || data.username;
-            inputAvatar.value = data.avatar || '';
-            inputDescription.value = data.description || 'No description provided.';
-            inputPronouns.value = data.pronouns || ''; // NEW
-            imgPreview.src = data.avatar || 'placeholder-avatar.png';
-            
-            if (data.lastSeen) {
-                lastSeenGroup.style.display = 'flex';
-                inputLastSeen.value = new Date(data.lastSeen).toLocaleString();
-            }
-        });
-
-    } 
-    // --- EDIT MODE (MY PROFILE) ---
-    else {
-        // Connect as myself to get my own data via the login flow
+        // Make inputs editable
+        elDisplay.readOnly = false;
+        elPronouns.readOnly = false;
+        elAbout.readOnly = false;
+        elDisplay.style.cursor = 'text';
+        
+        // Load MY data
         socket.emit('set-username', { username: myUsername });
-
         socket.on('profile-info', (data) => {
-            inputUsername.value = data.username;
-            inputDisplay.value = data.displayName || data.username;
-            inputAvatar.value = data.avatar === 'placeholder-avatar.png' ? '' : data.avatar;
-            inputDescription.value = data.description || '';
-            inputPronouns.value = data.pronouns || ''; // NEW
-            imgPreview.src = data.avatar || 'placeholder-avatar.png';
+            populateData(data);
+            elAvatarUrl.value = (data.avatar && data.avatar !== 'placeholder-avatar.png') ? data.avatar : '';
         });
 
-        // Live Preview of Avatar
-        inputAvatar.addEventListener('input', () => {
-            const val = inputAvatar.value.trim();
-            imgPreview.src = val || 'placeholder-avatar.png';
+        // Live preview for avatar
+        elAvatarUrl.addEventListener('input', () => {
+            elAvatar.src = elAvatarUrl.value || 'placeholder-avatar.png';
         });
 
-        // Save
+        // SAVE Handler
         btnSave.onclick = () => {
-            const newDisplay = inputDisplay.value.trim() || myUsername;
-            const newAvatar = inputAvatar.value.trim() || 'placeholder-avatar.png';
-            const newDesc = inputDescription.value.trim();
-            const newPronouns = inputPronouns.value.trim(); // NEW
-
-            socket.emit('update-profile', {
-                displayName: newDisplay,
-                avatar: newAvatar,
-                description: newDesc,
-                pronouns: newPronouns // NEW
-            });
-            
-            btnSave.disabled = true;
-            btnSave.innerText = "Saving...";
+            const updates = {
+                displayName: elDisplay.value,
+                description: elAbout.value,
+                pronouns: elPronouns.value,
+                avatar: elAvatarUrl.value || 'placeholder-avatar.png'
+            };
+            socket.emit('update-profile', updates);
+            btnSave.innerText = "Saved!";
+            setTimeout(() => btnSave.innerText = "Save Profile", 2000);
         };
 
-        socket.on('chat-message', (msg) => {
-            if (msg.text.includes('Profile updated')) {
-                statusMsg.style.color = 'var(--color-accent-green)';
-                statusMsg.innerText = "Saved Successfully!";
-                btnSave.disabled = false;
-                btnSave.innerText = "Save Changes";
-                setTimeout(() => statusMsg.innerText = "", 3000);
+    } else {
+        // VIEW MODE (Read Only)
+        btnSave.style.display = 'none';
+        sectionAvatarUrl.style.display = 'none';
+        
+        // Fetch target data
+        socket.emit('get-user-profile', targetUser);
+        socket.on('user-profile-data', (data) => {
+            if (data.notFound) {
+                elDisplay.value = "User not found";
+                elUser.innerText = "---";
+                return;
             }
+            populateData(data);
         });
     }
 
-    btnBack.onclick = () => {
+    function populateData(data) {
+        elDisplay.value = data.displayName || data.username;
+        elUser.innerText = "@" + data.username;
+        elPronouns.value = data.pronouns || "";
+        elAbout.value = data.description || "";
+        elAvatar.src = data.avatar || 'placeholder-avatar.png';
+        
+        setBannerColor(data.username);
+
+        // Handle Last Seen
+        if (data.lastSeen) {
+            elLastSeen.innerText = new Date(data.lastSeen).toLocaleString();
+        } else {
+            elLastSeen.innerText = "Unknown";
+        }
+    }
+
+    btnClose.onclick = () => {
         window.location.href = '/';
-    };
+    }
 </script>
 </body>
 </html>
