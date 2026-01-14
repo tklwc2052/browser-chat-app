@@ -5,6 +5,10 @@ const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path'); 
 const fs = require('fs'); 
+// NEW DEPENDENCIES
+const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
+const stream = require('stream');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,6 +25,19 @@ try {
 } catch (e) {
     console.log("⚠️ build_desc.txt not found. Using default.");
 }
+
+// --- CLOUDINARY CONFIG ---
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Multer config (Memory storage to handle buffer)
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 const io = socketIo(server, { maxHttpBufferSize: 1e7 });
 
@@ -55,8 +72,8 @@ const userSchema = new mongoose.Schema({
     description: { type: String, default: "" }, 
     pronouns: { type: String, default: "" },
     avatar: String,
-    banner: { type: String, default: "" },           // NEW
-    customBackground: { type: String, default: "" }, // NEW
+    banner: { type: String, default: "" },           
+    customBackground: { type: String, default: "" }, 
     lastIp: String, 
     lastSeen: { type: Date, default: Date.now }
 });
@@ -149,6 +166,24 @@ async function broadcastSidebarRefresh() {
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --- NEW FILE UPLOAD ROUTE ---
+app.post('/upload', upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    // Use stream upload for efficiency
+    const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: 'chat_assets', resource_type: 'auto' },
+        (error, result) => {
+            if (error) return res.status(500).json({ error: error.message });
+            res.json({ url: result.secure_url });
+        }
+    );
+
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(req.file.buffer);
+    bufferStream.pipe(uploadStream);
+});
 
 app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
