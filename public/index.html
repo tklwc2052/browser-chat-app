@@ -19,7 +19,7 @@
                 </div>
                 <div class="dm-username">General Chat</div>
             </div>
-            </div>
+        </div>
         
         <div id="username-area">
             <div id="username-controls">
@@ -90,7 +90,7 @@
     let peers = {}; 
     let isVcJoined = false;
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
+    
     // --- SETUP ---
     const messagesDiv = document.getElementById('messages');
     const msgInput = document.getElementById('message-input');
@@ -117,23 +117,31 @@
         if(data.customBackground) document.body.style.backgroundImage = `url('${data.customBackground}')`;
     });
 
-    // --- SIDEBAR & DMs ---
+    // --- CHANNEL SWITCHING ---
     window.switchChannel = (target) => {
         currentDMTarget = target;
         document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
+        
+        // Reset message view (simple clear for now to avoid confusion)
+        messagesDiv.innerHTML = '';
+        socket.emit('request-history-refresh'); // Optional: In a full app we'd reload relevant history
+
         if(target) {
             msgInput.placeholder = `Message @${target}`;
             msgInput.style.backgroundColor = '#3c3847';
         } else {
-            document.querySelector('.dm-user-card').classList.add('active'); // General
+            document.querySelector('.dm-user-card').classList.add('active'); 
             msgInput.placeholder = "Message #general";
             msgInput.style.backgroundColor = '';
+            // Reload general history locally if stored, or just wait for new msgs
+            // For this simple version, we just let new messages come in
+            const motd = document.createElement('div');
+            motd.className = 'motd-message'; motd.innerText = "Switched to General"; messagesDiv.appendChild(motd);
         }
     };
 
     socket.on('sidebar-user-list', (list) => {
         const dmList = document.getElementById('dm-list');
-        // Keep first child (General), remove rest
         while(dmList.children.length > 1) dmList.removeChild(dmList.lastChild);
         
         list.forEach(u => {
@@ -141,7 +149,12 @@
             const div = document.createElement('div');
             div.className = 'dm-user-card';
             div.innerHTML = `<div class="dm-avatar-wrapper"><img src="${u.avatar || 'placeholder-avatar.png'}"><div class="status-bubble ${u.online?'status-online':'status-offline'}"></div></div><div class="dm-username">${u.displayName}</div>`;
-            div.onclick = () => switchChannel(u.username);
+            div.onclick = (e) => {
+                // simple visual toggle
+                document.querySelectorAll('.dm-user-card').forEach(x => x.classList.remove('active'));
+                div.classList.add('active');
+                switchChannel(u.username);
+            };
             dmList.appendChild(div);
         });
     });
@@ -165,6 +178,19 @@
     msgInput.addEventListener('keypress', (e) => { if(e.key==='Enter') sendMessage(); });
 
     socket.on('chat-message', (msg) => {
+        // --- FILTER LOGIC ---
+        // If we are in General, only show General messages
+        if (currentDMTarget === null) {
+            if (msg.type === 'pm') return; // Hide PMs from General view
+        } 
+        // If we are in a DM, only show DMs with THAT person
+        else {
+            if (msg.type !== 'pm') return; // Hide General messages from DM view
+            // Only show if it involves me and the target
+            const isWithTarget = (msg.sender === currentDMTarget) || (msg.sender === myUsername && currentDMTarget);
+            if (!isWithTarget) return; 
+        }
+
         const div = document.createElement('div');
         div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
         div.id = `msg-${msg.id}`;
@@ -181,7 +207,6 @@
         const avatarHtml = `<img class="message-avatar" src="${msg.avatar}">`;
         div.innerHTML = msg.sender === myUsername ? (contentHtml + avatarHtml) : (avatarHtml + contentHtml);
         
-        // Right Click Menu
         div.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             ctxTargetMsg = msg;
@@ -194,6 +219,27 @@
 
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+
+    // History Loader
+    socket.on('history', (history) => {
+        if(currentDMTarget === null) {
+            history.forEach(msg => {
+                // Only append general messages to history on load
+                if(msg.type !== 'pm') {
+                    // Reuse the append logic by manually calling the listener or extracting it
+                    // For simplicity, we just trigger the event handler logic manually or rely on socket.io
+                    // Copying basic append logic here for startup:
+                    const div = document.createElement('div');
+                    div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
+                    div.id = `msg-${msg.id}`;
+                    div.innerHTML = `<img class="message-avatar" src="${msg.avatar}"><div class="bubble-content"><div style="font-size:0.75em;color:#888;font-weight:bold">${msg.senderDisplayName}</div><div class="msg-text">${msg.text}</div></div>`;
+                    if(msg.sender === myUsername) div.appendChild(div.firstChild); // Swap
+                    messagesDiv.appendChild(div);
+                }
+            });
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
     });
 
     // --- CONTEXT MENU ACTIONS ---
@@ -241,7 +287,7 @@
         replyToMsg = null; document.getElementById('reply-bar').style.display = 'none';
     };
 
-    // --- VOICE CHAT (RESTORED) ---
+    // --- VOICE CHAT (FIXED) ---
     document.getElementById('vc-btn-join').onclick = () => isVcJoined ? leaveVoice() : joinVoice();
 
     async function joinVoice() {
@@ -251,37 +297,55 @@
             isVcJoined = true;
             document.getElementById('vc-btn-join').innerText = "Leave Voice";
             document.getElementById('vc-btn-join').style.backgroundColor = '#dc3545';
-        } catch(e) { alert("Mic Access Denied"); }
+        } catch(e) { 
+            console.error(e);
+            alert("Could not access microphone. Ensure site is HTTPS."); 
+        }
     }
 
     function leaveVoice() {
         socket.emit('leave-vc');
         if(localStream) localStream.getTracks().forEach(t => t.stop());
-        Object.values(peers).forEach(p => p.close());
+        Object.values(peers).forEach(p => p.pc.close()); // Close stored PCs
         peers = {}; isVcJoined = false;
         document.getElementById('vc-btn-join').innerText = "Join Voice";
         document.getElementById('vc-btn-join').style.backgroundColor = '#23a559';
     }
 
     socket.on('vc-user-joined', (id) => { if(isVcJoined) createPeer(id, true); });
-    socket.on('vc-user-left', (id) => { if(peers[id]) { peers[id].close(); delete peers[id]; } });
+    socket.on('vc-user-left', (id) => { if(peers[id]) { peers[id].pc.close(); delete peers[id]; } });
     
+    // Improved Signal Handler with Queue
     socket.on('signal', async ({ sender, signal }) => {
         if(!isVcJoined) return;
-        if(!peers[sender]) createPeer(sender, false);
-        const pc = peers[sender];
         
+        if(!peers[sender]) createPeer(sender, false);
+        const pObj = peers[sender];
+        const pc = pObj.pc;
+
         if (signal.candidate) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
+            // Queue candidate if remote description isn't set yet
+            if (pc.remoteDescription) {
+                try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
+            } else {
+                pObj.candidates.push(signal.candidate);
+            }
         } else {
+            // Handle Offer/Answer
             try {
                 await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                
+                // Process any queued candidates now that description is set
+                while(pObj.candidates.length) {
+                    await pc.addIceCandidate(new RTCIceCandidate(pObj.candidates.shift()));
+                }
+
                 if (signal.type === 'offer') {
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     socket.emit('signal', { target: sender, signal: pc.localDescription });
                 }
-            } catch(e) {}
+            } catch(e) { console.error("Signal Error:", e); }
         }
     });
 
@@ -297,12 +361,15 @@
 
     function createPeer(targetId, initiator) {
         const pc = new RTCPeerConnection(rtcConfig);
-        peers[targetId] = pc;
+        // Store PC and a Candidate Queue
+        peers[targetId] = { pc: pc, candidates: [] };
+        
         localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
         
         pc.onicecandidate = (e) => {
             if(e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } });
         };
+        
         pc.ontrack = (e) => {
             const audio = new Audio();
             audio.srcObject = e.streams[0];
@@ -315,7 +382,6 @@
                 socket.emit('signal', { target: targetId, signal: o });
             });
         }
-        return pc;
     }
 </script>
 </body>
