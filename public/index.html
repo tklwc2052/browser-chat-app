@@ -15,7 +15,7 @@
         <div id="dm-list">
             <div class="dm-user-card active" onclick="switchChannel(null)">
                 <div class="dm-avatar-wrapper">
-                    <div style="width:40px; height:40px; background:#5865F2; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">#</div>
+                    <div style="width:40px; height:40px; background:#5865F2; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white;">#</div>
                 </div>
                 <div class="dm-username">General Chat</div>
             </div>
@@ -31,9 +31,7 @@
     </div>
 
     <div id="chat-container">
-        <div id="messages">
-            <div class="motd-message">Welcome to the chat!</div>
-        </div>
+        <div id="messages"></div>
 
         <div id="message-input-area">
             <div id="reply-bar" style="display:none;">
@@ -60,52 +58,46 @@
             <ul id="vc-user-list"></ul>
         </div>
         <div class="panel-bottom-group">
-            <div class="panel-title">Online - <span id="online-count">0</span></div>
+            <div class="panel-title">Online</div>
             <div id="online-user-list"></div>
         </div>
     </div>
-
 </div>
 
 <div id="ctx-menu">
     <div id="ctx-reply">Reply</div>
     <div id="ctx-edit">Edit Message</div>
     <div id="ctx-delete" style="color:#ff4444;">Delete Message</div>
-    <div id="ctx-copy">Copy ID</div>
 </div>
 
 <div id="username-modal" style="display:flex; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
     <div style="background:#2f3136; padding:20px; border-radius:8px; text-align:center;">
         <h3>Enter Username</h3>
-        <input type="text" id="username-input-modal" style="padding:10px; border-radius:4px; border:none;" placeholder="Username">
-        <button id="username-submit-btn" style="padding:10px 20px; background:#5865F2; color:white; border:none; border-radius:4px; margin-left:10px; cursor:pointer;">Join</button>
+        <input type="text" id="username-input-modal" style="padding:10px;" placeholder="Username">
+        <button id="username-submit-btn" style="padding:10px 20px;">Join</button>
     </div>
 </div>
 
 <script>
     const socket = io();
     let myUsername = localStorage.getItem('simplechat_username');
-    let currentDMTarget = null; // null = General, string = username
+    let currentDMTarget = null;
     let replyToMsg = null;
     let imageToUpload = null;
-    let peers = {}; // WebRTC Peers
+    
+    // Voice Chat State
     let localStream = null;
+    let peers = {}; 
+    let isVcJoined = false;
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // --- DOM ELEMENTS ---
+    // --- SETUP ---
     const messagesDiv = document.getElementById('messages');
     const msgInput = document.getElementById('message-input');
-    const dmListDiv = document.getElementById('dm-list');
-    const onlineListDiv = document.getElementById('online-user-list');
-    const vcListDiv = document.getElementById('vc-user-list');
     const ctxMenu = document.getElementById('ctx-menu');
     
-    // --- AUTH ---
-    if(!myUsername) {
-        document.getElementById('username-modal').style.display = 'flex';
-    } else {
-        document.getElementById('username-modal').style.display = 'none';
-        socket.emit('set-username', { username: myUsername });
-    }
+    if(!myUsername) document.getElementById('username-modal').style.display = 'flex';
+    else socket.emit('set-username', { username: myUsername });
 
     document.getElementById('username-submit-btn').onclick = () => {
         const val = document.getElementById('username-input-modal').value.trim();
@@ -117,395 +109,214 @@
         }
     };
 
-    // --- PROFILE ---
-    document.getElementById('open-profile-btn').onclick = () => {
-        window.location.href = '/profile';
-    };
+    document.getElementById('open-profile-btn').onclick = () => window.location.href = '/profile';
+
     socket.on('profile-info', (data) => {
-        document.getElementById('current-username-display').innerText = data.displayName;
+        document.getElementById('current-username-display').innerText = data.displayName || data.username;
         document.getElementById('current-avatar-preview').src = data.avatar || 'placeholder-avatar.png';
         if(data.customBackground) document.body.style.backgroundImage = `url('${data.customBackground}')`;
     });
 
-    // --- CHANNELS / DMS ---
-    window.switchChannel = (targetUser) => {
-        currentDMTarget = targetUser;
-        
-        // Update UI visuals
+    // --- SIDEBAR & DMs ---
+    window.switchChannel = (target) => {
+        currentDMTarget = target;
         document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
-        
-        if(targetUser) {
-            // Find user card and make active
-            // (Simple selector logic for now)
-            msgInput.placeholder = `Message @${targetUser}`;
-            msgInput.style.backgroundColor = '#3c3847'; // Slight purple tint
+        if(target) {
+            msgInput.placeholder = `Message @${target}`;
+            msgInput.style.backgroundColor = '#3c3847';
         } else {
-            // General
-            document.querySelector('.dm-user-card').classList.add('active'); // First one is general
-            msgInput.placeholder = `Message #general`;
+            document.querySelector('.dm-user-card').classList.add('active'); // General
+            msgInput.placeholder = "Message #general";
             msgInput.style.backgroundColor = '';
         }
-        
-        // Note: Realistically we should filter messagesDiv here, but for now we just change sending behavior
     };
+
+    socket.on('sidebar-user-list', (list) => {
+        const dmList = document.getElementById('dm-list');
+        // Keep first child (General), remove rest
+        while(dmList.children.length > 1) dmList.removeChild(dmList.lastChild);
+        
+        list.forEach(u => {
+            if(u.username === myUsername) return;
+            const div = document.createElement('div');
+            div.className = 'dm-user-card';
+            div.innerHTML = `<div class="dm-avatar-wrapper"><img src="${u.avatar || 'placeholder-avatar.png'}"><div class="status-bubble ${u.online?'status-online':'status-offline'}"></div></div><div class="dm-username">${u.displayName}</div>`;
+            div.onclick = () => switchChannel(u.username);
+            dmList.appendChild(div);
+        });
+    });
 
     // --- MESSAGING ---
     function sendMessage() {
         const text = msgInput.value.trim();
         if ((!text && !imageToUpload)) return;
-
-        const payload = {
-            text: text,
-            image: imageToUpload,
-            replyTo: replyToMsg,
-            target: currentDMTarget // Send this to server
-        };
-
-        socket.emit('chat-message', payload);
+        
+        socket.emit('chat-message', {
+            text, image: imageToUpload, replyTo: replyToMsg, target: currentDMTarget
+        });
+        
         msgInput.value = '';
-        cancelReply();
-        cancelImage();
+        imageToUpload = null; replyToMsg = null;
+        document.getElementById('image-preview-area').style.display = 'none';
+        document.getElementById('reply-bar').style.display = 'none';
     }
-
+    
     document.getElementById('send-button').onclick = sendMessage;
-    msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+    msgInput.addEventListener('keypress', (e) => { if(e.key==='Enter') sendMessage(); });
 
     socket.on('chat-message', (msg) => {
-        // Filter logic:
-        // If it's a PM: Only show if I am sender OR I am receiver
-        // If I am in General: Show General msgs. Hide PMs? 
-        // For simplicity in this version: Show everything but style PMs differently
-        
-        appendMessage(msg);
-    });
-
-    function appendMessage(msg) {
         const div = document.createElement('div');
         div.className = `message ${msg.sender === myUsername ? 'user-message' : 'other-message'}`;
         div.id = `msg-${msg.id}`;
-        
-        if (msg.type === 'pm') div.style.borderLeft = "2px solid #9b59b6"; // Visual indicator for PMs
+        if (msg.type === 'pm') div.style.borderLeft = "2px solid #9b59b6"; 
 
-        // Avatar
-        const avatarImg = document.createElement('img');
-        avatarImg.className = 'message-avatar';
-        avatarImg.src = msg.avatar || 'placeholder-avatar.png';
+        const contentHtml = `
+            <div class="bubble-content">
+                ${msg.replyTo ? `<div class="reply-preview">Replying to: ${msg.replyTo.text.substring(0,20)}...</div>` : ''}
+                ${msg.image ? `<img src="${msg.image}" class="message-image" onclick="window.open('${msg.image}')">` : ''}
+                <div style="font-size:0.75em; font-weight:bold; margin-bottom:2px; color:${msg.type==='pm'?'#d09ae6':'#888'}">${msg.senderDisplayName}</div>
+                <div class="msg-text">${msg.text}${msg.isEdited?' <span style="font-size:0.7em;color:#aaa">(edited)</span>':''}</div>
+            </div>`;
+            
+        const avatarHtml = `<img class="message-avatar" src="${msg.avatar}">`;
+        div.innerHTML = msg.sender === myUsername ? (contentHtml + avatarHtml) : (avatarHtml + contentHtml);
         
-        // Content
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'bubble-content';
-        
-        // Name
-        const nameDiv = document.createElement('div');
-        nameDiv.style.fontSize = '0.75em';
-        nameDiv.style.fontWeight = 'bold';
-        nameDiv.style.marginBottom = '2px';
-        nameDiv.style.color = msg.type === 'pm' ? '#d09ae6' : '#888';
-        nameDiv.innerText = msg.senderDisplayName + (msg.type === 'pm' ? ' (Private)' : '');
-        
-        // Reply Preview
-        if (msg.replyTo) {
-            const replyDiv = document.createElement('div');
-            replyDiv.className = 'reply-preview';
-            replyDiv.innerText = `Replying to: ${msg.replyTo.text.substring(0, 30)}...`;
-            contentDiv.appendChild(replyDiv);
-        }
-
-        // Image
-        if (msg.image) {
-            const img = document.createElement('img');
-            img.src = msg.image;
-            img.className = 'message-image';
-            img.onclick = () => window.open(msg.image, '_blank');
-            contentDiv.appendChild(img);
-        }
-
-        // Text
-        const textSpan = document.createElement('div');
-        textSpan.className = 'msg-text';
-        textSpan.innerText = msg.text;
-        
-        // Edited Tag
-        if (msg.isEdited) {
-            const editTag = document.createElement('span');
-            editTag.style.fontSize = '0.7em';
-            editTag.style.color = '#aaa';
-            editTag.innerText = ' (edited)';
-            textSpan.appendChild(editTag);
-        }
-
-        contentDiv.appendChild(nameDiv);
-        contentDiv.appendChild(textSpan);
-        
-        if (msg.sender === myUsername) {
-            div.appendChild(contentDiv);
-            div.appendChild(avatarImg);
-        } else {
-            div.appendChild(avatarImg);
-            div.appendChild(contentDiv);
-        }
-
-        // Context Menu Event
+        // Right Click Menu
         div.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            showContextMenu(e, msg);
+            ctxTargetMsg = msg;
+            ctxMenu.style.display = 'block';
+            ctxMenu.style.left = e.pageX + 'px';
+            ctxMenu.style.top = e.pageY + 'px';
+            document.getElementById('ctx-edit').style.display = (msg.sender === myUsername) ? 'block' : 'none';
+            document.getElementById('ctx-delete').style.display = (msg.sender === myUsername) ? 'block' : 'none';
         });
 
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
+    });
 
-    // --- CONTEXT MENU (EDIT / DELETE) ---
+    // --- CONTEXT MENU ACTIONS ---
     let ctxTargetMsg = null;
-    function showContextMenu(e, msg) {
-        ctxTargetMsg = msg;
-        ctxMenu.style.display = 'block';
-        ctxMenu.style.left = `${e.pageX}px`;
-        ctxMenu.style.top = `${e.pageY}px`;
-        
-        // Only show edit/delete if it's my message
-        const isMine = msg.sender === myUsername;
-        document.getElementById('ctx-edit').style.display = isMine ? 'block' : 'none';
-        document.getElementById('ctx-delete').style.display = isMine ? 'block' : 'none';
-    }
-
-    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
-
-    document.getElementById('ctx-delete').onclick = () => {
-        if(ctxTargetMsg) socket.emit('delete-message', ctxTargetMsg.id);
-    };
-
-    document.getElementById('ctx-edit').onclick = () => {
-        if(ctxTargetMsg) {
-            const newText = prompt("Edit message:", ctxTargetMsg.text);
-            if(newText !== null) socket.emit('edit-message', { id: ctxTargetMsg.id, newText });
-        }
-    };
+    document.addEventListener('click', () => ctxMenu.style.display = 'none');
     
+    document.getElementById('ctx-delete').onclick = () => socket.emit('delete-message', ctxTargetMsg.id);
+    document.getElementById('ctx-edit').onclick = () => {
+        const newText = prompt("Edit message:", ctxTargetMsg.text);
+        if(newText) socket.emit('edit-message', { id: ctxTargetMsg.id, newText });
+    };
     document.getElementById('ctx-reply').onclick = () => {
-        if(ctxTargetMsg) {
-            replyToMsg = ctxTargetMsg;
-            document.getElementById('reply-bar').style.display = 'flex';
-            document.getElementById('replying-to-text').innerText = `Replying to ${ctxTargetMsg.senderDisplayName}`;
-            msgInput.focus();
-        }
+        replyToMsg = ctxTargetMsg;
+        document.getElementById('reply-bar').style.display = 'flex';
+        document.getElementById('replying-to-text').innerText = `Replying to ${ctxTargetMsg.senderDisplayName}`;
     };
 
-    socket.on('message-deleted', (id) => {
+    socket.on('message-deleted', (id) => { document.getElementById(`msg-${id}`)?.remove(); });
+    socket.on('message-edited', ({id, text}) => {
         const el = document.getElementById(`msg-${id}`);
-        if(el) el.remove();
-    });
-
-    socket.on('message-edited', ({ id, text }) => {
-        const el = document.getElementById(`msg-${id}`);
-        if(el) {
-            const textEl = el.querySelector('.msg-text');
-            if(textEl) {
-                textEl.innerText = text;
-                const tag = document.createElement('span');
-                tag.style.fontSize='0.7em'; tag.style.color='#aaa'; tag.innerText=' (edited)';
-                textEl.appendChild(tag);
-            }
-        }
-    });
-
-    // --- SIDEBAR LIST ---
-    socket.on('sidebar-user-list', (list) => {
-        // Clear except General
-        const generalBtn = dmListDiv.firstElementChild;
-        dmListDiv.innerHTML = '';
-        dmListDiv.appendChild(generalBtn);
-        
-        list.forEach(u => {
-            if(u.username === myUsername) return; // Don't show self
-            
-            const div = document.createElement('div');
-            div.className = 'dm-user-card';
-            div.onclick = () => switchChannel(u.username);
-            
-            const avWrap = document.createElement('div');
-            avWrap.className = 'dm-avatar-wrapper';
-            
-            const img = document.createElement('img');
-            img.src = u.avatar || 'placeholder-avatar.png';
-            
-            const status = document.createElement('div');
-            status.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
-            
-            avWrap.appendChild(img);
-            avWrap.appendChild(status);
-            
-            const name = document.createElement('div');
-            name.className = 'dm-username';
-            name.innerText = u.displayName;
-            
-            div.appendChild(avWrap);
-            div.appendChild(name);
-            dmListDiv.appendChild(div);
-        });
+        if(el) el.querySelector('.msg-text').innerHTML = text + ' <span style="font-size:0.7em;color:#aaa">(edited)</span>';
     });
 
     // --- FILE UPLOAD ---
-    const fileBtn = document.getElementById('file-upload-btn');
-    const fileInput = document.getElementById('file-input');
-    fileBtn.onclick = () => fileInput.click();
-    
-    fileInput.onchange = async () => {
-        const file = fileInput.files[0];
-        if(!file) return;
-        
-        // Optimistic Preview
-        document.getElementById('image-preview-area').style.display = 'flex';
-        document.getElementById('image-preview').src = 'loading.gif'; // Or spinner
-
-        const formData = new FormData();
-        formData.append('file', file);
-        
+    const fileIn = document.getElementById('file-input');
+    document.getElementById('file-upload-btn').onclick = () => fileIn.click();
+    fileIn.onchange = async () => {
+        const f = fileIn.files[0];
+        if(!f) return;
+        const form = new FormData(); form.append('file', f);
         try {
-            const res = await fetch('/upload', { method: 'POST', body: formData });
-            const data = await res.json();
-            if(data.url) {
-                imageToUpload = data.url;
-                document.getElementById('image-preview').src = data.url;
+            const res = await fetch('/upload', { method:'POST', body:form });
+            const d = await res.json();
+            if(d.url) {
+                imageToUpload = d.url;
+                document.getElementById('image-preview-area').style.display = 'flex';
+                document.getElementById('image-preview').src = d.url;
             }
         } catch(e) { console.error(e); }
     };
-
-    function cancelImage() {
-        imageToUpload = null;
-        document.getElementById('image-preview-area').style.display = 'none';
-        fileInput.value = '';
-    }
-    document.getElementById('remove-image-btn').onclick = cancelImage;
-    document.getElementById('cancel-reply-btn').onclick = cancelReply;
-    function cancelReply() {
-        replyToMsg = null;
-        document.getElementById('reply-bar').style.display = 'none';
-    }
-
-    // --- VOICE CHAT (RAW WEBRTC) ---
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-    let isVcJoined = false;
-
-    document.getElementById('vc-btn-join').onclick = async () => {
-        if(isVcJoined) {
-            leaveVoice();
-        } else {
-            await joinVoice();
-        }
+    document.getElementById('remove-image-btn').onclick = () => {
+        imageToUpload = null; document.getElementById('image-preview-area').style.display = 'none';
     };
+    document.getElementById('cancel-reply-btn').onclick = () => {
+        replyToMsg = null; document.getElementById('reply-bar').style.display = 'none';
+    };
+
+    // --- VOICE CHAT (RESTORED) ---
+    document.getElementById('vc-btn-join').onclick = () => isVcJoined ? leaveVoice() : joinVoice();
 
     async function joinVoice() {
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             socket.emit('join-vc');
             isVcJoined = true;
             document.getElementById('vc-btn-join').innerText = "Leave Voice";
             document.getElementById('vc-btn-join').style.backgroundColor = '#dc3545';
-        } catch(e) {
-            alert("Could not access microphone.");
-        }
+        } catch(e) { alert("Mic Access Denied"); }
     }
 
     function leaveVoice() {
         socket.emit('leave-vc');
-        if(localStream) localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-        isVcJoined = false;
+        if(localStream) localStream.getTracks().forEach(t => t.stop());
+        Object.values(peers).forEach(p => p.close());
+        peers = {}; isVcJoined = false;
         document.getElementById('vc-btn-join').innerText = "Join Voice";
         document.getElementById('vc-btn-join').style.backgroundColor = '#23a559';
-        // Close all peers
-        Object.values(peers).forEach(p => p.close());
-        peers = {};
     }
 
-    // When someone else joins, we call them
-    socket.on('vc-user-joined', async (userId) => {
-        if(!isVcJoined) return;
-        createPeer(userId, true);
-    });
-
-    socket.on('vc-user-left', (userId) => {
-        if(peers[userId]) {
-            peers[userId].close();
-            delete peers[userId];
-        }
-    });
-
+    socket.on('vc-user-joined', (id) => { if(isVcJoined) createPeer(id, true); });
+    socket.on('vc-user-left', (id) => { if(peers[id]) { peers[id].close(); delete peers[id]; } });
+    
     socket.on('signal', async ({ sender, signal }) => {
         if(!isVcJoined) return;
         if(!peers[sender]) createPeer(sender, false);
-        try {
-            await peers[sender].setRemoteDescription(new RTCSessionDescription(signal));
-            if(signal.type === 'offer') {
-                const answer = await peers[sender].createAnswer();
-                await peers[sender].setLocalDescription(answer);
-                socket.emit('signal', { target: sender, signal: peers[sender].localDescription });
-            }
-        } catch(e) { console.error(e); }
+        const pc = peers[sender];
+        
+        if (signal.candidate) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
+        } else {
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                if (signal.type === 'offer') {
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    socket.emit('signal', { target: sender, signal: pc.localDescription });
+                }
+            } catch(e) {}
+        }
     });
 
     socket.on('vc-user-list-update', (list) => {
-        vcListDiv.innerHTML = '';
+        const ul = document.getElementById('vc-user-list');
+        ul.innerHTML = '';
         list.forEach(u => {
             const li = document.createElement('li');
             li.innerText = u.displayName;
-            vcListDiv.appendChild(li);
+            ul.appendChild(li);
         });
     });
 
     function createPeer(targetId, initiator) {
         const pc = new RTCPeerConnection(rtcConfig);
         peers[targetId] = pc;
-
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('signal', { target: targetId, signal: { type: 'candidate', candidate: event.candidate } });
-            }
-        };
+        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
         
-        // Handle incoming audio
-        pc.ontrack = (event) => {
+        pc.onicecandidate = (e) => {
+            if(e.candidate) socket.emit('signal', { target: targetId, signal: { candidate: e.candidate } });
+        };
+        pc.ontrack = (e) => {
             const audio = new Audio();
-            audio.srcObject = event.streams[0];
+            audio.srcObject = e.streams[0];
             audio.play();
         };
 
-        if (initiator) {
-            pc.createOffer().then(offer => {
-                pc.setLocalDescription(offer);
-                socket.emit('signal', { target: targetId, signal: offer });
+        if(initiator) {
+            pc.createOffer().then(o => {
+                pc.setLocalDescription(o);
+                socket.emit('signal', { target: targetId, signal: o });
             });
         }
+        return pc;
     }
-
-    // Re-handling candidates specifically
-    // Note: The simple signal handler above tries to handle everything. 
-    // Ideally, we split 'offer'/'answer' from 'candidate'.
-    // Refined Signal Handler:
-    socket.off('signal'); // Remove previous to avoid dupes
-    socket.on('signal', async ({ sender, signal }) => {
-        if(!isVcJoined) return;
-        
-        if(!peers[sender]) createPeer(sender, false);
-        const pc = peers[sender];
-
-        if(signal.candidate) {
-             try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e){}
-        } else {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(signal));
-                if(signal.type === 'offer') {
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    socket.emit('signal', { target: sender, signal: pc.localDescription });
-                }
-            } catch(e) { console.error(e); }
-        }
-    });
-
 </script>
 </body>
 </html>
