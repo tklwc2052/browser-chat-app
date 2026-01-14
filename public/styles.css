@@ -29,6 +29,37 @@
     --d-avatar-s: 120px;
 }
 
+
+
+
+
+/* --- NEW INPUT GROUP FOR UPLOADS --- */
+.d-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.d-upload-btn {
+    background-color: var(--bg-input);
+    border: 1px solid #444;
+    color: var(--color-text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.2em;
+    transition: background 0.2s;
+}
+.d-upload-btn:hover {
+    background-color: #555;
+}
+
+.d-input-line {
+    flex-grow: 1; /* Input takes remaining space */
+    border: none; border-bottom: 1px solid #444; background: transparent; 
+    color: white; font-size: 14px; padding: 4px 0;
+}
+
 html, body {
     margin: 0; padding: 0;
     font-family: 'gg sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
