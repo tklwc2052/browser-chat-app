@@ -34,17 +34,32 @@
         </div>
 
         <div id="section-images" style="display:none;">
+            
             <div class="d-section">
-                <label class="d-label">Avatar Link</label>
-                <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste image link here...">
+                <label class="d-label">Avatar</label>
+                <div class="d-input-group">
+                    <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste link or upload...">
+                    <button class="d-upload-btn" onclick="triggerUpload('file-avatar')">📁</button>
+                    <input type="file" id="file-avatar" accept="image/*" style="display:none">
+                </div>
             </div>
+
             <div class="d-section">
-                <label class="d-label">Banner Link</label>
-                <input type="text" id="p-banner-url" class="d-input-line" placeholder="Paste image link here...">
+                <label class="d-label">Banner</label>
+                <div class="d-input-group">
+                    <input type="text" id="p-banner-url" class="d-input-line" placeholder="Paste link or upload...">
+                    <button class="d-upload-btn" onclick="triggerUpload('file-banner')">📁</button>
+                    <input type="file" id="file-banner" accept="image/*" style="display:none">
+                </div>
             </div>
+
             <div class="d-section">
-                <label class="d-label">Page Background Link</label>
-                <input type="text" id="p-bg-url" class="d-input-line" placeholder="Paste image link here...">
+                <label class="d-label">Page Background</label>
+                <div class="d-input-group">
+                    <input type="text" id="p-bg-url" class="d-input-line" placeholder="Paste link or upload...">
+                    <button class="d-upload-btn" onclick="triggerUpload('file-bg')">📁</button>
+                    <input type="file" id="file-bg" accept="image/*" style="display:none">
+                </div>
             </div>
         </div>
 
@@ -140,6 +155,52 @@
             btnSave.innerText = "Saved!";
             setTimeout(() => btnSave.innerText = "Save Profile", 2000);
         };
+
+        // --- UPLOAD LOGIC ---
+        function triggerUpload(inputId) {
+            document.getElementById(inputId).click();
+        }
+
+        // Attach listeners to file inputs
+        ['file-avatar', 'file-banner', 'file-bg'].forEach(id => {
+            document.getElementById(id).addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Determine target text input
+                let targetInput;
+                if (id === 'file-avatar') targetInput = elAvatarUrl;
+                if (id === 'file-banner') targetInput = elBannerUrl;
+                if (id === 'file-bg') targetInput = elBgUrl;
+
+                // Show loading state
+                const oldText = targetInput.value;
+                targetInput.value = "Uploading...";
+                targetInput.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const res = await fetch('/upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    
+                    if (data.url) {
+                        targetInput.value = data.url;
+                        targetInput.dispatchEvent(new Event('input')); // Trigger preview
+                    } else {
+                        alert("Upload failed");
+                        targetInput.value = oldText;
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Error uploading file");
+                    targetInput.value = oldText;
+                } finally {
+                    targetInput.disabled = false;
+                }
+            });
+        });
 
     } else {
         // VIEW MODE (Read Only)
