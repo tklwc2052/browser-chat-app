@@ -222,7 +222,6 @@
         currentAvatarPreview.src = currentAvatar;
     });
 
-    // --- SIDEBAR & CHAT UI LOGIC ---
     function renderSidebar() {
         dmList.innerHTML = '';
         const mainChatCard = document.createElement('div');
@@ -711,7 +710,7 @@
     const savedBg = localStorage.getItem('custom_bg');
     if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
 
-    // --- NEW: WEBRTC VOICE CHAT LOGIC ---
+    // --- UPDATED: WEBRTC VOICE CHAT LOGIC ---
 
     // 1. Join VC
     vcBtnJoin.onclick = () => {
@@ -720,6 +719,11 @@
                 localStream = stream;
                 isInVC = true;
                 
+                // Reset Mute State on Join
+                isMuted = false;
+                vcBtnMute.innerText = "Mute";
+                vcBtnMute.style.backgroundColor = "#4f545c";
+
                 // Switch UI
                 vcBtnJoin.style.display = 'none';
                 vcBtnLeave.style.display = 'block';
@@ -733,13 +737,23 @@
             });
     };
 
-    // 2. Mute Toggle
+    // 2. Mute Toggle (UPDATED FIX)
     vcBtnMute.onclick = () => {
         if (!localStream) return;
+        
         isMuted = !isMuted;
-        localStream.getAudioTracks()[0].enabled = !isMuted;
+        
+        // Loop through ALL audio tracks to ensure they are disabled
+        const tracks = localStream.getAudioTracks();
+        tracks.forEach(track => {
+            track.enabled = !isMuted; // If muted (true), enabled is false
+        });
+
+        // Update UI
         vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
         vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
+        
+        console.log(`Mic State: ${isMuted ? 'MUTED' : 'UNMUTED'}`);
     };
 
     // 3. Leave VC
@@ -788,15 +802,12 @@
             li.appendChild(span);
             vcUserList.appendChild(li);
         });
-        if (document.hidden && settingVC.checked) {
-             // Optional: notification for VC update
-        }
     });
 
     // 5. Existing user detects new user -> Calls them
     socket.on('vc-user-joined', (id) => {
         if (isInVC && localStream) {
-            createPeer(id, socket.id, localStream, true); // true = initiator
+            createPeer(id, socket.id, localStream, true); 
         }
     });
 
@@ -809,19 +820,14 @@
         if (audioEl) audioEl.remove();
     });
 
-    // 6. Handling Signals (Handshake)
+    // 6. Handling Signals
     socket.on('signal', (data) => {
-        // data = { sender: socket.id, signal: ... }
         if (!isInVC || !localStream) return;
-
         const peerId = data.sender;
         
-        // If we don't have a peer object for this person yet, create one (we are receiver)
         if (!peers[peerId]) {
             createPeer(peerId, socket.id, localStream, false);
         }
-
-        // Pass the signal to the peer object
         peers[peerId].signal(data.signal);
     });
 
@@ -837,7 +843,6 @@
         });
 
         peer.on('stream', (remoteStream) => {
-            // Check if audio element already exists
             if (!document.getElementById(`audio-${targetSocketId}`)) {
                 const audio = document.createElement('audio');
                 audio.id = `audio-${targetSocketId}`;
