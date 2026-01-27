@@ -110,6 +110,9 @@ const mutedUsers = new Set();
 const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
 
+// NEW: Track Screen Shares
+const activeScreenShares = new Set(); 
+
 const disconnectTimeouts = {}; 
 
 // --- Utility Functions ---
@@ -201,7 +204,7 @@ app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
-// --- NEW ROUTE FOR VOICE/SCREEN PAGE ---
+// NEW ROUTE
 app.get('/voice', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'voice.html'));
 });
@@ -217,6 +220,9 @@ io.on('connection', async (socket) => {
     }
 
     socket.emit('history', messageHistory);
+    // Send current screen shares on login
+    socket.emit('screen-share-update', Array.from(activeScreenShares));
+    
     broadcastVCUserList(); 
     broadcastSidebarRefresh(); 
     setTimeout(() => { socket.emit('motd', serverMOTD); }, 100);
@@ -281,6 +287,9 @@ io.on('connection', async (socket) => {
         });
         
         io.emit('user-status-change', { username, displayName, online: true, avatar });
+        
+        // Ensure they get the share list
+        socket.emit('screen-share-update', Array.from(activeScreenShares));
     });
 
     // --- GET OTHER USER PROFILE ---
@@ -477,12 +486,34 @@ io.on('connection', async (socket) => {
     });
     socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
     
+    // --- NEW: SCREEN SHARE TRACKING ---
+    socket.on('screen-share-start', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.add(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+    socket.on('screen-share-stop', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.delete(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+
     socket.on('disconnect', () => {
         const user = users[socket.id];
         if (user) {
             const username = user.username.toLowerCase();
             delete users[socket.id];
             
+            // Cleanup Screen Shares
+            if (activeScreenShares.has(user.username)) {
+                activeScreenShares.delete(user.username);
+                io.emit('screen-share-update', Array.from(activeScreenShares));
+            }
+
             if (vcUsers[socket.id]) { 
                 delete vcUsers[socket.id]; 
                 broadcastVCUserList(); 
