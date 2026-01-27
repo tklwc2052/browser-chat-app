@@ -80,6 +80,7 @@
             <div>
                 <h4 class="panel-title">other stuff</h4>
                 <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
+                <button id="open-voice-page-btn" class="panel-btn" style="margin-top:5px; background-color: var(--color-accent-green);">Open Voice/Screen Room</button>
             </div>
             <div>
                 <h4 class="panel-title">voice chat</h4>
@@ -91,7 +92,7 @@
                     </div>
                 </div>
                 <ul id="vc-user-list"></ul>
-                <div id="audio-container"></div>
+                <div id="media-container" style="display: flex; flex-direction: column; gap: 5px; margin-top: 10px;"></div>
             </div>
         </div>
         <div class="panel-bottom-group">
@@ -144,6 +145,7 @@
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const launchCustomWindowBtn = document.getElementById('launch-custom-window-btn');
+    const openVoicePageBtn = document.getElementById('open-voice-page-btn');
     const currentAvatarPreview = document.getElementById('current-avatar-preview');
     const openProfileBtn = document.getElementById('open-profile-btn');
     const replyBar = document.getElementById('reply-bar');
@@ -155,7 +157,7 @@
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcBtnLeave = document.getElementById('vc-btn-leave'); 
     const vcUserList = document.getElementById('vc-user-list');
-    const audioContainer = document.getElementById('audio-container');
+    const mediaContainer = document.getElementById('media-container');
 
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const hiddenFileInput = document.getElementById('hidden-file-input');
@@ -199,6 +201,7 @@
     let isMuted = false;
 
     openProfileBtn.onclick = () => { window.location.href = '/profile'; };
+    openVoicePageBtn.onclick = () => { window.open('/voice', '_blank'); };
 
     window.onload = () => {
         const savedUser = localStorage.getItem('simplechat_username');
@@ -710,17 +713,16 @@
     const savedBg = localStorage.getItem('custom_bg');
     if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
 
-    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (SAFE + FAST) ---
+    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (Includes Video Support) ---
 
     // 1. Join VC
     vcBtnJoin.onclick = () => {
-        // SAFE OPTIMIZATION: Use 'ideal' so it doesn't crash if browser says no
         const audioConstraints = {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
             channelCount: { ideal: 1 }, 
-            latency: { ideal: 0 }      // Request low latency, but don't force it
+            latency: { ideal: 0 }      
         };
 
         navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints })
@@ -728,12 +730,10 @@
                 localStream = stream;
                 isInVC = true;
                 
-                // Reset Mute State on Join
                 isMuted = false;
                 vcBtnMute.innerText = "Mute";
                 vcBtnMute.style.backgroundColor = "#4f545c";
 
-                // Switch UI
                 vcBtnJoin.style.display = 'none';
                 vcBtnLeave.style.display = 'block';
                 vcBtnMute.style.display = 'block';
@@ -751,7 +751,6 @@
         if (!localStream) return;
         isMuted = !isMuted;
         
-        // Loop through ALL audio tracks
         const tracks = localStream.getAudioTracks();
         tracks.forEach(track => { track.enabled = !isMuted; });
 
@@ -768,19 +767,16 @@
         isInVC = false;
         isMuted = false;
         
-        // Reset UI
         vcBtnJoin.style.display = 'block';
         vcBtnLeave.style.display = 'none';
         vcBtnMute.style.display = 'none';
         vcBtnMute.innerText = "Mute";
         vcBtnMute.style.backgroundColor = "#4f545c";
 
-        // Close all peer connections
         Object.values(peers).forEach(peer => peer.destroy());
         peers = {};
         
-        // Cleanup audio elements
-        audioContainer.innerHTML = '';
+        mediaContainer.innerHTML = '';
         
         socket.emit('leave-vc');
     };
@@ -821,6 +817,8 @@
         }
         const audioEl = document.getElementById(`audio-${id}`);
         if (audioEl) audioEl.remove();
+        const videoEl = document.getElementById(`video-${id}`);
+        if (videoEl) videoEl.remove();
     });
 
     // 6. Handling Signals
@@ -847,13 +845,42 @@
         });
 
         peer.on('stream', (remoteStream) => {
-            if (!document.getElementById(`audio-${targetSocketId}`)) {
-                const audio = document.createElement('audio');
-                audio.id = `audio-${targetSocketId}`;
-                audio.srcObject = remoteStream;
-                audio.autoplay = true;
-                audio.playsInline = true; 
-                audioContainer.appendChild(audio);
+            // CHECK IF VIDEO (SCREEN SHARE)
+            const isVideo = remoteStream.getVideoTracks().length > 0;
+            const elementId = isVideo ? `video-${targetSocketId}` : `audio-${targetSocketId}`;
+
+            if (!document.getElementById(elementId)) {
+                const mediaEl = document.createElement(isVideo ? 'video' : 'audio');
+                mediaEl.id = elementId;
+                mediaEl.srcObject = remoteStream;
+                mediaEl.autoplay = true;
+                mediaEl.playsInline = true;
+
+                if (isVideo) {
+                    // Style the video to fit in the sidebar
+                    mediaEl.style.width = '100%';
+                    mediaEl.style.borderRadius = '5px';
+                    mediaEl.style.border = '2px solid #00ACE6';
+                    mediaEl.style.marginTop = '10px';
+                    mediaEl.onclick = () => {
+                        // Toggle fullscreen-ish on click
+                        if(mediaEl.style.position === 'fixed') {
+                            mediaEl.style.position = 'static';
+                            mediaEl.style.zIndex = 'auto';
+                            mediaEl.style.width = '100%';
+                        } else {
+                            mediaEl.style.position = 'fixed';
+                            mediaEl.style.top = '10%';
+                            mediaEl.style.left = '10%';
+                            mediaEl.style.width = '80%';
+                            mediaEl.style.zIndex = '1000';
+                            mediaEl.style.boxShadow = '0 0 20px black';
+                            mediaEl.style.background = '#000';
+                        }
+                    };
+                }
+
+                mediaContainer.appendChild(mediaEl);
             }
         });
 
