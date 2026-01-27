@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice & Screen Room</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <style>
+        body {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; margin: 0; background-color: var(--bg-primary); color: white;
+        }
+        #controls {
+            position: fixed; bottom: 30px;
+            display: flex; gap: 15px; padding: 15px;
+            background-color: rgba(0,0,0,0.5); border-radius: 50px;
+            z-index: 100;
+        }
+        .control-btn {
+            width: 60px; height: 60px; border-radius: 50%;
+            border: none; cursor: pointer; font-size: 24px;
+            display: flex; align-items: center; justify-content: center;
+            background-color: #3c3c3c; color: white; transition: 0.2s;
+        }
+        .control-btn:hover { transform: scale(1.1); }
+        .btn-red { background-color: var(--color-vc-red); }
+        .btn-green { background-color: var(--color-accent-green); }
+        .btn-blue { background-color: var(--color-accent-blue); }
+
+        #streams-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px; width: 90%; max-height: 80vh; overflow-y: auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%; border-radius: 10px; border: 2px solid #333;
+            background: #000;
+        }
+        .user-label {
+            position: absolute; bottom: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); padding: 5px 10px;
+            border-radius: 5px; font-size: 0.9em;
+        }
+        .video-wrapper { position: relative; }
+    </style>
+</head>
+<body>
+
+    <h2 id="status-text">Ready to Join</h2>
+    
+    <div id="streams-grid"></div>
+
+    <div id="controls">
+        <button id="btn-mic" class="control-btn" title="Toggle Mic">🎤</button>
+        <button id="btn-join" class="control-btn btn-green" title="Join Call">📞</button>
+        <button id="btn-share" class="control-btn btn-blue" title="Share Screen" style="display:none;">🖥️</button>
+        <button id="btn-leave" class="control-btn btn-red" title="Leave" style="display:none;">❌</button>
+    </div>
+
+<script>
+    const socket = io();
+    let localStream = null;
+    let screenStream = null;
+    let peers = {};
+    let isMuted = false;
+    let isInVC = false;
+
+    // UI Elements
+    const btnJoin = document.getElementById('btn-join');
+    const btnLeave = document.getElementById('btn-leave');
+    const btnMic = document.getElementById('btn-mic');
+    const btnShare = document.getElementById('btn-share');
+    const statusText = document.getElementById('status-text');
+    const streamsGrid = document.getElementById('streams-grid');
+
+    // 1. Setup Username
+    const savedUser = localStorage.getItem('simplechat_username');
+    if (savedUser) {
+        socket.emit('set-username', { username: savedUser });
+    } else {
+        const user = prompt("Username:");
+        if (user) {
+            localStorage.setItem('simplechat_username', user);
+            socket.emit('set-username', { username: user });
+        }
+    }
+
+    // 2. Join Call Logic
+    btnJoin.onclick = () => {
+        navigator.mediaDevices.getUserMedia({ 
+            audio: { echoCancellation:true, noiseSuppression:true }, 
+            video: false 
+        })
+        .then(stream => {
+            localStream = stream;
+            isInVC = true;
+            statusText.innerText = "Connected to Voice";
+            
+            // Toggle Buttons
+            btnJoin.style.display = 'none';
+            btnLeave.style.display = 'flex';
+            btnShare.style.display = 'flex';
+
+            socket.emit('join-vc');
+        }).catch(e => alert("Mic Error: " + e.message));
+    };
+
+    // 3. Share Screen Logic
+    btnShare.onclick = () => {
+        // Request Screen Stream
+        navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+        .then(stream => {
+            screenStream = stream;
+            
+            // Add this stream to ALL existing peer connections
+            Object.values(peers).forEach(peer => {
+                peer.addStream(screenStream);
+            });
+
+            // Show local preview
+            addVideoToGrid(screenStream, "My Screen", true);
+
+            // Handle user clicking "Stop Sharing" on browser UI
+            screenStream.getVideoTracks()[0].onended = () => {
+                stopScreenShare();
+            };
+
+            btnShare.classList.add('btn-green'); // Visual indicator
+        }).catch(e => console.log("Screen Share cancelled"));
+    };
+
+    function stopScreenShare() {
+        if (screenStream) {
+            screenStream.getTracks().forEach(t => t.stop());
+            // Remove local preview
+            const localVid = document.getElementById('local-screen-share');
+            if(localVid) localVid.remove();
+            screenStream = null;
+            btnShare.classList.remove('btn-green');
+            
+            // Note: SimplePeer doesn't automatically remove stream on the other end perfectly
+            // without renegotiation (which is complex). 
+            // Users might see a frozen frame or black screen until they refresh.
+            // But for a simple app, this works okay.
+        }
+    }
+
+    // 4. Mute Logic
+    btnMic.onclick = () => {
+        if(!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks()[0].enabled = !isMuted;
+        btnMic.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#3c3c3c";
+        btnMic.innerText = isMuted ? "🔇" : "🎤";
+    };
+
+    // 5. Leave Logic
+    btnLeave.onclick = () => {
+        if(localStream) localStream.getTracks().forEach(t => t.stop());
+        stopScreenShare();
+        socket.emit('leave-vc');
+        location.reload(); // Quickest way to clean up all WebRTC state
+    };
+
+    // --- WebRTC Handling ---
+    
+    socket.on('vc-user-joined', (id) => {
+        if (isInVC && localStream) createPeer(id, socket.id, localStream, true);
+    });
+
+    socket.on('signal', (data) => {
+        if (!isInVC) return;
+        if (!peers[data.sender]) createPeer(data.sender, socket.id, localStream, false);
+        peers[data.sender].signal(data.signal);
+    });
+
+    socket.on('vc-user-left', (id) => {
+        if (peers[id]) { peers[id].destroy(); delete peers[id]; }
+        const el = document.getElementById(`wrapper-${id}`);
+        if(el) el.remove();
+        const audioEl = document.getElementById(`audio-${id}`);
+        if(audioEl) audioEl.remove();
+    });
+
+    function createPeer(targetId, myId, stream, initiator) {
+        const peer = new SimplePeer({
+            initiator: initiator,
+            stream: stream,
+            trickle: true,
+            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+        });
+
+        // IF we are already sharing screen, send that too!
+        if (screenStream) {
+            peer.addStream(screenStream);
+        }
+
+        peer.on('signal', data => socket.emit('signal', { target: targetId, signal: data }));
+
+        peer.on('stream', remoteStream => {
+            // Check if Video (Screen) or Audio (Mic)
+            const isVideo = remoteStream.getVideoTracks().length > 0;
+            if (isVideo) {
+                addVideoToGrid(remoteStream, "User Screen", false, targetId);
+            } else {
+                // It's audio, create hidden audio element
+                const audio = document.createElement('audio');
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                audio.id = `audio-${targetId}`;
+                document.body.appendChild(audio);
+            }
+        });
+
+        peers[targetId] = peer;
+        return peer;
+    }
+
+    function addVideoToGrid(stream, label, isLocal, id) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'video-wrapper';
+        if(id) wrapper.id = `wrapper-${id}`;
+        if(isLocal) wrapper.id = 'local-screen-share';
+
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        if (isLocal) video.muted = true; // Don't hear yourself
+
+        const lbl = document.createElement('div');
+        lbl.className = 'user-label';
+        lbl.innerText = label;
+
+        wrapper.appendChild(video);
+        wrapper.appendChild(lbl);
+        streamsGrid.appendChild(wrapper);
+    }
+</script>
+</body>
+</html>
