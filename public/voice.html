@@ -121,6 +121,9 @@
 
             // Show local preview
             addVideoToGrid(screenStream, "My Screen", true);
+            
+            // Notify Server
+            socket.emit('screen-share-start');
 
             // Handle user clicking "Stop Sharing" on browser UI
             screenStream.getVideoTracks()[0].onended = () => {
@@ -133,17 +136,13 @@
 
     function stopScreenShare() {
         if (screenStream) {
+            socket.emit('screen-share-stop');
             screenStream.getTracks().forEach(t => t.stop());
             // Remove local preview
             const localVid = document.getElementById('local-screen-share');
             if(localVid) localVid.remove();
             screenStream = null;
             btnShare.classList.remove('btn-green');
-            
-            // Note: SimplePeer doesn't automatically remove stream on the other end perfectly
-            // without renegotiation (which is complex). 
-            // Users might see a frozen frame or black screen until they refresh.
-            // But for a simple app, this works okay.
         }
     }
 
