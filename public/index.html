@@ -710,11 +710,20 @@
     const savedBg = localStorage.getItem('custom_bg');
     if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
 
-    // --- UPDATED: WEBRTC VOICE CHAT LOGIC ---
+    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (LOW LATENCY) ---
 
     // 1. Join VC
     vcBtnJoin.onclick = () => {
-        navigator.mediaDevices.getUserMedia({ video: false, audio: true })
+        // OPTIMIZATION: Audio Constraints for Low Latency
+        const audioConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,  // Mono audio is faster
+            latency: 0        // Request lowest possible latency
+        };
+
+        navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints })
             .then(stream => {
                 localStream = stream;
                 isInVC = true;
@@ -737,23 +746,17 @@
             });
     };
 
-    // 2. Mute Toggle (UPDATED FIX)
+    // 2. Mute Toggle
     vcBtnMute.onclick = () => {
         if (!localStream) return;
-        
         isMuted = !isMuted;
         
-        // Loop through ALL audio tracks to ensure they are disabled
+        // Loop through ALL audio tracks
         const tracks = localStream.getAudioTracks();
-        tracks.forEach(track => {
-            track.enabled = !isMuted; // If muted (true), enabled is false
-        });
+        tracks.forEach(track => { track.enabled = !isMuted; });
 
-        // Update UI
         vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
         vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
-        
-        console.log(`Mic State: ${isMuted ? 'MUTED' : 'UNMUTED'}`);
     };
 
     // 3. Leave VC
@@ -832,10 +835,12 @@
     });
 
     function createPeer(targetSocketId, myId, stream, initiator) {
+        // OPTIMIZATION: Enable Trickle ICE for faster connection
         const peer = new SimplePeer({
             initiator: initiator,
             stream: stream,
-            trickle: false 
+            trickle: true, 
+            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
         });
 
         peer.on('signal', (signal) => {
@@ -848,6 +853,8 @@
                 audio.id = `audio-${targetSocketId}`;
                 audio.srcObject = remoteStream;
                 audio.autoplay = true;
+                // OPTIMIZATION: Prevent buffering
+                audio.playsInline = true; 
                 audioContainer.appendChild(audio);
             }
         });
