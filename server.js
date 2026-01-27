@@ -8,15 +8,15 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // --- JUKEBOX STATE ---
-let musicQueue = [];       // List of songs waiting to play
-let currentSong = null;    // Current song object { videoId, title, etc }
-let songStartTime = 0;     // Timestamp when current song started (for syncing)
+let musicQueue = [];       
+let currentSong = null;    
+let songStartTime = 0;     
 
 // Helper: Play the next song in the queue
 function playNextSong() {
     if (musicQueue.length > 0) {
-        currentSong = musicQueue.shift(); // Remove first song from queue
-        songStartTime = Date.now();       // Record start time
+        currentSong = musicQueue.shift(); 
+        songStartTime = Date.now();       
         
         console.log(`🎵 Now Playing: ${currentSong.title}`);
 
@@ -36,16 +36,19 @@ function playNextSong() {
     }
 }
 
-app.use(express.static(__dirname));
+// --- SERVE STATIC FILES ---
+// This tells the server to look inside the 'public' folder for files
+app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve the HTML file from the public folder
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 io.on('connection', (socket) => {
     console.log('A user connected');
 
-    // --- CHAT LOGIC (Existing) ---
+    // --- CHAT LOGIC ---
     socket.on('chat message', (msg) => {
         io.emit('chat message', msg);
     });
@@ -58,7 +61,7 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('stop typing');
     });
 
-    // --- JUKEBOX LOGIC (New) ---
+    // --- JUKEBOX LOGIC ---
 
     // 1. User Joins: Sync them to the current song
     socket.on('jukebox-join', () => {
@@ -72,18 +75,16 @@ io.on('connection', (socket) => {
             socket.emit('jukebox-play', {
                 videoId: currentSong.videoId,
                 title: currentSong.title,
-                startAt: secondsElapsed // Tell client to jump to this timestamp
+                startAt: secondsElapsed 
             });
         }
     });
 
     // 2. User Adds Song
     socket.on('jukebox-add', (songData) => {
-        // Add to queue
         musicQueue.push(songData);
         io.emit('jukebox-update-queue', musicQueue);
 
-        // If nothing is playing, start this song immediately
         if (!currentSong) {
             playNextSong();
         }
@@ -91,8 +92,6 @@ io.on('connection', (socket) => {
 
     // 3. Song Ended (Client reports it finished)
     socket.on('jukebox-song-ended', () => {
-        // We only want to skip if we are actually playing something
-        // (Prevents double-skipping if multiple users report end at same time)
         if (currentSong) {
             playNextSong();
         }
