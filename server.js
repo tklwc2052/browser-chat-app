@@ -70,21 +70,24 @@ const banSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 
-const userProfileSchema = new mongoose.Schema({
-    username: { type: String, unique: true }, // The immutable ID
-    displayName: String, // The changeable name
+// REVERTED TO 'User' TO RESTORE YOUR OLD DATA
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true }, 
+    displayName: String, 
     avatar: String,
-    banner: String,
-    pronouns: String,
-    description: String,
-    customBackground: String,
-    lastSeen: { type: Date, default: Date.now }
+    banner: { type: String, default: "" },
+    pronouns: { type: String, default: "" },
+    description: { type: String, default: "" },
+    customBackground: { type: String, default: "" },
+    lastSeen: { type: Date, default: Date.now },
+    lastIp: String
 });
 
 const Message = mongoose.model('Message', messageSchema);
 const PrivateMessage = mongoose.model('PrivateMessage', privateMessageSchema);
 const Ban = mongoose.model('Ban', banSchema);
-const UserProfile = mongoose.model('UserProfile', userProfileSchema);
+// Pointing back to the original 'User' model
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 // --- SERVE STATIC FILES ---
 app.use(express.static(path.join(__dirname, 'public')));
@@ -94,7 +97,6 @@ app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
-// NEW ROUTE: VOICE SUB-PAGE
 app.get('/voice', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'voice.html'));
 });
@@ -105,7 +107,7 @@ app.get('/i-like-my-toast-with-butter', async (req, res) => {
 
 // --- STATE MANAGEMENT ---
 const users = {}; 
-const vcUsers = {}; // Track who is in VC
+const vcUsers = {}; 
 const bannedIPs = new Set();
 const disconnectTimeouts = {}; 
 
@@ -122,7 +124,6 @@ io.on('connection', async (socket) => {
         return;
     }
 
-    // Send MOTD / Build Info
     socket.emit('motd', `Server Build: ${SERVER_BUILD_ID} - ${SERVER_BUILD_DESC}`);
 
     // --- USERNAME HANDLER ---
@@ -130,22 +131,24 @@ io.on('connection', async (socket) => {
         const username = data.username;
         const lowerName = username.toLowerCase();
 
-        // 1. Fetch or Create Profile
-        let profile = await UserProfile.findOne({ username: username });
+        // 1. Fetch or Create User (Using correct 'User' model now)
+        let profile = await User.findOne({ username: username });
         if (!profile) {
-            profile = new UserProfile({ 
+            profile = new User({ 
                 username: username, 
                 displayName: username, 
                 avatar: `https://ui-avatars.com/api/?name=${username}&background=random`,
                 description: "New user",
-                banner: "",
-                pronouns: "",
-                customBackground: ""
+                lastIp: clientIp
             });
+            await profile.save();
+        } else {
+            // Update IP on login
+            profile.lastIp = clientIp;
             await profile.save();
         }
 
-        // 2. Handle Reconnection (Grace Period)
+        // 2. Handle Reconnection
         if (disconnectTimeouts[lowerName]) {
             clearTimeout(disconnectTimeouts[lowerName]);
             delete disconnectTimeouts[lowerName];
@@ -164,7 +167,11 @@ io.on('connection', async (socket) => {
         socket.emit('profile-info', {
             username: profile.username,
             displayName: profile.displayName,
-            avatar: profile.avatar
+            avatar: profile.avatar,
+            description: profile.description,
+            pronouns: profile.pronouns,
+            banner: profile.banner,
+            customBackground: profile.customBackground
         });
 
         // 5. Broadcast Presence
@@ -175,8 +182,8 @@ io.on('connection', async (socket) => {
             online: true 
         });
         
-        // 6. Send User List to Client
-        const userList = await UserProfile.find({});
+        // 6. Send User List
+        const userList = await User.find({});
         const onlineMap = {};
         Object.values(users).forEach(u => onlineMap[u.username] = true);
         
@@ -188,22 +195,22 @@ io.on('connection', async (socket) => {
         }));
         
         socket.emit('sidebar-user-list', refinedList);
-        socket.broadcast.emit('vc-user-list-update', Object.values(vcUsers)); // Send VC list too
         socket.emit('vc-user-list-update', Object.values(vcUsers));
     });
 
     // --- PROFILE FETCHING ---
     socket.on('get-user-profile', async (targetUsername) => {
-        const p = await UserProfile.findOne({ username: targetUsername });
+        const p = await User.findOne({ username: targetUsername });
         if(p) socket.emit('user-profile-data', p);
         else socket.emit('user-profile-data', { notFound: true });
     });
 
+    // --- UPDATE PROFILE (FIXED) ---
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if(!user || user.username !== data.username) return;
 
-        // Upload Banner to Cloudinary if needed
+        // Upload Banner
         let bannerUrl = data.banner;
         if (data.banner && data.banner.startsWith('data:image')) {
             try {
@@ -221,13 +228,22 @@ io.on('connection', async (socket) => {
             } catch(e) { console.error("BG upload failed", e); }
         }
 
-        await UserProfile.findOneAndUpdate({ username: data.username }, {
+        // Database Update
+        const updateFields = {
             displayName: data.displayName,
             pronouns: data.pronouns,
             description: data.description,
             banner: bannerUrl,
             customBackground: bgUrl
-        });
+        };
+
+        // FIX: Ensure Avatar is updated if provided
+        if (data.avatar) {
+            updateFields.avatar = data.avatar;
+            user.avatar = data.avatar; // Update local session
+        }
+
+        await User.findOneAndUpdate({ username: data.username }, updateFields);
 
         // Update local session
         user.displayName = data.displayName;
@@ -248,7 +264,7 @@ io.on('connection', async (socket) => {
         const user = users[socket.id];
         if (!user) return;
 
-        // Image Handling (Cloudinary)
+        // Image Handling
         let imageUrl = null;
         if (data.image) {
             try {
@@ -271,7 +287,7 @@ io.on('connection', async (socket) => {
         };
 
         if (data.to) {
-            // PRIVATE MESSAGE (DM)
+            // PRIVATE MESSAGE
             const pm = new PrivateMessage({
                 from: user.username,
                 to: data.to,
@@ -279,14 +295,10 @@ io.on('connection', async (socket) => {
             });
             await pm.save();
 
-            // Find recipient socket(s)
             const recipientSocketId = Object.keys(users).find(key => users[key].username === data.to);
-            
-            // Send to Recipient
             if (recipientSocketId) {
                 io.to(recipientSocketId).emit('dm-received', { from: user.username, to: data.to, message: msgData });
             }
-            // Send back to Sender (so it shows in their UI)
             socket.emit('dm-received', { from: user.username, to: data.to, message: msgData });
 
         } else {
@@ -359,16 +371,11 @@ io.on('connection', async (socket) => {
         if (user) socket.broadcast.emit('stop-typing', user.displayName);
     });
 
-    // --- VOICE CHAT (WebRTC Signaling) ---
+    // --- VOICE CHAT ---
     socket.on('join-vc', () => {
         if (!users[socket.id]) return;
-        // Add to VC list
         vcUsers[socket.id] = users[socket.id];
-        
-        // Broadcast new list
         io.emit('vc-user-list-update', Object.values(vcUsers));
-        
-        // Notify others to call me
         socket.broadcast.emit('vc-user-joined', socket.id);
     });
 
@@ -394,23 +401,18 @@ io.on('connection', async (socket) => {
             const username = user.username.toLowerCase();
             delete users[socket.id];
             
-            // Remove from VC if there
             if (vcUsers[socket.id]) { 
                 delete vcUsers[socket.id]; 
                 io.emit('vc-user-list-update', Object.values(vcUsers));
                 socket.broadcast.emit('vc-user-left', socket.id); 
             }
 
-            // --- GRACE PERIOD LOGIC ---
             if (disconnectTimeouts[username]) clearTimeout(disconnectTimeouts[username]);
 
             disconnectTimeouts[username] = setTimeout(async () => {
                 const isStillOnline = Object.values(users).some(u => u.username.toLowerCase() === username);
-                
                 if (!isStillOnline) {
-                    // Update Last Seen in DB
-                    await UserProfile.findOneAndUpdate({ username: user.username }, { lastSeen: new Date() });
-
+                    await User.findOneAndUpdate({ username: user.username }, { lastSeen: new Date() });
                     io.emit('user-status-change', { username: user.username, online: false });
                 }
                 delete disconnectTimeouts[username];
