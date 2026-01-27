@@ -39,184 +39,333 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-const io = socketIo(server, { maxHttpBufferSize: 1e7 }); // 10MB payload limit
+const io = socketIo(server, { maxHttpBufferSize: 1e7 });
+
+app.set('trust proxy', 1); 
 
 // --- MONGODB CONNECTION ---
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
+mongoose.connect(mongoURI)
+    .then(async () => {
+        console.log('MongoDB Connected');
+        try {
+            const savedMessages = await Message.find().sort({ timestamp: -1 }).limit(MAX_HISTORY).lean();
+            messageHistory.push(...savedMessages.reverse());
+        } catch (err) { console.error(err); }
+
+        try {
+            const savedMotd = await Config.findOne({ key: 'motd' });
+            if (savedMotd) serverMOTD = savedMotd.value;
+        } catch (err) { console.error(err); }
+
+        try {
+            const allBans = await Ban.find({});
+            allBans.forEach(ban => bannedIPs.set(ban.ip, true));
+        } catch (err) { console.error(err); }
+    })
+    .catch(err => console.log('MongoDB Connection Error:', err));
 
 // --- SCHEMAS ---
-const messageSchema = new mongoose.Schema({
-    sender: String,
-    displayName: String, // Store display name in history
-    avatar: String,      // Store avatar URL in history
-    text: String,
-    image: String,       // URL to Cloudinary image
-    timestamp: { type: Date, default: Date.now },
-    isSystem: { type: Boolean, default: false },
-    replyTo: { type: Object, default: null } // Store the parent message object
-});
-const Message = mongoose.model('Message', messageSchema);
-
 const userSchema = new mongoose.Schema({
-    username: { type: String, unique: true, required: true },
-    displayName: String,
-    description: String,
-    pronouns: String,
+    username: { type: String, unique: true },
+    displayName: String, 
+    description: { type: String, default: "" }, 
+    pronouns: { type: String, default: "" },
     avatar: String,
-    banner: String,
-    customBackground: String,
-    lastSeen: Date,
-    socketId: String // Track current socket
+    banner: { type: String, default: "" },           
+    customBackground: { type: String, default: "" }, 
+    lastIp: String, 
+    lastSeen: { type: Date, default: Date.now }
 });
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
-// Ban Schema
 const banSchema = new mongoose.Schema({
-    ip: String,
-    reason: String,
-    bannedAt: { type: Date, default: Date.now }
+    username: String, ip: String, bannedAt: { type: Date, default: Date.now }, bannedBy: String
 });
-const Ban = mongoose.model('Ban', banSchema);
+const Ban = mongoose.models.Ban || mongoose.model('Ban', banSchema);
 
-// --- STATE ---
+const messageSchema = new mongoose.Schema({
+    id: String, sender: String, senderDisplayName: String, text: String, image: String, avatar: String, time: String, replyTo: Object, type: String, isEdited: { type: Boolean, default: false }, timestamp: { type: Date, default: Date.now }
+});
+messageSchema.index({ timestamp: -1 }); 
+const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
+
+const dmSchema = new mongoose.Schema({
+    participants: [String], 
+    messages: [{ id: String, replyTo: Object, sender: String, senderDisplayName: String, text: String, image: String, avatar: String, time: String, isEdited: { type: Boolean, default: false }, timestamp: { type: Date, default: Date.now } }]
+});
+dmSchema.index({ participants: 1 });
+const DM = mongoose.models.DM || mongoose.model('DM', dmSchema);
+
+const configSchema = new mongoose.Schema({ key: { type: String, unique: true }, value: String });
+const Config = mongoose.models.Config || mongoose.model('Config', configSchema);
+
+// --- State Management ---
 const users = {}; 
-const vcUsers = {}; // Track users in VC: { socketId: username }
-const mutedUsers = new Set();
-const disconnectTimeouts = {}; // For grace period
+const vcUsers = {}; 
+const messageHistory = []; 
+const MAX_HISTORY = 20; 
+const userAvatarCache = {}; 
+let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
+const mutedUsers = new Set(); 
+const bannedIPs = new Map();  
+const ADMIN_USERNAME = 'kl_'; 
 
-const bannedIPs = new Set(); // Cache for fast lookup
+const disconnectTimeouts = {}; 
 
-// Load bans on startup
-Ban.find().then(bans => bans.forEach(b => bannedIPs.add(b.ip)));
+// --- Utility Functions ---
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
 
-// --- MIDDLEWARE ---
-app.set('trust proxy', 1); // Trust first proxy (Render/Heroku/etc)
+function formatMessage(sender, text, avatar = null, image = null, isPm = false, replyTo = null, senderDisplayName = null) {
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    let finalAvatar = avatar;
+    if (!finalAvatar && userAvatarCache[sender]) finalAvatar = userAvatarCache[sender];
+    if (!finalAvatar && sender !== 'System') finalAvatar = 'placeholder-avatar.png';
+    const finalDisplayName = senderDisplayName || sender;
+
+    if (sender === 'System' || sender === 'Announcement') {
+        return { id: generateId(), text, sender, senderDisplayName: sender, avatar: null, time, type: 'system', timestamp: now };
+    }
+    return { id: generateId(), text, image, sender, senderDisplayName: finalDisplayName, avatar: finalAvatar, time, replyTo, type: isPm ? 'pm' : 'general', isEdited: false, timestamp: now };
+}
+
+async function savePublicMessage(msgObj) {
+    if (msgObj.type === 'pm') return;
+    try {
+        await new Message({
+            id: msgObj.id, sender: msgObj.sender, senderDisplayName: msgObj.senderDisplayName, text: msgObj.text, image: msgObj.image, avatar: msgObj.avatar, time: msgObj.time, replyTo: msgObj.replyTo, type: msgObj.type, isEdited: msgObj.isEdited || false, timestamp: msgObj.timestamp || new Date()
+        }).save();
+    } catch (err) { console.error("Error saving public message:", err); }
+}
+
+// NEW: Helper to save private messages
+async function savePrivateMessage(sender, target, msgObj) {
+    const participants = [sender, target].sort();
+    try {
+        await DM.findOneAndUpdate(
+            { participants: participants },
+            { 
+                $push: { messages: msgObj }, 
+                $setOnInsert: { participants: participants } 
+            },
+            { upsert: true }
+        );
+    } catch (e) { console.error("Error saving DM:", e); }
+}
+
+function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vcUsers)); }
+function addToHistory(msgObj) {
+    messageHistory.push(msgObj);
+    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
+}
+function findSocketIdByUsername(username) {
+    return Object.keys(users).find(id => users[id].username.toLowerCase() === username.toLowerCase());
+}
+function getClientIp(socket) {
+    const forwarded = socket.handshake.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+    return socket.handshake.address;
+}
+async function broadcastSidebarRefresh() {
+    try {
+        const allDbUsers = await User.find({}).lean();
+        const sidebarList = allDbUsers.map(u => ({
+            username: u.username,
+            displayName: u.displayName || u.username, 
+            avatar: u.avatar,
+            online: Object.values(users).some(live => live.username === u.username)
+        }));
+        io.emit('sidebar-user-list', sidebarList);
+    } catch (err) { console.error("Sidebar update error", err); }
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ROUTES ---
-
-// Upload Route
+// --- NEW FILE UPLOAD ROUTE ---
 app.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+    // Use stream upload for efficiency
     const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: 'auto', folder: 'chat_uploads' },
+        { folder: 'chat_assets', resource_type: 'auto' },
         (error, result) => {
             if (error) return res.status(500).json({ error: error.message });
             res.json({ url: result.secure_url });
         }
     );
-    stream.Readable.from(req.file.buffer).pipe(uploadStream);
+
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(req.file.buffer);
+    bufferStream.pipe(uploadStream);
 });
 
-// --- SOCKET.IO ---
+app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'profile.html'));
+});
+
 io.on('connection', async (socket) => {
-    const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+    socket.emit('system-version-check', { id: SERVER_BUILD_ID, description: SERVER_BUILD_DESC });
+    const clientIp = getClientIp(socket);
     
-    // Check Ban
     if (bannedIPs.has(clientIp)) {
-        socket.emit('banned', 'You are banned from this server.');
-        socket.disconnect();
+        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
+        socket.disconnect(true);
         return;
     }
 
-    // Send Build Info immediately
-    socket.emit('server-build-info', { id: SERVER_BUILD_ID, desc: SERVER_BUILD_DESC });
+    socket.emit('history', messageHistory);
+    broadcastVCUserList(); 
+    broadcastSidebarRefresh(); 
+    setTimeout(() => { socket.emit('motd', serverMOTD); }, 100);
 
-    console.log('New user connected:', socket.id);
+    socket.on('get-history', () => { socket.emit('history', messageHistory); });
 
-    // Send history
-    const history = await Message.find().sort({ timestamp: 1 }).limit(50);
-    socket.emit('load-history', history);
-
-    // Send current user list
-    io.emit('update-user-list', Object.values(users));
-    
-    // Send current VC list
-    socket.emit('update-vc-list', Object.values(vcUsers));
-
-    // Handle User Join
-    socket.on('join', async (username) => {
-        // If Grace Period Active, cancel it
-        if (disconnectTimeouts[username]) {
-            clearTimeout(disconnectTimeouts[username]);
-            delete disconnectTimeouts[username];
-        }
-
-        // Fetch or Create User Profile
-        let userProfile = await User.findOne({ username });
-        if (!userProfile) {
-            userProfile = new User({ 
-                username, 
-                displayName: username, 
-                avatar: 'placeholder-avatar.png',
-                lastSeen: new Date()
-            });
-            await userProfile.save();
-        } else {
-            // Update last seen and socket
-            userProfile.lastSeen = new Date();
-            userProfile.socketId = socket.id;
-            await userProfile.save();
-        }
-
-        users[socket.id] = { 
-            username: userProfile.username, 
-            displayName: userProfile.displayName, 
-            avatar: userProfile.avatar,
-            ip: clientIp
-        };
-
-        io.emit('update-user-list', Object.values(users));
+    // --- REGISTER / LOGIN ---
+    socket.on('set-username', async ({ username }) => {
+        if (!username) return;
+        const usernameLower = username.toLowerCase();
         
-        // Notify others
-        io.emit('chat-message', formatMessage('System', `${userProfile.displayName} (${username}) has joined the chat.`));
-        io.emit('user-status-change', { username: username, online: true });
-    });
+        let isReconnecting = false;
+        if (disconnectTimeouts[usernameLower]) {
+            clearTimeout(disconnectTimeouts[usernameLower]);
+            delete disconnectTimeouts[usernameLower];
+            isReconnecting = true;
+        }
 
-    // Handle Profile Updates
-    socket.on('update-profile', async (data) => {
-        const currentUser = users[socket.id];
-        if (!currentUser) return;
+        const isAlreadyOnline = Object.keys(users).some(id => 
+            id !== socket.id && users[id].username.toLowerCase() === usernameLower
+        );
+
+        let dbUser = null;
+        try { dbUser = await User.findOne({ username: username }); } catch(e) {}
+
+        const displayName = dbUser ? (dbUser.displayName || username) : username;
+        const avatar = dbUser ? (dbUser.avatar || 'placeholder-avatar.png') : 'placeholder-avatar.png';
+        const description = dbUser ? (dbUser.description || "") : "";
+        const pronouns = dbUser ? (dbUser.pronouns || "") : "";
+        const banner = dbUser ? (dbUser.banner || "") : "";
+        const customBackground = dbUser ? (dbUser.customBackground || "") : "";
+
+        userAvatarCache[username] = avatar;
+        users[socket.id] = { username, displayName, avatar, description, pronouns, id: socket.id };
 
         try {
-            const updatedUser = await User.findOneAndUpdate(
-                { username: currentUser.username },
-                { 
-                    displayName: data.displayName,
-                    pronouns: data.pronouns,
-                    description: data.description,
-                    avatar: data.avatar,
-                    banner: data.banner,
-                    customBackground: data.customBackground
-                },
-                { new: true }
+            await User.findOneAndUpdate(
+                { username: username },
+                { lastSeen: Date.now(), lastIp: clientIp, $setOnInsert: { displayName: username, avatar: 'placeholder-avatar.png' } },
+                { upsert: true, new: true }
             );
-            
-            // Update local memory
-            users[socket.id].displayName = updatedUser.displayName;
-            users[socket.id].avatar = updatedUser.avatar;
+        } catch(e) { console.error(e); }
 
-            io.emit('update-user-list', Object.values(users));
-            socket.emit('profile-updated', 'Profile saved successfully!');
-        } catch (e) {
-            console.error(e);
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].username = username;
+            vcUsers[socket.id].displayName = displayName;
+            vcUsers[socket.id].avatar = avatar;
+            broadcastVCUserList();
         }
+        
+        if (!isAlreadyOnline && !isReconnecting) {
+            const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
+            io.emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+            savePublicMessage(joinMsg); 
+        }
+
+        broadcastSidebarRefresh();
+        
+        socket.emit('profile-info', { 
+            username, displayName, avatar, description, pronouns, banner, customBackground 
+        });
+        
+        io.emit('user-status-change', { username, displayName, online: true, avatar });
     });
 
-    // Handle Profile Fetch (For viewing others)
+    // --- GET OTHER USER PROFILE ---
     socket.on('get-user-profile', async (targetUsername) => {
-        const profile = await User.findOne({ username: targetUsername });
-        if (profile) {
-            socket.emit('user-profile-data', profile);
-        } else {
-            socket.emit('user-profile-data', { notFound: true });
+        try {
+            const dbUser = await User.findOne({ username: targetUsername }).lean();
+            if (dbUser) {
+                socket.emit('user-profile-data', {
+                    username: dbUser.username,
+                    displayName: dbUser.displayName || dbUser.username,
+                    avatar: dbUser.avatar || 'placeholder-avatar.png',
+                    description: dbUser.description || "",
+                    pronouns: dbUser.pronouns || "",
+                    banner: dbUser.banner || "",
+                    customBackground: dbUser.customBackground || "",
+                    lastSeen: dbUser.lastSeen
+                });
+            } else {
+                socket.emit('user-profile-data', {
+                    username: targetUsername,
+                    displayName: targetUsername,
+                    avatar: 'placeholder-avatar.png',
+                    description: "", 
+                    pronouns: "",
+                    banner: "",
+                    customBackground: "",
+                    notFound: true
+                });
+            }
+        } catch (e) {
+            console.error("Fetch Profile Error", e);
         }
     });
 
-    // --- CHAT MESSAGES ---
+    // --- UPDATE PROFILE ---
+    socket.on('update-profile', async (data) => {
+        const user = users[socket.id];
+        if (!user) return;
+        
+        const { displayName, avatar, description, pronouns, banner, customBackground } = data;
+        
+        if (displayName) user.displayName = displayName;
+        if (avatar) {
+            user.avatar = avatar;
+            userAvatarCache[user.username] = avatar;
+        }
+        if (description !== undefined) user.description = description;
+        if (pronouns !== undefined) user.pronouns = pronouns;
+
+        // DB Update Object
+        const updateFields = { 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description, 
+            pronouns: user.pronouns 
+        };
+        
+        if (banner !== undefined) updateFields.banner = banner;
+        if (customBackground !== undefined) updateFields.customBackground = customBackground;
+
+        try {
+            await User.findOneAndUpdate(
+                { username: user.username },
+                updateFields
+            );
+        } catch(e) { console.error("Profile Update Error", e); }
+
+        broadcastSidebarRefresh();
+        
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].displayName = user.displayName;
+            vcUsers[socket.id].avatar = user.avatar;
+            broadcastVCUserList();
+        }
+
+        socket.emit('chat-message', formatMessage('System', 'Profile updated successfully.'));
+        socket.emit('profile-info', { 
+            username: user.username, 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description,
+            pronouns: user.pronouns,
+            banner: banner || "",
+            customBackground: customBackground || ""
+        });
+    });
+
     socket.on('chat-message', async (payload) => {
         const userData = users[socket.id] || { username: 'Anonymous', displayName: 'Anonymous', avatar: 'placeholder-avatar.png' };
         const sender = userData.username;
@@ -230,123 +379,113 @@ io.on('connection', async (socket) => {
         let msgText = '';
         let msgImage = null;
         let replyTo = null;
-        let targetUsername = null; // DM Target
+        let targetUser = null; // New variable to hold the recipient
 
         if (typeof payload === 'string') { msgText = payload; } 
         else if (typeof payload === 'object') {
             msgText = payload.text || ''; 
             msgImage = payload.image || null; 
             replyTo = payload.replyTo || null;
-            targetUsername = payload.target || null; // Capture Target
+            targetUser = payload.to || null; // Capture the recipient from payload
         }
 
-        // --- DM ROUTING LOGIC ---
-        if (targetUsername) {
-            const recipientId = findSocketIdByUsername(targetUsername);
-            
-            // Format as a private message (isPm = true logic handled in client usually, but here we flag it)
-            // Note: Reuse formatMessage, but we will send via specific event 'dm-received'
-            const dmMsg = formatMessage(sender, msgText, userData.avatar, msgImage, true, replyTo, senderDisplayName);
-            
-            const dmPayload = {
-                from: sender,
-                to: targetUsername,
-                message: dmMsg
-            };
-
-            // 1. Send to Sender (so it appears in your own chat)
-            socket.emit('dm-received', dmPayload);
-
-            // 2. Send to Recipient (if online)
-            if (recipientId) {
-                io.to(recipientId).emit('dm-received', dmPayload);
-            }
-            // Stop broadcast
-            return; 
-        }
-
-        // --- SLASH COMMANDS ---
         if (msgText.startsWith('/')) {
-            const args = msgText.slice(1).split(' ');
-            const command = args.shift().toLowerCase();
+            const parts = msgText.trim().slice(1).split(/\s+/);
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
 
-            if (command === 'clear' && sender === 'kl_') {
-                await Message.deleteMany({});
-                io.emit('clear-chat');
-                return;
-            }
-            if (command === 'ban' && sender === 'kl_') {
-                const target = args[0];
-                const targetSocketId = Object.keys(users).find(id => users[id].username === target);
-                if (targetSocketId) {
-                    const targetIp = users[targetSocketId].ip;
-                    bannedIPs.add(targetIp);
-                    await new Ban({ ip: targetIp, reason: 'Banned by admin' }).save();
-                    io.to(targetSocketId).emit('banned', 'You have been banned.');
-                    io.sockets.sockets.get(targetSocketId)?.disconnect();
-                    io.emit('chat-message', formatMessage('System', `User ${target} has been banned.`));
+            if (command === 'msg') {
+                const targetUsername = parts[1];
+                const privateText = parts.slice(2).join(' ').trim();
+                if (!targetUsername || !privateText) { socket.emit('chat-message', formatMessage('System', `Usage: /msg <username> <message>`)); return; }
+                const recipientId = findSocketIdByUsername(targetUsername);
+                if (!recipientId) { socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`)); } 
+                else {
+                    const pmObject = { 
+                        id: generateId(), text: privateText, type: 'private', sender: sender, senderDisplayName: senderDisplayName, target: users[recipientId].username, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), avatar: userAvatarCache[sender] || userData.avatar, replyTo: replyTo
+                    };
+                    socket.emit('chat-message', pmObject);
+                    io.to(recipientId).emit('chat-message', pmObject);
                 }
                 return;
             }
-            if (command === 'mute' && sender === 'kl_') {
-                const target = args[0];
-                mutedUsers.add(target.toLowerCase());
-                io.emit('chat-message', formatMessage('System', `User ${target} has been muted.`));
-                return;
-            }
-            if (command === 'unmute' && sender === 'kl_') {
-                const target = args[0];
-                mutedUsers.delete(target.toLowerCase());
-                io.emit('chat-message', formatMessage('System', `User ${target} has been unmuted.`));
-                return;
-            }
-            if (command === 'help') {
-                socket.emit('chat-message', formatMessage('System', 'Commands: /clear, /ban [user], /mute [user], /unmute [user] (Admin only)'));
-                return;
+
+            if (sender === ADMIN_USERNAME) {
+                const targetName = args[0];
+                if (command === 'server' && args.length > 0) {
+                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
+                    io.emit('chat-message', serverMsg); addToHistory(serverMsg); savePublicMessage(serverMsg); return;
+                }
+                if (command === 'mute' && targetName) {
+                    mutedUsers.add(targetName.toLowerCase()); const muteMsg = formatMessage('System', `User ${targetName} has been muted.`); io.emit('chat-message', muteMsg); addToHistory(muteMsg); savePublicMessage(muteMsg); return;
+                }
+                if (command === 'unmute' && targetName) {
+                    mutedUsers.delete(targetName.toLowerCase()); const unmuteMsg = formatMessage('System', `User ${targetName} has been unmuted.`); io.emit('chat-message', unmuteMsg); addToHistory(unmuteMsg); savePublicMessage(unmuteMsg); return;
+                }
+                if (command === 'ban' && targetName) {
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const targetSocket = io.sockets.sockets.get(targetId);
+                        const targetIp = getClientIp(targetSocket);
+                        bannedIPs.set(targetIp, true);
+                        try { await new Ban({ username: targetName, ip: targetIp, bannedBy: sender }).save(); } catch(e) {}
+                        io.to(targetId).emit('chat-message', formatMessage('System', 'You have been banned.'));
+                        targetSocket.disconnect(true);
+                        const banMsg = formatMessage('System', `User ${targetName} has been banned.`);
+                        io.emit('chat-message', banMsg); addToHistory(banMsg); savePublicMessage(banMsg);
+                    }
+                    return;
+                }
+                if (command === 'prune') {
+                    messageHistory.length = 0; await Message.deleteMany({}); io.emit('history', []); io.emit('chat-message', formatMessage('System', 'Chat history has been cleared.')); return;
+                }
+                if (command === 'motd' && args.length > 0) {
+                    serverMOTD = args.join(' ');
+                    try { await Config.findOneAndUpdate({ key: 'motd' }, { value: serverMOTD }, { upsert: true }); } catch(e) {}
+                    io.emit('motd', serverMOTD); io.emit('chat-message', formatMessage('System', `MOTD updated: ${serverMOTD}`)); return;
+                }
             }
         }
 
-        // --- PUBLIC BROADCAST ---
-        const message = new Message({
-            sender: sender,
-            displayName: senderDisplayName,
-            avatar: userData.avatar,
-            text: msgText,
-            image: msgImage,
-            replyTo: replyTo
-        });
-        
-        await message.save();
-        io.emit('chat-message', message);
+        // --- NEW DM LOGIC START ---
+        if (targetUser) {
+            const recipientId = findSocketIdByUsername(targetUser);
+            
+            // 1. Format the message as a Private Message (isPm = true)
+            const pmObject = formatMessage(sender, msgText, userData.avatar, msgImage, true, replyTo, senderDisplayName);
+            
+            // 2. Save to Database
+            savePrivateMessage(sender, targetUser, pmObject);
+
+            // 3. Emit to Sender (so you see what you sent)
+            socket.emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+
+            // 4. Emit to Recipient (if online)
+            if (recipientId) {
+                io.to(recipientId).emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+            }
+            return; // STOP here so it doesn't go to public chat
+        }
+        // --- NEW DM LOGIC END ---
+
+        const messageObject = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo, senderDisplayName);
+        io.emit('chat-message', messageObject);
+        addToHistory(messageObject);
+        savePublicMessage(messageObject);
     });
 
-    // --- VOICE CHAT EVENTS ---
     socket.on('join-vc', () => {
         const user = users[socket.id];
-        if (user && !vcUsers[socket.id]) {
-            vcUsers[socket.id] = user.username;
-            broadcastVCUserList();
-            socket.broadcast.emit('vc-user-joined', socket.id);
+        if(user) {
+            vcUsers[socket.id] = { id: socket.id, username: user.username, displayName: user.displayName, avatar: user.avatar };
+            broadcastVCUserList(); socket.broadcast.emit('vc-user-joined', socket.id);
         }
     });
-
     socket.on('leave-vc', () => {
-        if (vcUsers[socket.id]) {
-            delete vcUsers[socket.id];
-            broadcastVCUserList();
-            socket.broadcast.emit('vc-user-left', socket.id);
-        }
+        if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
     });
-
-    // WebRTC Signaling
-    socket.on('signal', (data) => {
-        io.to(data.target).emit('signal', {
-            sender: socket.id,
-            signal: data.signal
-        });
-    });
-
-    // Handle Disconnect
+    socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
+    
     socket.on('disconnect', () => {
         const user = users[socket.id];
         if (user) {
@@ -368,8 +507,8 @@ io.on('connection', async (socket) => {
                 if (!isStillOnline) {
                     const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
                     io.emit('chat-message', leaveMsg); 
-                    // Note: We don't save "left" messages to DB history to avoid clutter, but you can if you want.
-                    // savePublicMessage(leaveMsg); 
+                    addToHistory(leaveMsg); 
+                    savePublicMessage(leaveMsg);
                     io.emit('user-status-change', { username: user.username, online: false });
                 }
                 delete disconnectTimeouts[username];
@@ -381,30 +520,6 @@ io.on('connection', async (socket) => {
 app.get('/i-like-my-toast-with-butter', async (req, res) => {
     try { await Ban.deleteMany({}); bannedIPs.clear(); res.send("SUCCESS"); } catch (e) { res.send(e.message); }
 });
-
-function formatMessage(username, text, avatar = 'placeholder-avatar.png', image = null, isPm = false, replyTo = null, displayName = null) {
-    return {
-        sender: username,
-        displayName: displayName || username,
-        text,
-        image,
-        avatar,
-        timestamp: new Date(),
-        isSystem: username === 'System',
-        replyTo,
-        isPm // Helper flag for frontend (though handled by event type too)
-    };
-}
-
-function broadcastVCUserList() {
-    io.emit('update-vc-list', Object.values(vcUsers));
-}
-
-// Helper to find socket ID by username
-function findSocketIdByUsername(username) {
-    const entry = Object.entries(users).find(([id, user]) => user.username.toLowerCase() === username.toLowerCase());
-    return entry ? entry[0] : null;
-}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
