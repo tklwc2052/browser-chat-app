@@ -6,6 +6,7 @@
 <title>The C&C Corp chat</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
 
 <style>
     .message-content-area {
@@ -82,10 +83,12 @@
             </div>
             <div>
                 <h4 class="panel-title">voice chat</h4>
-                <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                <div style="display: flex; gap: 5px;">
-                    <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
-                    <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
+                <div id="vc-controls">
+                    <button id="vc-btn-join" class="panel-btn">Join Call</button>
+                    <div style="display: flex; gap: 5px;">
+                        <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
+                        <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
+                    </div>
                 </div>
                 <ul id="vc-user-list"></ul>
                 <div id="audio-container"></div>
@@ -146,11 +149,14 @@
     const replyBar = document.getElementById('reply-bar');
     const replyTargetName = document.getElementById('reply-target-name');
     const cancelReplyBtn = document.getElementById('cancel-reply-btn');
+    
+    // VC Elements
     const vcBtnJoin = document.getElementById('vc-btn-join');
     const vcBtnMute = document.getElementById('vc-btn-mute');
     const vcBtnLeave = document.getElementById('vc-btn-leave'); 
     const vcUserList = document.getElementById('vc-user-list');
     const audioContainer = document.getElementById('audio-container');
+
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const hiddenFileInput = document.getElementById('hidden-file-input');
     const imagePreviewArea = document.getElementById('image-preview-area');
@@ -185,12 +191,12 @@
     let currentReplyTo = null;
     let globalMessagesCache = [];
     let dmMessagesCache = {}; 
-    const MAX_VISIBLE_MESSAGES = 100;
+    
+    // VC Variables
     let localStream = null;
     let peers = {}; 
     let isInVC = false;
     let isMuted = false;
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     openProfileBtn.onclick = () => { window.location.href = '/profile'; };
 
@@ -216,6 +222,7 @@
         currentAvatarPreview.src = currentAvatar;
     });
 
+    // --- SIDEBAR & CHAT UI LOGIC ---
     function renderSidebar() {
         dmList.innerHTML = '';
         const mainChatCard = document.createElement('div');
@@ -447,11 +454,8 @@
             const avatarImg = document.createElement('img');
             avatarImg.className = 'message-avatar';
             avatarImg.src = msg.avatar || 'placeholder-avatar.png';
-            
-            // --- UPDATED: CLICK TO VIEW PROFILE (EXPLICIT VIEW MODE) ---
             avatarImg.style.cursor = 'pointer';
             avatarImg.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
-            
             msgDiv.appendChild(avatarImg);
         } else if (!isOwn && isContinuous) {
             const spacer = document.createElement('div');
@@ -466,10 +470,7 @@
             const nameDiv = document.createElement('div');
             nameDiv.className = 'message-sender-name';
             nameDiv.innerText = msg.senderDisplayName || msg.sender; 
-            
-            // --- UPDATED: CLICK TO VIEW PROFILE (EXPLICIT VIEW MODE) ---
             nameDiv.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
-
             contentArea.appendChild(nameDiv);
         }
 
@@ -557,12 +558,10 @@
     });
     sendButton.onclick = sendMessage;
 
-    // --- UPDATED SEND MESSAGE FUNCTION ---
     function sendMessage() {
         const text = messageInput.value.trim();
         if (!text && !stagedImage) return;
 
-        // NEW: Include 'to' field if in DM mode
         const payload = { 
             text: text, 
             image: stagedImage, 
@@ -608,6 +607,7 @@
         }
     }
     
+    // --- CONTEXT MENU ---
     const ctxMenu = document.createElement('div');
     ctxMenu.id = 'ctx-menu';
     document.body.appendChild(ctxMenu);
@@ -710,6 +710,149 @@
     };
     const savedBg = localStorage.getItem('custom_bg');
     if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+
+    // --- NEW: WEBRTC VOICE CHAT LOGIC ---
+
+    // 1. Join VC
+    vcBtnJoin.onclick = () => {
+        navigator.mediaDevices.getUserMedia({ video: false, audio: true })
+            .then(stream => {
+                localStream = stream;
+                isInVC = true;
+                
+                // Switch UI
+                vcBtnJoin.style.display = 'none';
+                vcBtnLeave.style.display = 'block';
+                vcBtnMute.style.display = 'block';
+
+                socket.emit('join-vc');
+            })
+            .catch(err => {
+                alert("Could not access microphone: " + err.message);
+                console.error(err);
+            });
+    };
+
+    // 2. Mute Toggle
+    vcBtnMute.onclick = () => {
+        if (!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks()[0].enabled = !isMuted;
+        vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
+        vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
+    };
+
+    // 3. Leave VC
+    vcBtnLeave.onclick = () => {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        isInVC = false;
+        isMuted = false;
+        
+        // Reset UI
+        vcBtnJoin.style.display = 'block';
+        vcBtnLeave.style.display = 'none';
+        vcBtnMute.style.display = 'none';
+        vcBtnMute.innerText = "Mute";
+        vcBtnMute.style.backgroundColor = "#4f545c";
+
+        // Close all peer connections
+        Object.values(peers).forEach(peer => peer.destroy());
+        peers = {};
+        
+        // Cleanup audio elements
+        audioContainer.innerHTML = '';
+        
+        socket.emit('leave-vc');
+    };
+
+    // 4. Update User List
+    socket.on('vc-user-list-update', (users) => {
+        vcUserList.innerHTML = '';
+        users.forEach(u => {
+            const li = document.createElement('li');
+            li.style.display = 'flex';
+            li.style.alignItems = 'center';
+            li.style.marginBottom = '5px';
+            
+            const img = document.createElement('img');
+            img.src = u.avatar || 'placeholder-avatar.png';
+            img.style.width = '24px'; img.style.height='24px'; img.style.borderRadius='50%'; img.style.marginRight='8px';
+            
+            const span = document.createElement('span');
+            span.innerText = u.displayName || u.username;
+            
+            li.appendChild(img);
+            li.appendChild(span);
+            vcUserList.appendChild(li);
+        });
+        if (document.hidden && settingVC.checked) {
+             // Optional: notification for VC update
+        }
+    });
+
+    // 5. Existing user detects new user -> Calls them
+    socket.on('vc-user-joined', (id) => {
+        if (isInVC && localStream) {
+            createPeer(id, socket.id, localStream, true); // true = initiator
+        }
+    });
+
+    socket.on('vc-user-left', (id) => {
+        if (peers[id]) {
+            peers[id].destroy();
+            delete peers[id];
+        }
+        const audioEl = document.getElementById(`audio-${id}`);
+        if (audioEl) audioEl.remove();
+    });
+
+    // 6. Handling Signals (Handshake)
+    socket.on('signal', (data) => {
+        // data = { sender: socket.id, signal: ... }
+        if (!isInVC || !localStream) return;
+
+        const peerId = data.sender;
+        
+        // If we don't have a peer object for this person yet, create one (we are receiver)
+        if (!peers[peerId]) {
+            createPeer(peerId, socket.id, localStream, false);
+        }
+
+        // Pass the signal to the peer object
+        peers[peerId].signal(data.signal);
+    });
+
+    function createPeer(targetSocketId, myId, stream, initiator) {
+        const peer = new SimplePeer({
+            initiator: initiator,
+            stream: stream,
+            trickle: false 
+        });
+
+        peer.on('signal', (signal) => {
+            socket.emit('signal', { target: targetSocketId, signal: signal });
+        });
+
+        peer.on('stream', (remoteStream) => {
+            // Check if audio element already exists
+            if (!document.getElementById(`audio-${targetSocketId}`)) {
+                const audio = document.createElement('audio');
+                audio.id = `audio-${targetSocketId}`;
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                audioContainer.appendChild(audio);
+            }
+        });
+
+        peer.on('error', (err) => console.error('Peer error:', err));
+        
+        peers[targetSocketId] = peer;
+        return peer;
+    }
+
 </script>
 </body>
 </html>
