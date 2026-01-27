@@ -710,17 +710,17 @@
     const savedBg = localStorage.getItem('custom_bg');
     if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
 
-    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (LOW LATENCY) ---
+    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (SAFE + FAST) ---
 
     // 1. Join VC
     vcBtnJoin.onclick = () => {
-        // OPTIMIZATION: Audio Constraints for Low Latency
+        // SAFE OPTIMIZATION: Use 'ideal' so it doesn't crash if browser says no
         const audioConstraints = {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            channelCount: 1,  // Mono audio is faster
-            latency: 0        // Request lowest possible latency
+            channelCount: { ideal: 1 }, 
+            latency: { ideal: 0 }      // Request low latency, but don't force it
         };
 
         navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints })
@@ -741,7 +741,7 @@
                 socket.emit('join-vc');
             })
             .catch(err => {
-                alert("Could not access microphone: " + err.message);
+                alert("Could not access microphone: " + err.name + " - " + err.message);
                 console.error(err);
             });
     };
@@ -835,7 +835,6 @@
     });
 
     function createPeer(targetSocketId, myId, stream, initiator) {
-        // OPTIMIZATION: Enable Trickle ICE for faster connection
         const peer = new SimplePeer({
             initiator: initiator,
             stream: stream,
@@ -853,7 +852,6 @@
                 audio.id = `audio-${targetSocketId}`;
                 audio.srcObject = remoteStream;
                 audio.autoplay = true;
-                // OPTIMIZATION: Prevent buffering
                 audio.playsInline = true; 
                 audioContainer.appendChild(audio);
             }
