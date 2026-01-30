@@ -11,26 +11,12 @@
         body {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             height: 100vh; margin: 0; background-color: var(--bg-primary); color: white;
-            overflow: hidden;
-        }
-        #streams-grid {
-            display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
-            width: 100%; height: 80%; overflow-y: auto; padding: 20px;
-        }
-        .video-wrapper {
-            position: relative; background: black; border-radius: 8px; overflow: hidden;
-            width: 300px; height: 225px; border: 2px solid #333;
-        }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .user-label {
-            position: absolute; bottom: 5px; left: 5px; 
-            background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 4px; font-size: 12px;
         }
         #controls {
             position: fixed; bottom: 30px;
             display: flex; gap: 15px; padding: 15px;
             background-color: rgba(0,0,0,0.5); border-radius: 50px;
-            z-index: 100;
+            z-index: 100a;
         }
         .control-btn {
             width: 60px; height: 60px; border-radius: 50%;
@@ -38,202 +24,210 @@
             display: flex; align-items: center; justify-content: center;
             background-color: #3c3c3c; color: white; transition: 0.2s;
         }
-        .control-btn:hover { transform: scale(1.1); background-color: #555; }
-        .btn-active { background-color: var(--color-accent-green) !important; }
-        .btn-danger { background-color: var(--color-vc-red) !important; }
+        .control-btn:hover { transform: scale(1.1); }
+        .btn-red { background-color: var(--color-vc-red); }
+        .btn-green { background-color: var(--color-accent-green); }
+        .btn-blue { background-color: var(--color-accent-blue); }
+
+        #streams-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px; width: 90%; max-height: 80vh; overflow-y: auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%; border-radius: 10px; border: 2px solid #333;
+            background: #000;
+        }
+        .user-label {
+            position: absolute; bottom: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); padding: 5px 10px;
+            border-radius: 5px; font-size: 0.9em;
+        }
+        .video-wrapper { position: relative; }
     </style>
 </head>
 <body>
 
-<div id="music-player-wrapper" style="position: fixed; top: 20px; left: 20px; width: 320px; background: #222; padding: 10px; border-radius: 8px; z-index: 1000; border: 1px solid #444; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
-    <h3 style="margin: 0 0 10px 0; color: #ff0000; font-family: sans-serif; font-size: 1rem;">▶ YouTube Party</h3>
+    <h2 id="status-text">Ready to Join</h2>
     
-    <div id="yt-player-placeholder" style="width: 100%; height: 180px; background: #000; border-radius: 4px;"></div>
+    <div id="streams-grid"></div>
 
-    <div id="current-song-info" style="font-size: 0.8rem; color: #ddd; margin: 10px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-        Waiting for music...
+    <div id="controls">
+        <button id="btn-mic" class="control-btn" title="Toggle Mic">🎤</button>
+        <button id="btn-join" class="control-btn btn-green" title="Join Call">📞</button>
+        <button id="btn-share" class="control-btn btn-blue" title="Share Screen" style="display:none;">🖥️</button>
+        <button id="btn-leave" class="control-btn btn-red" title="Leave" style="display:none;">❌</button>
     </div>
-
-    <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-        <input type="text" id="song-url" placeholder="Paste YouTube Link..." style="width: 75%; padding: 5px; border-radius: 4px; border: none; font-size: 0.8rem;">
-        <button onclick="queueYoutube()" style="width: 25%; background: #cc0000; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8rem;">Add</button>
-    </div>
-
-    <button onclick="skipSong()" style="width: 100%; background: #444; color: white; border: none; padding: 5px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Skip Video</button>
-    
-    <div style="margin-top: 10px; border-top: 1px solid #555; padding-top: 5px;">
-        <small style="color: #aaa;">Up Next:</small>
-        <div id="queue-list" style="max-height: 80px; overflow-y: auto; font-size: 0.75rem; margin-top: 5px; color: #ccc;"></div>
-    </div>
-</div>
-<div id="streams-grid"></div>
-
-<div id="controls">
-    <button class="control-btn" id="btn-mic" onclick="toggleMic()">🎤</button>
-    <button class="control-btn" id="btn-camera" onclick="toggleCamera()">📷</button>
-    <button class="control-btn" id="btn-screen" onclick="shareScreen()">🖥️</button>
-    <button class="control-btn btn-danger" onclick="leaveRoom()">✖</button>
-</div>
 
 <script>
     const socket = io();
+    let localStream = null;
+    let screenStream = null;
+    let peers = {};
+    let isMuted = false;
+    let isInVC = false;
+
+    // UI Elements
+    const btnJoin = document.getElementById('btn-join');
+    const btnLeave = document.getElementById('btn-leave');
+    const btnMic = document.getElementById('btn-mic');
+    const btnShare = document.getElementById('btn-share');
+    const statusText = document.getElementById('status-text');
     const streamsGrid = document.getElementById('streams-grid');
-    
-    // --- VC VARS ---
-    let localStream;
-    const peers = {}; // connection storage
-    const myId = socket.id; // temporary until connect
 
-    // ==========================================
-    // 1. YOUTUBE MUSIC LOGIC
-    // ==========================================
-    
-    // Load YouTube API
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    let player;
-    let isPlayerReady = false;
-    let ignoreStateChange = false;
-
-    function onYouTubeIframeAPIReady() {
-        player = new YT.Player('yt-player-placeholder', {
-            height: '180',
-            width: '100%',
-            videoId: '', 
-            playerVars: { 'playsinline': 1, 'controls': 1, 'disablekb': 1 },
-            events: {
-                'onReady': () => { isPlayerReady = true; },
-                'onStateChange': onPlayerStateChange
-            }
-        });
-    }
-
-    function getYouTubeID(url) {
-        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-        const match = url.match(regExp);
-        return (match && match[2].length === 11) ? match[2] : null;
-    }
-
-    function queueYoutube() {
-        const urlInput = document.getElementById('song-url');
-        const videoId = getYouTubeID(urlInput.value.trim());
-        if (!videoId) return alert("Invalid YouTube URL");
-        socket.emit('music-action', { type: 'queue', payload: { videoId, title: "Video ID: " + videoId } });
-        urlInput.value = '';
-    }
-
-    function skipSong() {
-        socket.emit('music-action', { type: 'next' });
-    }
-
-    function onPlayerStateChange(event) {
-        if (ignoreStateChange) return;
-        if (event.data === YT.PlayerState.PLAYING) {
-            socket.emit('music-action', { type: 'play', payload: { currentTime: player.getCurrentTime() } });
-        } else if (event.data === YT.PlayerState.PAUSED) {
-            socket.emit('music-action', { type: 'pause', payload: { currentTime: player.getCurrentTime() } });
+    // 1. Setup Username
+    const savedUser = localStorage.getItem('simplechat_username');
+    if (savedUser) {
+        socket.emit('set-username', { username: savedUser });
+    } else {
+        const user = prompt("Username:");
+        if (user) {
+            localStorage.setItem('simplechat_username', user);
+            socket.emit('set-username', { username: user });
         }
     }
 
-    // --- SOCKET LISTENERS FOR MUSIC ---
-    socket.on('music-start-track', (data) => {
-        if (!isPlayerReady) return;
-        ignoreStateChange = true;
-        player.loadVideoById(data.videoId);
-        document.getElementById('current-song-info').innerText = "Playing: " + data.videoId;
-        setTimeout(() => ignoreStateChange = false, 1000);
-    });
+    // 2. Join Call Logic
+    btnJoin.onclick = () => {
+        navigator.mediaDevices.getUserMedia({ 
+            audio: { echoCancellation:true, noiseSuppression:true }, 
+            video: false 
+        })
+        .then(stream => {
+            localStream = stream;
+            isInVC = true;
+            statusText.innerText = "Connected to Voice";
+            
+            // Toggle Buttons
+            btnJoin.style.display = 'none';
+            btnLeave.style.display = 'flex';
+            btnShare.style.display = 'flex';
 
-    socket.on('music-sync-play', (data) => {
-        if (!isPlayerReady) return;
-        ignoreStateChange = true;
-        if (Math.abs(player.getCurrentTime() - data.currentTime) > 2) {
-            player.seekTo(data.currentTime, true);
+            socket.emit('join-vc');
+        }).catch(e => alert("Mic Error: " + e.message));
+    };
+
+    // 3. Share Screen Logic
+    btnShare.onclick = () => {
+        // Request Screen Stream
+        navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+        .then(stream => {
+            screenStream = stream;
+            
+            // Add this stream to ALL existing peer connections
+            Object.values(peers).forEach(peer => {
+                peer.addStream(screenStream);
+            });
+
+            // Show local preview
+            addVideoToGrid(screenStream, "My Screen", true);
+            
+            // Notify Server
+            socket.emit('screen-share-start');
+
+            // Handle user clicking "Stop Sharing" on browser UI
+            screenStream.getVideoTracks()[0].onended = () => {
+                stopScreenShare();
+            };
+
+            btnShare.classList.add('btn-green'); // Visual indicator
+        }).catch(e => console.log("Screen Share cancelled"));
+    };
+
+    function stopScreenShare() {
+        if (screenStream) {
+            socket.emit('screen-share-stop');
+            screenStream.getTracks().forEach(t => t.stop());
+            // Remove local preview
+            const localVid = document.getElementById('local-screen-share');
+            if(localVid) localVid.remove();
+            screenStream = null;
+            btnShare.classList.remove('btn-green');
         }
-        player.playVideo();
-        setTimeout(() => ignoreStateChange = false, 1000);
+    }
+
+    // 4. Mute Logic
+    btnMic.onclick = () => {
+        if(!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks()[0].enabled = !isMuted;
+        btnMic.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#3c3c3c";
+        btnMic.innerText = isMuted ? "🔇" : "🎤";
+    };
+
+    // 5. Leave Logic
+    btnLeave.onclick = () => {
+        if(localStream) localStream.getTracks().forEach(t => t.stop());
+        stopScreenShare();
+        socket.emit('leave-vc');
+        location.reload(); // Quickest way to clean up all WebRTC state
+    };
+
+    // --- WebRTC Handling ---
+    
+    socket.on('vc-user-joined', (id) => {
+        if (isInVC && localStream) createPeer(id, socket.id, localStream, true);
     });
 
-    socket.on('music-sync-pause', (data) => {
-        if (!isPlayerReady) return;
-        ignoreStateChange = true;
-        player.seekTo(data.currentTime, true);
-        player.pauseVideo();
-        setTimeout(() => ignoreStateChange = false, 1000);
+    socket.on('signal', (data) => {
+        if (!isInVC) return;
+        if (!peers[data.sender]) createPeer(data.sender, socket.id, localStream, false);
+        peers[data.sender].signal(data.signal);
     });
 
-    socket.on('music-update-queue', (queue) => {
-        const list = document.getElementById('queue-list');
-        list.innerHTML = '';
-        queue.forEach((item, index) => {
-            const d = document.createElement('div');
-            d.innerText = `${index + 1}. ${item.videoId}`;
-            list.appendChild(d);
+    socket.on('vc-user-left', (id) => {
+        if (peers[id]) { peers[id].destroy(); delete peers[id]; }
+        const el = document.getElementById(`wrapper-${id}`);
+        if(el) el.remove();
+        const audioEl = document.getElementById(`audio-${id}`);
+        if(audioEl) audioEl.remove();
+    });
+
+    function createPeer(targetId, myId, stream, initiator) {
+        const peer = new SimplePeer({
+            initiator: initiator,
+            stream: stream,
+            trickle: true,
+            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
         });
-    });
 
-    socket.on('music-sync-state', (state) => {
-        const checkReady = setInterval(() => {
-            if (isPlayerReady) {
-                clearInterval(checkReady);
-                if (state.queue) {
-                     const list = document.getElementById('queue-list');
-                     list.innerHTML = '';
-                     state.queue.forEach((item, index) => {
-                        const d = document.createElement('div');
-                        d.innerText = `${index + 1}. ${item.videoId}`;
-                        list.appendChild(d);
-                    });
-                }
-                if (state.currentVideoId) {
-                    ignoreStateChange = true;
-                    player.loadVideoById(state.currentVideoId);
-                    if (state.isPlaying) {
-                        const timePassed = (Date.now() - state.startTime) / 1000;
-                        const actualTime = state.seekPosition + timePassed;
-                        player.seekTo(actualTime, true);
-                        player.playVideo();
-                    } else {
-                        player.seekTo(state.seekPosition, true);
-                        player.pauseVideo();
-                    }
-                    setTimeout(() => ignoreStateChange = false, 1000);
-                }
+        // IF we are already sharing screen, send that too!
+        if (screenStream) {
+            peer.addStream(screenStream);
+        }
+
+        peer.on('signal', data => socket.emit('signal', { target: targetId, signal: data }));
+
+        peer.on('stream', remoteStream => {
+            // Check if Video (Screen) or Audio (Mic)
+            const isVideo = remoteStream.getVideoTracks().length > 0;
+            if (isVideo) {
+                addVideoToGrid(remoteStream, "User Screen", false, targetId);
+            } else {
+                // It's audio, create hidden audio element
+                const audio = document.createElement('audio');
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                audio.id = `audio-${targetId}`;
+                document.body.appendChild(audio);
             }
-        }, 500);
-    });
+        });
 
-
-    // ==========================================
-    // 2. EXISTING WEBRTC/VOICE LOGIC
-    // ==========================================
-    
-    // Get User Data
-    const currentUser = JSON.parse(localStorage.getItem('chatUser')) || { displayName: 'Guest', username: 'Guest' };
-    
-    // Join VC
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
-        localStream = stream;
-        addVideoToGrid(localStream, "Me", true);
-        socket.emit('join-vc', currentUser);
-    }).catch(err => {
-        console.error("Camera access denied or error:", err);
-        alert("Camera/Mic access is required to join VC.");
-    });
+        peers[targetId] = peer;
+        return peer;
+    }
 
     function addVideoToGrid(stream, label, isLocal, id) {
         const wrapper = document.createElement('div');
         wrapper.className = 'video-wrapper';
         if(id) wrapper.id = `wrapper-${id}`;
-        
+        if(isLocal) wrapper.id = 'local-screen-share';
+
         const video = document.createElement('video');
         video.srcObject = stream;
         video.autoplay = true;
         video.playsInline = true;
-        if (isLocal) video.muted = true; 
+        if (isLocal) video.muted = true; // Don't hear yourself
 
         const lbl = document.createElement('div');
         lbl.className = 'user-label';
@@ -243,39 +237,7 @@
         wrapper.appendChild(lbl);
         streamsGrid.appendChild(wrapper);
     }
-
-    socket.on('vc-user-list', (users) => {
-        // Logic to initiate P2P calls would go here
-        // For brevity in this file, we assume standard Mesh Network logic 
-        // triggers 'signal' events managed below
-    });
-
-    socket.on('signal', data => {
-        // Handle incoming signals for P2P connections
-        // (Existing P2P logic retained from your original file)
-    });
-
-    // Toggle Controls
-    function toggleMic() {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if(audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            document.getElementById('btn-mic').classList.toggle('btn-active');
-        }
-    }
-
-    function toggleCamera() {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if(videoTrack) {
-            videoTrack.enabled = !videoTrack.enabled;
-            document.getElementById('btn-camera').classList.toggle('btn-active');
-        }
-    }
-
-    function leaveRoom() {
-        socket.emit('leave-vc');
-        window.location.href = '/';
-    }
 </script>
 </body>
 </html>
+
