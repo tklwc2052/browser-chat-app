@@ -31,14 +31,52 @@
     }
     .user-message .message-content-area { align-items: flex-end; }
     .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
+
+    /* New Sidebar Styles */
+    .dm-dropdown-header {
+        cursor: pointer;
+        padding: 10px;
+        color: var(--color-muted);
+        font-size: 11px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: color 0.2s;
+    }
+    .dm-dropdown-header:hover { color: #fff; }
 </style>
 </head>
 <body>
 <div id="main-wrapper">
 
     <div id="dm-sidebar">
-        <div id="dm-header">Contacts</div>
-        <div id="dm-list"></div>
+        <div id="dm-header">C&C Corp</div>
+        
+        <div id="channel-list" style="padding-top: 5px;">
+            <div class="dm-user-card active" id="chan-main" onclick="switchToChannel('main')">
+                <div class="dm-username">#main</div>
+            </div>
+            <div class="dm-user-card" id="chan-school" onclick="switchToChannel('school')">
+                <div class="dm-username">#school</div>
+            </div>
+            <div class="dm-user-card" id="chan-random" onclick="switchToChannel('random')">
+                <div class="dm-username">#random</div>
+            </div>
+        </div>
+
+        <div style="height: 10px;"></div>
+
+        <div class="dm-dropdown-header" onclick="toggleDMs()">
+            <span>Direct Messages</span>
+            <span id="dm-arrow">▼</span>
+        </div>
+        
+        <div id="dm-container">
+            <div id="dm-list"></div>
+        </div>
     </div>
 
     <div id="chat-container">
@@ -46,8 +84,8 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
                 <div>
-                   <h3 id="chat-header-label" style="margin:0;">...</h3>
-                   <span id="chat-header-sublabel" style="font-size:0.8em; color:var(--color-muted);">@username</span>
+                   <h3 id="chat-header-label" style="margin:0;">#main</h3>
+                   <span id="chat-header-sublabel" style="font-size:0.8em; color:var(--color-muted);">Public Channel</span>
                 </div>
             </div>
             <button id="open-profile-btn">Edit Profile</button>
@@ -186,6 +224,7 @@
     let typingTimeout = null;
     const typingUsers = new Set();
     let currentChatMode = 'global'; 
+    let currentChannel = 'main';
     let currentDmTarget = null;
     let allUsersCache = []; 
     let unreadCounts = {}; 
@@ -193,6 +232,7 @@
     let currentReplyTo = null;
     let globalMessagesCache = [];
     let dmMessagesCache = {}; 
+    let dmsOpen = true;
     
     // VC Variables
     let localStream = null;
@@ -223,37 +263,34 @@
         currentUsername = data.username;
         currentDisplayName = data.displayName;
         currentAvatar = data.avatar;
-        chatHeaderLabel.innerText = currentDisplayName;
-        chatHeaderSublabel.innerText = '@' + currentUsername;
-        currentAvatarPreview.src = currentAvatar;
+        // Only update header if we are in main chat
+        if (currentChatMode === 'global' && currentChannel === 'main') {
+            chatHeaderLabel.innerText = '#main';
+            chatHeaderSublabel.innerText = 'Public Channel';
+            currentAvatarPreview.style.display = 'none';
+        }
     });
 
-    // NEW: Listen for screen shares
     socket.on('screen-share-update', (shares) => {
         activeShares = new Set(shares);
         renderSidebar();
     });
 
+    function toggleDMs() {
+        dmsOpen = !dmsOpen;
+        document.getElementById('dm-container').style.display = dmsOpen ? 'block' : 'none';
+        document.getElementById('dm-arrow').innerText = dmsOpen ? '▼' : '▶';
+    }
+
     function renderSidebar() {
         dmList.innerHTML = '';
-        const mainChatCard = document.createElement('div');
-        mainChatCard.className = 'dm-user-card';
-        if (currentChatMode === 'global') mainChatCard.classList.add('active');
-        const mainWrapper = document.createElement('div');
-        mainWrapper.className = 'dm-avatar-wrapper';
-        const mainImg = document.createElement('img');
-        mainImg.src = 'placeholder-avatar.png'; 
-        const mainStatus = document.createElement('div');
-        mainStatus.className = 'status-bubble status-online';
-        mainWrapper.appendChild(mainImg);
-        mainWrapper.appendChild(mainStatus);
-        const mainName = document.createElement('div');
-        mainName.className = 'dm-username';
-        mainName.innerText = "Main Chat";
-        mainChatCard.appendChild(mainWrapper);
-        mainChatCard.appendChild(mainName);
-        mainChatCard.onclick = () => switchToGlobal();
-        dmList.appendChild(mainChatCard);
+        
+        // Update active states for channels
+        document.querySelectorAll('#channel-list .dm-user-card').forEach(el => el.classList.remove('active'));
+        if (currentChatMode === 'global') {
+            const activeChan = document.getElementById(`chan-${currentChannel}`);
+            if (activeChan) activeChan.classList.add('active');
+        }
 
         const sortedUsers = [...allUsersCache].sort((a, b) => {
             if (a.online === b.online) return a.displayName.localeCompare(b.displayName);
@@ -281,7 +318,6 @@
             wrapper.appendChild(statusBubble);
             wrapper.appendChild(unreadBadge);
             
-            // Name Area
             const nameArea = document.createElement('div');
             nameArea.style.display = 'flex';
             nameArea.style.alignItems = 'center';
@@ -293,7 +329,6 @@
             
             nameArea.appendChild(name);
 
-            // NEW: Show Icon if Presenting
             if (activeShares.has(u.username)) {
                 const icon = document.createElement('span');
                 icon.innerText = "🖥️";
@@ -309,6 +344,23 @@
         });
     }
 
+    function switchToChannel(chan) {
+        currentChatMode = 'global';
+        currentChannel = chan;
+        currentDmTarget = null;
+        typingUsers.clear();
+        updateTypingDisplay();
+        renderSidebar();
+
+        chatHeaderLabel.innerText = '#' + chan;
+        chatHeaderSublabel.innerText = 'Public Channel';
+        currentAvatarPreview.style.display = 'none';
+
+        messagesDiv.innerHTML = '';
+        lastMessageSender = null; 
+        socket.emit('join-channel', chan);
+    }
+
     function switchToDm(targetUser) {
         currentChatMode = 'dm';
         currentDmTarget = targetUser;
@@ -316,10 +368,14 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
+
         const userObj = allUsersCache.find(u => u.username === targetUser);
         const display = userObj ? (userObj.displayName || targetUser) : targetUser;
-        chatHeaderLabel.innerText = `Chat with ${display}`;
+        chatHeaderLabel.innerText = display;
         chatHeaderSublabel.innerText = '@' + targetUser;
+        
+        currentAvatarPreview.style.display = 'block';
+        currentAvatarPreview.src = userObj ? userObj.avatar : 'placeholder-avatar.png';
 
         messagesDiv.innerHTML = '';
         lastMessageSender = null; 
@@ -327,23 +383,6 @@
             renderMessageBatch(dmMessagesCache[targetUser]);
         } else {
             socket.emit('fetch-dm-history', targetUser);
-        }
-    }
-
-    function switchToGlobal() {
-        currentChatMode = 'global';
-        currentDmTarget = null;
-        typingUsers.clear();
-        updateTypingDisplay();
-        renderSidebar();
-        chatHeaderLabel.innerText = currentDisplayName || '...';
-        chatHeaderSublabel.innerText = currentUsername ? ('@' + currentUsername) : '';
-        messagesDiv.innerHTML = '';
-        lastMessageSender = null; 
-        if (globalMessagesCache.length > 0) {
-            renderMessageBatch(globalMessagesCache);
-        } else {
-            socket.emit('get-history');
         }
     }
 
@@ -420,8 +459,8 @@
         }
     });
     socket.on('history', (history) => {
-        globalMessagesCache = history;
         if (currentChatMode === 'global') {
+            globalMessagesCache = history;
             messagesDiv.innerHTML = '';
             lastMessageSender = null;
             renderMessageBatch(history);
@@ -446,8 +485,12 @@
         }
     });
     socket.on('chat-message', (msg) => {
-        globalMessagesCache.push(msg);
-        if (currentChatMode === 'global') appendMessageToUI(msg);
+        // If message is for current channel or current channel is 'main' and message has no channel set
+        const isTargetChannel = (msg.channel === currentChannel) || (!msg.channel && currentChannel === 'main');
+        
+        if (currentChatMode === 'global' && isTargetChannel) {
+            appendMessageToUI(msg);
+        }
     });
     socket.on('motd', (motdText) => {
         const motdDiv = document.createElement('div');
@@ -596,6 +639,7 @@
             text: text, 
             image: stagedImage, 
             replyTo: currentReplyTo,
+            channel: (currentChatMode === 'global') ? currentChannel : null,
             to: (currentChatMode === 'dm') ? currentDmTarget : null 
         };
 
@@ -743,32 +787,25 @@
 
     // --- UPDATED: WEBRTC VOICE CHAT LOGIC (SAFE + FAST) ---
 
-    // 1. Join VC
     vcBtnJoin.onclick = () => {
-        // SAFE OPTIMIZATION: Use 'ideal' so it doesn't crash if browser says no
         const audioConstraints = {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
             channelCount: { ideal: 1 }, 
-            latency: { ideal: 0 }      // Request low latency, but don't force it
+            latency: { ideal: 0 }      
         };
 
         navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints })
             .then(stream => {
                 localStream = stream;
                 isInVC = true;
-                
-                // Reset Mute State on Join
                 isMuted = false;
                 vcBtnMute.innerText = "Mute";
                 vcBtnMute.style.backgroundColor = "#4f545c";
-
-                // Switch UI
                 vcBtnJoin.style.display = 'none';
                 vcBtnLeave.style.display = 'block';
                 vcBtnMute.style.display = 'block';
-
                 socket.emit('join-vc');
             })
             .catch(err => {
@@ -777,20 +814,15 @@
             });
     };
 
-    // 2. Mute Toggle
     vcBtnMute.onclick = () => {
         if (!localStream) return;
         isMuted = !isMuted;
-        
-        // Loop through ALL audio tracks
         const tracks = localStream.getAudioTracks();
         tracks.forEach(track => { track.enabled = !isMuted; });
-
         vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
         vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
     };
 
-    // 3. Leave VC
     vcBtnLeave.onclick = () => {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
@@ -798,25 +830,17 @@
         }
         isInVC = false;
         isMuted = false;
-        
-        // Reset UI
         vcBtnJoin.style.display = 'block';
         vcBtnLeave.style.display = 'none';
         vcBtnMute.style.display = 'none';
         vcBtnMute.innerText = "Mute";
         vcBtnMute.style.backgroundColor = "#4f545c";
-
-        // Close all peer connections
         Object.values(peers).forEach(peer => peer.destroy());
         peers = {};
-        
-        // Cleanup audio elements
         audioContainer.innerHTML = '';
-        
         socket.emit('leave-vc');
     };
 
-    // 4. Update User List
     socket.on('vc-user-list-update', (users) => {
         vcUserList.innerHTML = '';
         users.forEach(u => {
@@ -824,21 +848,17 @@
             li.style.display = 'flex';
             li.style.alignItems = 'center';
             li.style.marginBottom = '5px';
-            
             const img = document.createElement('img');
             img.src = u.avatar || 'placeholder-avatar.png';
             img.style.width = '24px'; img.style.height='24px'; img.style.borderRadius='50%'; img.style.marginRight='8px';
-            
             const span = document.createElement('span');
             span.innerText = u.displayName || u.username;
-            
             li.appendChild(img);
             li.appendChild(span);
             vcUserList.appendChild(li);
         });
     });
 
-    // 5. Existing user detects new user -> Calls them
     socket.on('vc-user-joined', (id) => {
         if (isInVC && localStream) {
             createPeer(id, socket.id, localStream, true); 
@@ -852,14 +872,11 @@
         }
         const audioEl = document.getElementById(`audio-${id}`);
         if (audioEl) audioEl.remove();
-        // Video check removed because we don't show video in index.html anymore
     });
 
-    // 6. Handling Signals
     socket.on('signal', (data) => {
         if (!isInVC || !localStream) return;
         const peerId = data.sender;
-        
         if (!peers[peerId]) {
             createPeer(peerId, socket.id, localStream, false);
         }
@@ -879,15 +896,8 @@
         });
 
         peer.on('stream', (remoteStream) => {
-            // IGNORE VIDEO STREAMS IN THE MAIN CHAT
             const isVideo = remoteStream.getVideoTracks().length > 0;
-            
-            if (isVideo) {
-                // Do NOT create a video element in index.html
-                return;
-            }
-
-            // It's audio, create hidden audio element
+            if (isVideo) return;
             if (!document.getElementById(`audio-${targetSocketId}`)) {
                 const audio = document.createElement('audio');
                 audio.id = `audio-${targetSocketId}`;
@@ -899,11 +909,9 @@
         });
 
         peer.on('error', (err) => console.error('Peer error:', err));
-        
         peers[targetSocketId] = peer;
         return peer;
     }
-
 </script>
 </body>
 </html>
