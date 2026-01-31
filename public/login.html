@@ -11,12 +11,13 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: var(--bg-primary);
+            background-color: var(--bg-primary, #1e1e1e); /* Fallback color */
             font-family: sans-serif;
             margin: 0;
+            color: white;
         }
         .login-card {
-            background-color: var(--bg-secondary);
+            background-color: var(--bg-secondary, #2d2d2d);
             padding: 2rem;
             border-radius: 8px;
             width: 100%;
@@ -24,21 +25,21 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             text-align: center;
         }
-        h2 { color: var(--color-text); margin-bottom: 1.5rem; }
+        h2 { margin-bottom: 1.5rem; }
         input {
             width: 100%;
             padding: 10px;
             margin: 10px 0;
-            background-color: var(--bg-input);
+            background-color: var(--bg-input, #404040);
             border: 1px solid #333;
             border-radius: 4px;
             color: white;
-            box-sizing: border-box; /* Fixes padding issues */
+            box-sizing: border-box; 
         }
         button {
             width: 100%;
             padding: 10px;
-            background-color: var(--color-accent-blue);
+            background-color: #007bff;
             border: none;
             border-radius: 4px;
             color: white;
@@ -50,16 +51,19 @@
         .toggle-link {
             display: block;
             margin-top: 15px;
-            color: var(--color-muted);
+            color: #aaa;
             font-size: 0.9rem;
             cursor: pointer;
             text-decoration: underline;
         }
-        .toggle-link:hover { color: var(--color-text); }
+        .toggle-link:hover { color: white; }
         .error-msg {
-            color: var(--color-vc-red);
+            color: #ff4d4d;
             margin-bottom: 10px;
             display: none;
+            background: rgba(255, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -98,13 +102,13 @@
             title.innerText = "Create Account";
             submitBtn.innerText = "Register";
             toggleBtn.innerText = "Already have an account? Log In";
-            displayInput.style.display = 'block'; // Show display name input
+            displayInput.style.display = 'block'; 
             displayInput.required = true;
         } else {
             title.innerText = "Welcome Back";
             submitBtn.innerText = "Log In";
             toggleBtn.innerText = "Need an account? Register";
-            displayInput.style.display = 'none'; // Hide display name input
+            displayInput.style.display = 'none'; 
             displayInput.required = false;
         }
         errorBox.style.display = 'none';
@@ -117,7 +121,6 @@
         const password = document.getElementById('password').value;
         const displayName = document.getElementById('displayname').value;
 
-        // Determine which endpoint to hit
         const endpoint = isRegistering ? '/register' : '/login';
         
         const payload = { username, password };
@@ -136,16 +139,21 @@
             const data = await res.json();
 
             if (res.ok) {
-                // Success! Redirect to chat
+                // --- CRITICAL FIX: SAVE CREDENTIALS ---
+                localStorage.setItem('username', username);
+                localStorage.setItem('password', password); 
+                // -------------------------------------
+
+                // Redirect to main chat
                 window.location.href = '/';
             } else {
-                // Show error
                 errorBox.innerText = data.error || "Authentication failed";
                 errorBox.style.display = 'block';
                 submitBtn.disabled = false;
                 submitBtn.innerText = isRegistering ? "Register" : "Log In";
             }
         } catch (err) {
+            console.error(err);
             errorBox.innerText = "Server connection error.";
             errorBox.style.display = 'block';
             submitBtn.disabled = false;
