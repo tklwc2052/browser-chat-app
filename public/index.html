@@ -1,455 +1,425 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The C&C Corp chat</title>
-<link rel="stylesheet" href="styles.css">
-<script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C&C Corp - Main Terminal</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- CSS VARIABLES & RESET --- */
+        :root {
+            --bg-dark: #121212;
+            --bg-panel: #1e1e1e;
+            --bg-input: #2c2c2c;
+            --accent: #007bff;
+            --accent-hover: #0056b3;
+            --text-main: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --border: #333;
+        }
 
-<style>
-    .message-content-area {
-        display: flex;
-        flex-direction: column;
-        max-width: 70%;
-        position: relative;
-    }
-    .message-sender-name {
-        font-size: 0.75rem; 
-        color: #888;
-        margin-bottom: 2px;
-        margin-left: 4px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        cursor: pointer;
-        transition: color 0.2s;
-    }
-    .message-sender-name:hover {
-        color: var(--color-accent-blue);
-        text-decoration: underline;
-    }
-    .user-message .message-content-area { align-items: flex-end; }
-    .user-message .message-sender-name { 
-        margin-right: 4px; 
-        margin-left: 0; 
-        color: var(--color-accent-blue); 
-    }
+        * { box-sizing: border-box; }
 
-    /* New Sidebar Styles */
-    .dm-dropdown-header {
-        cursor: pointer;
-        padding: 10px 15px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: rgba(0,0,0,0.2);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        color: var(--color-muted);
-        font-weight: bold;
-    }
-    .dm-dropdown-content {
-        display: block; /* Default open */
-    }
-    .dm-dropdown-content.collapsed {
-        display: none;
-    }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
 
-    /* Voice Chat Bottom Sidebar Section */
-    #sidebar-vc-area {
-        padding: 15px;
-        border-top: 1px solid #1a1a1a;
-        background-color: rgba(0,0,0,0.2);
-    }
-</style>
+        /* --- LAYOUT --- */
+        #sidebar {
+            width: 260px;
+            background-color: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        #chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-dark);
+            position: relative;
+        }
+
+        /* --- SIDEBAR ELEMENTS --- */
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-section {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,0.2);
+        }
+
+        .user-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .user-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .user-item:hover { background-color: var(--bg-input); }
+        .user-item.active { background-color: rgba(0, 123, 255, 0.2); border-left: 3px solid var(--accent); }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #666;
+            margin-right: 10px;
+        }
+        .status-dot.online { background-color: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
+
+        .btn-logout {
+            margin: 20px;
+            padding: 10px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* --- CHAT AREA --- */
+        #messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column-reverse; /* Newest at bottom visually, but we use prepend logic */
+        }
+
+        /* Because we used flex-direction: column-reverse, we actually need 
+           to handle scrolling carefully or just use standard column. 
+           Let's use standard column and auto-scroll down for simplicity. */
+        #messages-container {
+            flex-direction: column; 
+            justify-content: flex-start;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            background-color: var(--bg-panel);
+            max-width: 85%;
+            word-wrap: break-word;
+            animation: fadeIn 0.2s ease;
+        }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .message-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 5px;
+        }
+
+        .author {
+            font-weight: bold;
+            color: var(--accent);
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .timestamp {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .message-content img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 5px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        /* System Messages */
+        .message.system {
+            background: transparent;
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            max-width: 100%;
+        }
+
+        /* --- INPUT AREA --- */
+        .input-wrapper {
+            padding: 20px;
+            background-color: var(--bg-panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background-color: var(--bg-input);
+            color: white;
+            outline: none;
+        }
+        #message-input:focus { border-color: var(--accent); }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 8px;
+            transition: color 0.2s;
+        }
+        .icon-btn:hover { color: var(--accent); }
+
+    </style>
 </head>
 <body>
 
-<div id="main-wrapper">
-    <div id="dm-sidebar">
-        <div id="dm-header">The C&C Corp</div>
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span>C&C Corp</span>
+            <i class="fas fa-server"></i>
+        </div>
         
-        <div id="dm-list">
-            <div class="dm-dropdown-header" onclick="toggleSection('public-channels')">
-                Channels <span>▾</span>
-            </div>
-            <div id="public-channels" class="dm-dropdown-content">
-                <div class="dm-user-card active" onclick="switchChannel('main')">
-                    <div class="dm-username"># main</div>
-                </div>
-                <div class="dm-user-card" onclick="switchChannel('school')">
-                    <div class="dm-username"># school</div>
-                </div>
-                <div class="dm-user-card" onclick="switchChannel('random')">
-                    <div class="dm-username"># random</div>
-                </div>
-            </div>
-
-            <div class="dm-dropdown-header" onclick="toggleSection('direct-messages')" style="margin-top:10px;">
-                Direct Messages <span>▾</span>
-            </div>
-            <div id="direct-messages" class="dm-dropdown-content">
-                </div>
+        <div class="user-section">
+            <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 5px;">LOGGED IN AS</div>
+            <div id="my-display-name" style="font-weight: bold;">Loading...</div>
+            <div id="my-username" style="font-size: 0.8rem; color: #666;">@...</div>
         </div>
 
-        <div id="sidebar-vc-area">
-            <div class="panel-title">Voice Chat</div>
-            <button id="vc-btn-join" class="panel-btn" onclick="joinVC()">Join Voice Room</button>
-            <ul id="vc-user-list"></ul>
+        <div style="padding: 10px 10px 0; color: #aaa; font-size: 0.8rem; font-weight: bold;">ONLINE USERS</div>
+        <div id="users-list" class="user-list">
+            </div>
+
+        <button class="btn-logout" id="logout-btn">Log Out</button>
+    </div>
+
+    <div id="chat-area">
+        <div id="messages-container"></div>
+
+        <div class="input-wrapper">
+            <button class="icon-btn" id="upload-btn" title="Upload Image">
+                <i class="fas fa-image"></i>
+            </button>
+            <input type="file" id="file-input" hidden accept="image/*">
+            
+            <input type="text" id="message-input" placeholder="Message #main..." autocomplete="off">
+            
+            <button class="icon-btn" id="send-btn" title="Send">
+                <i class="fas fa-paper-plane"></i>
+            </button>
         </div>
     </div>
 
-    <div id="chat-container">
-        <div id="username-area">
-            <div id="chat-title"># main</div>
-            <div id="username-controls">
-                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
-                <button id="open-profile-btn">My Profile</button>
-            </div>
-        </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // --- 1. AUTHENTICATION CHECK ---
+        const username = localStorage.getItem('username');
+        const password = localStorage.getItem('password');
 
-        <div id="messages"></div>
-        <button id="scroll-down-btn">New Messages ↓</button>
-        <div id="typing-indicator"></div>
+        if (!username || !password) {
+            // No credentials? Go to login.
+            window.location.href = '/login';
+        }
 
-        <div id="message-input-area">
-            <div id="reply-bar" style="display:none;">
-                <span id="reply-text">Replying to...</span>
-                <button id="cancel-reply-btn">✕</button>
-            </div>
-            <div id="image-preview-area" style="display:none;">
-                <img id="image-preview" src="" alt="Preview">
-                <button id="remove-image-btn">✕</button>
-            </div>
-            <div id="input-row">
-                <button id="file-upload-btn" onclick="document.getElementById('file-input').click()">+</button>
-                <input type="file" id="file-input" style="display:none;" accept="image/*">
-                <textarea id="message-input" placeholder="Message #main" rows="1"></textarea>
-                <button id="send-button">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="right-panel">
-        <div class="panel-top-group">
-            <div class="panel-title">Customization</div>
-            <div class="settings-panel">
-                <div class="dropdown-wrapper">
-                    <div class="dropdown-header" onclick="toggleDropdown('bg-dropdown')">
-                        Change Background <span>▾</span>
-                    </div>
-                    <div id="bg-dropdown" class="dropdown-content">
-                        <ul class="settings-list">
-                            <li class="setting-item">URL: <input type="text" id="bg-url-input" placeholder="paste link..." class="d-input-line"></li>
-                            <li class="setting-item"><button class="panel-btn" onclick="setCustomBackground()">Apply</button></li>
-                            <li class="setting-item"><button class="panel-btn" onclick="clearBackground()">Clear</button></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-panel">
-                <div class="dropdown-wrapper">
-                    <div class="dropdown-header" onclick="toggleDropdown('theme-dropdown')">
-                        Effects <span>▾</span>
-                    </div>
-                    <div id="theme-dropdown" class="dropdown-content">
-                        <ul class="settings-list">
-                            <li class="setting-item">Transparent Mode <input type="checkbox" id="transparent-toggle" onchange="toggleTransparent()"></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="panel-bottom-group">
-            <div class="panel-title">System</div>
-            <button class="panel-btn" onclick="launchCloak()">Cloak (New Tab)</button>
-            <button class="panel-btn" onclick="logout()">Log Out</button>
-        </div>
-    </div>
-</div>
-
-<div id="ctx-menu">
-    <div id="ctx-reply">Reply</div>
-    <div id="ctx-copy">Copy Text</div>
-</div>
-
-<script>
-    const socket = io();
-    let currentChannel = 'main';
-    let currentDMTarget = null;
-    let myUsername = "";
-    let replyToId = null;
-    let selectedFile = null;
-
-    // --- AUTHENTICATION CHECK ---
-    const storedAuth = localStorage.getItem('chat_auth');
-    if (!storedAuth) {
-        window.location.href = '/login';
-    } else {
-        const creds = JSON.parse(storedAuth);
-        socket.emit('join-request', creds);
-    }
-    
-    // Handle Invalid Auth (e.g. wrong password stored)
-    socket.on('login-failed', () => {
-        localStorage.removeItem('chat_auth');
-        window.location.href = '/login';
-    });
-
-    function logout() {
-        localStorage.removeItem('chat_auth');
-        window.location.href = '/login';
-    }
-
-
-    // UI Elements
-    const messageInput = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
-    const messagesContainer = document.getElementById('messages');
-    const chatTitle = document.getElementById('chat-title');
-    const fileInput = document.getElementById('file-input');
-    const imagePreviewArea = document.getElementById('image-preview-area');
-    const imagePreview = document.getElementById('image-preview');
-    const replyBar = document.getElementById('reply-bar');
-    const replyText = document.getElementById('reply-text');
-    const ctxMenu = document.getElementById('ctx-menu');
-    const vcUserList = document.getElementById('vc-user-list');
-
-    // Section Toggles
-    function toggleSection(id) {
-        document.getElementById(id).classList.toggle('collapsed');
-    }
-    function toggleDropdown(id) {
-        document.getElementById(id).classList.toggle('show');
-    }
-
-    // --- CHANNEL & DM LOGIC ---
-    function switchChannel(channel) {
-        currentChannel = channel;
-        currentDMTarget = null;
-        chatTitle.innerText = `# ${channel}`;
-        messageInput.placeholder = `Message #${channel}`;
+        // --- 2. CONNECT TO SERVER ---
+        const socket = io();
+        const messagesDiv = document.getElementById('messages-container');
+        const input = document.getElementById('message-input');
         
-        // Update UI
-        document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
-        event.currentTarget.classList.add('active');
+        // Immediate handshake
+        socket.emit('join-request', { username, password });
 
-        messagesContainer.innerHTML = "";
-        socket.emit('join-channel', channel);
-    }
-
-    function startDM(targetUser) {
-        currentDMTarget = targetUser;
-        currentChannel = null;
-        chatTitle.innerText = `@ ${targetUser}`;
-        messageInput.placeholder = `Message @${targetUser}`;
-
-        document.querySelectorAll('.dm-user-card').forEach(el => el.classList.remove('active'));
-        event.currentTarget.classList.add('active');
-
-        // Clear unread
-        const badge = event.currentTarget.querySelector('.unread-badge');
-        if (badge) badge.classList.remove('visible');
-
-        messagesContainer.innerHTML = "";
-        socket.emit('get-dm-history', targetUser);
-    }
-
-    // --- MESSAGE RENDERING ---
-    socket.on('chat-message', (msg) => {
-        if (msg.channel === currentChannel || (msg.isDM && (msg.from === currentDMTarget || msg.to === currentDMTarget))) {
-            appendMessage(msg);
-        }
-    });
-
-    socket.on('history', (history) => {
-        messagesContainer.innerHTML = "";
-        history.forEach(appendMessage);
-        scrollToBottom();
-    });
-
-    function appendMessage(msg) {
-        const isMe = msg.from === myUsername;
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${isMe ? 'user-message' : 'other-message'}`;
-        msgDiv.dataset.id = msg.id;
-
-        const avatarHtml = isMe ? '' : `<img src="${msg.avatar || 'placeholder-avatar.png'}" class="message-avatar" onclick="viewProfile('${msg.from}')">`;
-        const spacerHtml = isMe ? `<div class="message-avatar-spacer"></div>` : '';
-
-        let contentHtml = "";
-        if (msg.replyTo) {
-            contentHtml += `<div class="reply-preview">Replying to: ${msg.replyTo.text.substring(0,30)}...</div>`;
-        }
-        if (msg.image) {
-            contentHtml += `<img src="${msg.image}" class="message-image" onclick="window.open('${msg.image}')">`;
-        }
-        contentHtml += `<div>${msg.text}</div>`;
-
-        msgDiv.innerHTML = `
-            ${avatarHtml}
-            <div class="message-content-area">
-                <div class="message-sender-name" onclick="viewProfile('${msg.from}')">${msg.displayName || msg.from}</div>
-                <div class="bubble-content">
-                    ${contentHtml}
-                    <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                </div>
-            </div>
-            ${spacerHtml}
-        `;
-
-        // Context Menu
-        msgDiv.oncontextmenu = (e) => {
-            e.preventDefault();
-            replyToId = msg.id;
-            ctxMenu.style.top = e.pageY + "px";
-            ctxMenu.style.left = e.pageX + "px";
-            ctxMenu.style.display = "block";
-        };
-
-        messagesContainer.appendChild(msgDiv);
-        scrollToBottom();
-    }
-
-    // --- INPUT HANDLERS ---
-    sendButton.onclick = sendMessage;
-    messageInput.onkeydown = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
-
-    async function sendMessage() {
-        const text = messageInput.value.trim();
-        if (!text && !selectedFile) return;
-
-        let imageUrl = null;
-        if (selectedFile) {
-            const formData = new FormData();
-            formData.append('image', selectedFile);
-            const res = await fetch('/upload', { method: 'POST', body: formData });
-            const data = await res.json();
-            imageUrl = data.url;
-        }
-
-        const msgData = {
-            text,
-            image: imageUrl,
-            channel: currentChannel,
-            to: currentDMTarget,
-            isDM: !!currentDMTarget,
-            replyToId: replyToId
-        };
-
-        socket.emit('chat-message', msgData);
-
-        // Reset
-        messageInput.value = "";
-        selectedFile = null;
-        replyToId = null;
-        imagePreviewArea.style.display = "none";
-        replyBar.style.display = "none";
-    }
-
-    // --- FILE UPLOAD ---
-    fileInput.onchange = (e) => {
-        selectedFile = e.target.files[0];
-        if (selectedFile) {
-            const reader = new FileReader();
-            reader.onload = (ex) => {
-                imagePreview.src = ex.target.result;
-                imagePreviewArea.style.display = "flex";
-            };
-            reader.readAsDataURL(selectedFile);
-        }
-    };
-    document.getElementById('remove-image-btn').onclick = () => {
-        selectedFile = null;
-        imagePreviewArea.style.display = "none";
-    };
-
-    // --- VOICE CHAT ---
-    function joinVC() {
-        window.open('/voice.html', 'VC-Room', 'width=800,height=600');
-    }
-
-    socket.on('vc-update', (list) => {
-        vcUserList.innerHTML = "";
-        list.forEach(u => {
-            const li = document.createElement('li');
-            li.innerText = u;
-            vcUserList.appendChild(li);
+        // --- 3. SOCKET EVENTS ---
+        
+        // Login Failed
+        socket.on('login-failed', (msg) => {
+            alert("Login Failed: " + msg);
+            localStorage.clear();
+            window.location.href = '/login';
         });
-    });
 
-    // --- INITIALIZATION & UTILS ---
-    socket.on('init', (data) => {
-        myUsername = data.username;
-        document.getElementById('current-avatar-preview').src = data.avatar || 'placeholder-avatar.png';
-        
-        // Load DM Sidebar
-        const dmContainer = document.getElementById('direct-messages');
-        dmContainer.innerHTML = "";
-        data.allUsers.forEach(user => {
-            if (user.username === myUsername) return;
-            const card = document.createElement('div');
-            card.className = "dm-user-card";
-            card.onclick = () => startDM(user.username);
-            card.innerHTML = `
-                <div class="dm-avatar-wrapper">
-                    <img src="${user.avatar || 'placeholder-avatar.png'}">
-                    <div class="status-bubble ${user.online ? 'status-online' : 'status-offline'}"></div>
-                    <div class="unread-badge" id="unread-${user.username}">0</div>
+        // Login Success & Init Data
+        socket.on('init', (data) => {
+            document.getElementById('my-display-name').innerText = data.username; // Or displayName if available
+            document.getElementById('my-username').innerText = '@' + data.username;
+            
+            // Render History
+            messagesDiv.innerHTML = '';
+            // We reverse strictly because the server sends [newest, ..., oldest]
+            // but we want to render [oldest -> newest] at the bottom
+            const chronological = data.history.slice().reverse(); 
+            chronological.forEach(msg => addMessage(msg));
+            
+            scrollToBottom();
+            updateUserList(data.allUsers);
+        });
+
+        // Receive Message
+        socket.on('chat-message', (msg) => {
+            addMessage(msg);
+            scrollToBottom();
+        });
+
+        // User List Update (Simpler version re-fetches or relies on events)
+        socket.on('user-status-change', (data) => {
+            // Ideally server sends full list or we update partial
+            // For now, let's just listen for full updates if the server sends them,
+            // or we can manually toggle visuals. 
+            // NOTE: The server provided earlier sends 'init' on join, but 
+            // might not send a full list update on every join/leave.
+            // If the list doesn't update, we might need to refresh.
+        });
+
+        // --- 4. UI LOGIC ---
+
+        function addMessage(msg) {
+            const div = document.createElement('div');
+            div.className = 'message';
+            if (msg.from === 'System') div.classList.add('system');
+
+            const date = new Date(msg.timestamp);
+            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            let html = `
+                <div class="message-header">
+                    <span class="author">${msg.displayName || msg.from}</span>
+                    <span class="timestamp">${timeStr}</span>
                 </div>
-                <div class="dm-username">${user.displayName || user.username}</div>
+                <div class="message-content">
+                    ${escapeHtml(msg.text)}
+                    ${msg.image ? `<br><img src="${msg.image}" onclick="window.open(this.src)">` : ''}
+                </div>
             `;
-            dmContainer.appendChild(card);
-        });
-    });
+            
+            // System message override
+            if (msg.from === 'System') {
+                html = `<span>${msg.text}</span>`;
+            }
 
-    function viewProfile(username) {
-        window.location.href = `/profile.html?user=${username}`;
-    }
-
-    document.getElementById('open-profile-btn').onclick = () => {
-        window.location.href = `/profile.html?user=${myUsername}`;
-    };
-
-    function scrollToBottom() {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    // Close context menu
-    window.onclick = () => ctxMenu.style.display = "none";
-    
-    // Background Customization
-    function setCustomBackground() {
-        const url = document.getElementById('bg-url-input').value;
-        if (url) {
-            document.body.style.backgroundImage = `url('${url}')`;
-            localStorage.setItem('custom-bg', url);
+            div.innerHTML = html;
+            messagesDiv.appendChild(div);
         }
-    }
-    function clearBackground() {
-        document.body.style.backgroundImage = 'none';
-        localStorage.removeItem('custom-bg');
-    }
-    function toggleTransparent() {
-        document.body.classList.toggle('transparent-mode');
-    }
-    function launchCloak() {
-        const win = window.open('about:blank', '_blank');
-        win.document.body.style.margin = '0';
-        win.document.body.style.height = '100vh';
-        const iframe = win.document.createElement('iframe');
-        iframe.style.border = 'none'; iframe.style.width = '100%'; iframe.style.height = '100%';
-        iframe.src = window.location.href;
-        win.document.body.appendChild(iframe);
-    }
 
-    // Apply saved bg on load
-    const savedBg = localStorage.getItem('custom-bg');
-    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+        function scrollToBottom() {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
 
-</script>
+        function updateUserList(users) {
+            const list = document.getElementById('users-list');
+            list.innerHTML = '';
+            
+            // Sort: Online first, then alphabetical
+            users.sort((a, b) => (b.online - a.online));
+
+            users.forEach(u => {
+                const el = document.createElement('div');
+                el.className = 'user-item';
+                el.innerHTML = `
+                    <div class="status-dot ${u.online ? 'online' : ''}"></div>
+                    <div>
+                        <div style="font-weight: bold;">${u.displayName || u.username}</div>
+                        <div style="font-size: 0.7rem; color: #888;">@${u.username}</div>
+                    </div>
+                `;
+                list.appendChild(el);
+            });
+        }
+
+        // --- 5. SENDING MESSAGES ---
+
+        function sendMessage() {
+            const text = input.value.trim();
+            if (text) {
+                socket.emit('chat-message', { text: text });
+                input.value = '';
+            }
+        }
+
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // --- 6. IMAGE UPLOAD ---
+
+        const fileInput = document.getElementById('file-input');
+        document.getElementById('upload-btn').addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Optional: Show "Uploading..." in chat or disable button
+            const btn = document.getElementById('upload-btn');
+            btn.style.color = 'orange';
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.url) {
+                    socket.emit('chat-message', { text: '', image: data.url });
+                }
+            } catch (err) {
+                console.error("Upload failed", err);
+                alert("Image upload failed");
+            } finally {
+                btn.style.color = ''; // Reset color
+                fileInput.value = ''; // Reset input
+            }
+        });
+
+        // --- 7. LOGOUT ---
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('username');
+            localStorage.removeItem('password');
+            window.location.href = '/login';
+        });
+
+        // Helper to prevent HTML injection
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+    </script>
 </body>
 </html>
