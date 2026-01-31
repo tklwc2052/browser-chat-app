@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - The C&C Corp</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+    body {
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        background-color: var(--bg-primary); 
+        height: 100vh;
+    }
+</style>
+</head>
+<body>
+
+<div id="login-box">
+    <h2>Welcome</h2>
+    <p style="color: #aaa; font-size: 0.9em;">Enter a username and password.<br>If the username is new, an account will be created.</p>
+    <input type="text" id="login-username" class="login-input" placeholder="Username">
+    <input type="password" id="login-password" class="login-input" placeholder="Password">
+    <button class="login-btn" onclick="attemptLogin()">Enter Chat</button>
+    <div id="login-error"></div>
+</div>
+
+<script>
+    const socket = io();
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    const errorDiv = document.getElementById('login-error');
+
+    function attemptLogin() {
+        const u = usernameInput.value.trim();
+        const p = passwordInput.value.trim();
+
+        if (!u || !p) {
+            errorDiv.innerText = "Username and password required.";
+            return;
+        }
+        errorDiv.innerText = "Connecting...";
+        
+        // Send login request to server
+        socket.emit('join-request', { username: u, password: p });
+    }
+
+    // Listen for Success
+    socket.on('login-success', (data) => {
+        // Save credentials to Local Storage so Index.html can use them
+        const creds = { 
+            username: usernameInput.value.trim(), 
+            password: passwordInput.value.trim() 
+        };
+        localStorage.setItem('chat_auth', JSON.stringify(creds));
+        
+        // Redirect to main chat
+        window.location.href = '/';
+    });
+
+    // Listen for Failure
+    socket.on('login-failed', (msg) => {
+        errorDiv.innerText = msg;
+    });
+
+    // Enter Key Support
+    passwordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') attemptLogin();
+    });
+</script>
+</body>
+</html>
