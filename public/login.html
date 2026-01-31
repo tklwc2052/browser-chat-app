@@ -1,74 +1,158 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - The C&C Corp</title>
-<link rel="stylesheet" href="styles.css">
-<script src="/socket.io/socket.io.js"></script>
-<style>
-    body {
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        background-color: var(--bg-primary); 
-        height: 100vh;
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - C&C Corp</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: var(--bg-primary);
+            font-family: sans-serif;
+            margin: 0;
+        }
+        .login-card {
+            background-color: var(--bg-secondary);
+            padding: 2rem;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+        h2 { color: var(--color-text); margin-bottom: 1.5rem; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: var(--bg-input);
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: white;
+            box-sizing: border-box; /* Fixes padding issues */
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--color-accent-blue);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { opacity: 0.9; }
+        .toggle-link {
+            display: block;
+            margin-top: 15px;
+            color: var(--color-muted);
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .toggle-link:hover { color: var(--color-text); }
+        .error-msg {
+            color: var(--color-vc-red);
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
 </head>
 <body>
 
-<div id="login-box">
-    <h2>Welcome</h2>
-    <p style="color: #aaa; font-size: 0.9em;">Enter a username and password.<br>If the username is new, an account will be created.</p>
-    <input type="text" id="login-username" class="login-input" placeholder="Username">
-    <input type="password" id="login-password" class="login-input" placeholder="Password">
-    <button class="login-btn" onclick="attemptLogin()">Enter Chat</button>
-    <div id="login-error"></div>
+<div class="login-card">
+    <h2 id="form-title">Welcome Back</h2>
+    <div id="error-box" class="error-msg"></div>
+    
+    <form id="auth-form">
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+        
+        <input type="text" id="displayname" placeholder="Display Name (e.g. John)" style="display:none;">
+
+        <button type="submit" id="submit-btn">Log In</button>
+    </form>
+
+    <span id="toggle-auth" class="toggle-link">Need an account? Register</span>
 </div>
 
 <script>
-    const socket = io();
-    const usernameInput = document.getElementById('login-username');
-    const passwordInput = document.getElementById('login-password');
-    const errorDiv = document.getElementById('login-error');
+    const form = document.getElementById('auth-form');
+    const toggleBtn = document.getElementById('toggle-auth');
+    const title = document.getElementById('form-title');
+    const submitBtn = document.getElementById('submit-btn');
+    const displayInput = document.getElementById('displayname');
+    const errorBox = document.getElementById('error-box');
 
-    function attemptLogin() {
-        const u = usernameInput.value.trim();
-        const p = passwordInput.value.trim();
+    let isRegistering = false;
 
-        if (!u || !p) {
-            errorDiv.innerText = "Username and password required.";
-            return;
+    // Toggle between Login and Register mode
+    toggleBtn.addEventListener('click', () => {
+        isRegistering = !isRegistering;
+        if (isRegistering) {
+            title.innerText = "Create Account";
+            submitBtn.innerText = "Register";
+            toggleBtn.innerText = "Already have an account? Log In";
+            displayInput.style.display = 'block'; // Show display name input
+            displayInput.required = true;
+        } else {
+            title.innerText = "Welcome Back";
+            submitBtn.innerText = "Log In";
+            toggleBtn.innerText = "Need an account? Register";
+            displayInput.style.display = 'none'; // Hide display name input
+            displayInput.required = false;
         }
-        errorDiv.innerText = "Connecting...";
-        
-        // Send login request to server
-        socket.emit('join-request', { username: u, password: p });
-    }
-
-    // Listen for Success
-    socket.on('login-success', (data) => {
-        // Save credentials to Local Storage so Index.html can use them
-        const creds = { 
-            username: usernameInput.value.trim(), 
-            password: passwordInput.value.trim() 
-        };
-        localStorage.setItem('chat_auth', JSON.stringify(creds));
-        
-        // Redirect to main chat
-        window.location.href = '/';
+        errorBox.style.display = 'none';
     });
 
-    // Listen for Failure
-    socket.on('login-failed', (msg) => {
-        errorDiv.innerText = msg;
-    });
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const displayName = document.getElementById('displayname').value;
 
-    // Enter Key Support
-    passwordInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') attemptLogin();
+        // Determine which endpoint to hit
+        const endpoint = isRegistering ? '/register' : '/login';
+        
+        const payload = { username, password };
+        if (isRegistering) payload.displayName = displayName;
+
+        try {
+            submitBtn.disabled = true;
+            submitBtn.innerText = "Processing...";
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                // Success! Redirect to chat
+                window.location.href = '/';
+            } else {
+                // Show error
+                errorBox.innerText = data.error || "Authentication failed";
+                errorBox.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.innerText = isRegistering ? "Register" : "Log In";
+            }
+        } catch (err) {
+            errorBox.innerText = "Server connection error.";
+            errorBox.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.innerText = isRegistering ? "Register" : "Log In";
+        }
     });
 </script>
+
 </body>
 </html>
