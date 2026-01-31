@@ -13,6 +13,9 @@ const bcrypt = require('bcrypt'); // REQUIRED: npm install bcrypt
 const app = express();
 const server = http.createServer(app);
 
+// REQUIRED: Allows server to read JSON data from login forms
+app.use(express.json());
+
 // --- 1. AUTOMATIC UPDATE MESSAGE ---
 let SERVER_BUILD_DESC = "System Update"; 
 const SERVER_BUILD_ID = Date.now(); 
@@ -44,6 +47,7 @@ const io = socketIo(server, { maxHttpBufferSize: 1e7 });
 app.set('trust proxy', 1); 
 
 // --- MONGODB CONNECTION ---
+// Using MONGO_URI as you confirmed that is the key name
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
@@ -52,7 +56,7 @@ mongoose.connect(process.env.MONGO_URI)
 const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     username_lower: { type: String, unique: true },
-    password: { type: String }, 
+    password: { type: String, required: true }, 
     ip: String,
     displayName: String,
     pronouns: String,
@@ -111,10 +115,70 @@ app.get('/profile.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
-// NEW: Login Route
 app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
+
+// --- AUTH API ROUTES (NEW) ---
+
+// Register Endpoint
+app.post('/register', async (req, res) => {
+    try {
+        const { username, password, displayName } = req.body;
+        const username_lower = username.toLowerCase();
+
+        // Check if user exists
+        const existingUser = await User.findOne({ username_lower });
+        if (existingUser) {
+            return res.status(400).json({ error: "Username already taken" });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create User
+        const newUser = new User({
+            username,
+            username_lower,
+            password: hashedPassword,
+            displayName: displayName || username,
+            avatar: "", // Default empty
+            online: false
+        });
+
+        await newUser.save();
+        res.json({ status: "success", message: "Account created" });
+
+    } catch (err) {
+        console.error("Register Error:", err);
+        res.status(500).json({ error: "Error creating account" });
+    }
+});
+
+// Login Endpoint (HTTP)
+app.post('/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const username_lower = username.toLowerCase();
+
+        const user = await User.findOne({ username_lower });
+        if (!user) {
+            return res.status(400).json({ error: "User not found" });
+        }
+
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+            return res.status(400).json({ error: "Incorrect password" });
+        }
+
+        res.json({ status: "success", username: user.username });
+
+    } catch (err) {
+        console.error("Login Error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 
 // --- IMAGE UPLOAD ENDPOINT ---
 app.post('/upload', upload.single('image'), (req, res) => {
@@ -139,7 +203,7 @@ io.on('connection', (socket) => {
         return;
     }
 
-    // 1. Handle Join / Login Request
+    // 1. Handle Join / Login Request (Socket)
     socket.on('join-request', async (authData) => {
         let { username, password } = authData;
         
@@ -147,56 +211,30 @@ io.on('connection', (socket) => {
             return socket.emit('login-failed', 'Missing credentials.');
         }
 
-        username = username.trim().substring(0, 20);
-        const username_lower = username.toLowerCase();
+        const username_lower = username.trim().toLowerCase();
 
         try {
-            // Check for Ban (Username specific check, mainly for kl_)
-            if (username === 'kl_') {
-                 // Admin logic if needed
-            } else {
-                 // Regular user
-            }
+            // Check for Ban
+            if (username === 'kl_') { /* Admin logic */ }
 
             let user = await User.findOne({ username_lower });
 
             if (!user) {
-                // REGISTER NEW USER
-                const hashedPassword = await bcrypt.hash(password, 10);
-                
-                user = new User({
-                    username,
-                    username_lower,
-                    password: hashedPassword,
-                    ip: clientIp,
-                    displayName: username,
-                    avatar: '',
-                    online: true
-                });
-                await user.save();
-            } else {
-                // LOGIN EXISTING USER
-                if (!user.password) {
-                    // Legacy user (no password set), update them now
-                    const hashedPassword = await bcrypt.hash(password, 10);
-                    user.password = hashedPassword;
-                    user.ip = clientIp; // Update IP
-                    await user.save();
-                } else {
-                    // Check Password
-                    const match = await bcrypt.compare(password, user.password);
-                    if (!match) {
-                        return socket.emit('login-failed', 'Incorrect password.');
-                    }
-                }
-                
-                // Update User Status
-                user.online = true;
-                user.ip = clientIp;
-                await user.save();
+                return socket.emit('login-failed', 'User not found. Please register.');
+            }
+
+            // Verify Password
+            const match = await bcrypt.compare(password, user.password);
+            if (!match) {
+                return socket.emit('login-failed', 'Incorrect password.');
             }
 
             // --- SUCCESS ---
+            // Update User Status
+            user.online = true;
+            user.ip = clientIp;
+            await user.save();
+
             socket.emit('login-success', { username: user.username });
 
             users[socket.id] = { username: user.username, displayName: user.displayName };
@@ -224,7 +262,6 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('chat-message', welcomeMsg);
             io.emit('user-status-change', { username: user.username, online: true });
 
-            // Send System Update message
             socket.emit('chat-message', formatMessage('System', `Current Build: ${SERVER_BUILD_DESC}`));
 
         } catch (err) {
@@ -439,11 +476,8 @@ function formatMessage(username, text) {
 }
 
 async function getMessageById(id) {
-    // Check recent public
     let msg = await Message.findOne({ id });
     if (msg) return msg;
-    // Check DMs (expensive, but necessary for reply context in DMs)
-    // Simplified: Just returning null if not found in public for now to save perf
     return null;
 }
 
