@@ -94,7 +94,7 @@
     <div id="chat-container">
         <div id="username-area">
             <div style="display:flex; align-items:center; gap:10px;">
-                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar" style="display:none;">
+                <img id="current-avatar-preview" src="" alt="Avatar" style="display:none;">
                 <div id="header-text-wrapper">
                    <h3 id="chat-header-label" style="margin:0;">#main</h3>
                    <span id="chat-header-sublabel" style="font-size:0.8em; color:var(--color-muted);">Public Channel</span>
@@ -172,6 +172,10 @@
 </div>
 
 <script>
+    /* --- CONFIG --- */
+    // This is the default image used if a user hasn't set one
+    const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+
     /* --- JAVASCRIPT LOGIC --- */
     const socket = io();
     const messagesDiv = document.getElementById('messages');
@@ -240,6 +244,9 @@
     openProfileBtn.onclick = () => { window.location.href = '/profile'; };
     openVoicePageBtn.onclick = () => { window.open('/voice', '_blank'); };
 
+    // Set default src for avatar preview
+    currentAvatarPreview.src = DEFAULT_AVATAR;
+
     window.onload = () => {
         const savedUser = localStorage.getItem('simplechat_username');
         if (savedUser) {
@@ -256,7 +263,7 @@
     socket.on('profile-info', (data) => {
         currentUsername = data.username;
         currentDisplayName = data.displayName;
-        currentAvatar = data.avatar;
+        currentAvatar = data.avatar || DEFAULT_AVATAR;
         if (currentChatMode === 'global' && currentChannel === 'main') {
             chatHeaderLabel.innerText = '#main';
             chatHeaderSublabel.innerText = 'Public Channel';
@@ -295,8 +302,10 @@
             if (currentChatMode === 'dm' && currentDmTarget === u.username) card.classList.add('active');
             const wrapper = document.createElement('div');
             wrapper.className = 'dm-avatar-wrapper';
+            
             const img = document.createElement('img');
-            img.src = u.avatar || 'placeholder-avatar.png';
+            img.src = u.avatar || DEFAULT_AVATAR;
+            
             const statusBubble = document.createElement('div');
             statusBubble.className = `status-bubble ${u.online ? 'status-online' : 'status-offline'}`;
             const unreadBadge = document.createElement('div');
@@ -359,8 +368,10 @@
         const display = userObj ? (userObj.displayName || targetUser) : targetUser;
         chatHeaderLabel.innerText = display;
         chatHeaderSublabel.innerText = '@' + targetUser;
+        
         currentAvatarPreview.style.display = 'block';
-        currentAvatarPreview.src = userObj ? userObj.avatar : 'placeholder-avatar.png';
+        currentAvatarPreview.src = userObj ? (userObj.avatar || DEFAULT_AVATAR) : DEFAULT_AVATAR;
+        
         messagesDiv.innerHTML = '';
         lastMessageSender = null; 
         if (dmMessagesCache[targetUser]) {
@@ -509,7 +520,7 @@
         if (!isOwn && !isContinuous) {
             const avatarImg = document.createElement('img');
             avatarImg.className = 'message-avatar';
-            avatarImg.src = msg.avatar || 'placeholder-avatar.png';
+            avatarImg.src = msg.avatar || DEFAULT_AVATAR;
             avatarImg.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
             msgDiv.appendChild(avatarImg);
         } else if (!isOwn && isContinuous) {
@@ -760,7 +771,7 @@
         vcUserList.innerHTML = '';
         users.forEach(u => {
             const li = document.createElement('li');
-            const img = document.createElement('img'); img.src=u.avatar||'placeholder-avatar.png';
+            const img = document.createElement('img'); img.src = u.avatar || DEFAULT_AVATAR;
             img.style.width='20px';img.style.height='20px';img.style.borderRadius='50%';img.style.marginRight='5px';
             li.appendChild(img); li.appendChild(document.createTextNode(u.displayName||u.username));
             vcUserList.appendChild(li);
