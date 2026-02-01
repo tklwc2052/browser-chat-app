@@ -88,7 +88,7 @@ mongoose.connect(mongoURI)
 // --- SCHEMAS ---
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
-    password: { type: String }, // Added for login
+    password: { type: String }, 
     displayName: String, 
     description: { type: String, default: "" }, 
     pronouns: { type: String, default: "" },
@@ -222,9 +222,14 @@ async function broadcastSidebarRefresh() {
     } catch (err) { console.error("Sidebar update error", err); }
 }
 
+// Serve static files from public
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- AUTH ROUTES ---
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
 app.post('/auth/register', async (req, res) => {
     const { username, password } = req.body;
     if(!username || !password) return res.status(400).send("Missing credentials");
