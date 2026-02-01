@@ -8,13 +8,11 @@ const fs = require('fs');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const stream = require('stream');
-const bcrypt = require('bcrypt'); // REQUIRED: npm install bcrypt
+const crypto = require('crypto'); // Built-in, no install needed
+const session = require('express-session');
 
 const app = express();
 const server = http.createServer(app);
-
-// REQUIRED: Allows server to read JSON data from login forms
-app.use(express.json());
 
 // --- 1. AUTOMATIC UPDATE MESSAGE ---
 let SERVER_BUILD_DESC = "System Update"; 
@@ -45,385 +43,556 @@ const upload = multer({
 const io = socketIo(server, { maxHttpBufferSize: 1e7 });
 
 app.set('trust proxy', 1); 
+app.use(express.json());
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'cnc-corp-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+}));
+
+// --- PASSWORD UTILS ---
+function hashPassword(password) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+    return `${salt}:${hash}`;
+}
+function verifyPassword(password, storedValue) {
+    const [salt, hash] = storedValue.split(':');
+    const checkHash = crypto.scryptSync(password, salt, 64).toString('hex');
+    return hash === checkHash;
+}
 
 // --- MONGODB CONNECTION ---
-// Using MONGO_URI as you confirmed that is the key name
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ MongoDB Connected'))
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
+const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
+mongoose.connect(mongoURI)
+    .then(async () => {
+        console.log('MongoDB Connected');
+        try {
+            const savedMessages = await Message.find().sort({ timestamp: -1 }).limit(MAX_HISTORY).lean();
+            messageHistory.push(...savedMessages.reverse());
+        } catch (err) { console.error(err); }
+
+        try {
+            const savedMotd = await Config.findOne({ key: 'motd' });
+            if (savedMotd) serverMOTD = savedMotd.value;
+        } catch (err) { console.error(err); }
+
+        try {
+            const allBans = await Ban.find({});
+            allBans.forEach(ban => bannedIPs.set(ban.ip, true));
+        } catch (err) { console.error(err); }
+    })
+    .catch(err => console.log('MongoDB Connection Error:', err));
 
 // --- SCHEMAS ---
-const UserSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
-    username_lower: { type: String, unique: true },
-    password: { type: String, required: true }, 
-    ip: String,
-    displayName: String,
-    pronouns: String,
-    description: String,
+    password: { type: String }, // Added for login
+    displayName: String, 
+    description: { type: String, default: "" }, 
+    pronouns: { type: String, default: "" },
     avatar: String,
-    banner: String,
-    customBackground: String,
-    lastSeen: Date,
-    online: { type: Boolean, default: false }
+    banner: { type: String, default: "" },           
+    customBackground: { type: String, default: "" }, 
+    lastIp: String, 
+    lastSeen: { type: Date, default: Date.now }
 });
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
-const MessageSchema = new mongoose.Schema({
-    id: String,
-    text: String,
-    image: String,
-    from: String,
-    displayName: String,
-    avatar: String,
-    channel: String,
-    timestamp: { type: Date, default: Date.now },
-    replyTo: Object
+const banSchema = new mongoose.Schema({
+    username: String, ip: String, bannedAt: { type: Date, default: Date.now }, bannedBy: String
 });
+const Ban = mongoose.models.Ban || mongoose.model('Ban', banSchema);
 
-const DMSchema = new mongoose.Schema({
+const messageSchema = new mongoose.Schema({
+    id: String, 
+    sender: String, 
+    senderDisplayName: String, 
+    text: String, 
+    image: String, 
+    avatar: String, 
+    time: String, 
+    replyTo: Object, 
+    type: String, 
+    channel: { type: String, default: 'main' },
+    isEdited: { type: Boolean, default: false }, 
+    timestamp: { type: Date, default: Date.now }
+});
+messageSchema.index({ timestamp: -1 }); 
+const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
+
+const dmSchema = new mongoose.Schema({
     participants: [String], 
-    messages: [MessageSchema],
-    lastUpdated: { type: Date, default: Date.now }
+    messages: [{ id: String, replyTo: Object, sender: String, senderDisplayName: String, text: String, image: String, avatar: String, time: String, isEdited: { type: Boolean, default: false }, timestamp: { type: Date, default: Date.now } }]
 });
+dmSchema.index({ participants: 1 });
+const DM = mongoose.models.DM || mongoose.model('DM', dmSchema);
 
-const BanSchema = new mongoose.Schema({
-    ip: String,
-    bannedAt: { type: Date, default: Date.now }
-});
+const configSchema = new mongoose.Schema({ key: { type: String, unique: true }, value: String });
+const Config = mongoose.models.Config || mongoose.model('Config', configSchema);
 
-const User = mongoose.model('User', UserSchema);
-const Message = mongoose.model('Message', MessageSchema);
-const DM = mongoose.model('DM', DMSchema);
-const Ban = mongoose.model('Ban', BanSchema);
-
-// --- STATE MANAGEMENT ---
+// --- State Management ---
 const users = {}; 
 const vcUsers = {}; 
-const activeScreenShares = new Set();
-let bannedIPs = new Set();
+const messageHistory = []; 
+const MAX_HISTORY = 20; 
+const userAvatarCache = {}; 
+let serverMOTD = "Welcome to the C&C Corp chat! Play nice."; 
+const mutedUsers = new Set(); 
+const bannedIPs = new Map();  
+const ADMIN_USERNAME = 'kl_'; 
+const activeScreenShares = new Set(); 
+const disconnectTimeouts = {}; 
 
-async function loadBans() {
-    const bans = await Ban.find({});
-    bans.forEach(b => bannedIPs.add(b.ip));
+// --- Utility Functions ---
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
+
+function formatMessage(sender, text, avatar = null, image = null, isPm = false, replyTo = null, senderDisplayName = null) {
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    let finalAvatar = avatar;
+    if (!finalAvatar && userAvatarCache[sender]) finalAvatar = userAvatarCache[sender];
+    if (!finalAvatar && sender !== 'System') finalAvatar = 'placeholder-avatar.png';
+    const finalDisplayName = senderDisplayName || sender;
+
+    if (sender === 'System' || sender === 'Announcement') {
+        return { id: generateId(), text, sender, senderDisplayName: sender, avatar: null, time, type: 'system', timestamp: now };
+    }
+    return { id: generateId(), text, image, sender, senderDisplayName: finalDisplayName, avatar: finalAvatar, time, replyTo, type: isPm ? 'pm' : 'general', isEdited: false, timestamp: now };
 }
-loadBans();
+
+async function savePublicMessage(msgObj, channel = 'main') {
+    if (msgObj.type === 'pm') return;
+    try {
+        await new Message({
+            id: msgObj.id, 
+            sender: msgObj.sender, 
+            senderDisplayName: msgObj.senderDisplayName, 
+            text: msgObj.text, 
+            image: msgObj.image, 
+            avatar: msgObj.avatar, 
+            time: msgObj.time, 
+            replyTo: msgObj.replyTo, 
+            type: msgObj.type, 
+            channel: channel,
+            isEdited: msgObj.isEdited || false, 
+            timestamp: msgObj.timestamp || new Date()
+        }).save();
+    } catch (err) { console.error("Error saving public message:", err); }
+}
+
+async function savePrivateMessage(sender, target, msgObj) {
+    const participants = [sender, target].sort();
+    try {
+        await DM.findOneAndUpdate(
+            { participants: participants },
+            { 
+                $push: { messages: msgObj }, 
+                $setOnInsert: { participants: participants } 
+            },
+            { upsert: true }
+        );
+    } catch (e) { console.error("Error saving DM:", e); }
+}
+
+function broadcastVCUserList() { io.emit('vc-user-list-update', Object.values(vcUsers)); }
+function addToHistory(msgObj) {
+    messageHistory.push(msgObj);
+    if (messageHistory.length > MAX_HISTORY) messageHistory.shift(); 
+}
+function findSocketIdByUsername(username) {
+    return Object.keys(users).find(id => users[id].username.toLowerCase() === username.toLowerCase());
+}
+function getClientIp(socket) {
+    const forwarded = socket.handshake.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+    return socket.handshake.address;
+}
+async function broadcastSidebarRefresh() {
+    try {
+        const allDbUsers = await User.find({}).lean();
+        const sidebarList = allDbUsers.map(u => ({
+            username: u.username,
+            displayName: u.displayName || u.username, 
+            avatar: u.avatar,
+            online: Object.values(users).some(live => live.username === u.username)
+        }));
+        io.emit('sidebar-user-list', sidebarList);
+    } catch (err) { console.error("Sidebar update error", err); }
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ROUTES ---
-app.get('/profile.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'profile.html'));
-});
-
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// --- AUTH API ROUTES (NEW) ---
-
-// Register Endpoint
-app.post('/register', async (req, res) => {
+// --- AUTH ROUTES ---
+app.post('/auth/register', async (req, res) => {
+    const { username, password } = req.body;
+    if(!username || !password) return res.status(400).send("Missing credentials");
     try {
-        const { username, password, displayName } = req.body;
-        const username_lower = username.toLowerCase();
-
-        // Check if user exists
-        const existingUser = await User.findOne({ username_lower });
-        if (existingUser) {
-            return res.status(400).json({ error: "Username already taken" });
-        }
-
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create User
+        const existing = await User.findOne({ username: username.toLowerCase() });
+        if(existing) return res.status(400).send("Username taken");
+        
         const newUser = new User({
-            username,
-            username_lower,
-            password: hashedPassword,
-            displayName: displayName || username,
-            avatar: "", // Default empty
-            online: false
+            username: username.toLowerCase(),
+            password: hashPassword(password),
+            displayName: username,
+            avatar: 'placeholder-avatar.png'
         });
-
         await newUser.save();
-        res.json({ status: "success", message: "Account created" });
-
-    } catch (err) {
-        console.error("Register Error:", err);
-        res.status(500).json({ error: "Error creating account" });
-    }
+        res.send("Registered");
+    } catch(e) { res.status(500).send(e.message); }
 });
 
-// Login Endpoint (HTTP)
-app.post('/login', async (req, res) => {
+app.post('/auth/login', async (req, res) => {
+    const { username, password } = req.body;
     try {
-        const { username, password } = req.body;
-        const username_lower = username.toLowerCase();
-
-        const user = await User.findOne({ username_lower });
-        if (!user) {
-            return res.status(400).json({ error: "User not found" });
+        const user = await User.findOne({ username: username.toLowerCase() });
+        if(user && verifyPassword(password, user.password)) {
+            req.session.username = user.username;
+            return res.send("OK");
         }
-
-        const match = await bcrypt.compare(password, user.password);
-        if (!match) {
-            return res.status(400).json({ error: "Incorrect password" });
-        }
-
-        res.json({ status: "success", username: user.username });
-
-    } catch (err) {
-        console.error("Login Error:", err);
-        res.status(500).json({ error: "Server error" });
-    }
+        res.status(401).send("Invalid credentials");
+    } catch(e) { res.status(500).send(e.message); }
 });
 
+app.get('/auth/me', (req, res) => {
+    if(req.session.username) return res.json({ username: req.session.username });
+    res.status(401).send("Not logged in");
+});
 
-// --- IMAGE UPLOAD ENDPOINT ---
-app.post('/upload', upload.single('image'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file' });
+// --- FILE UPLOAD ROUTE ---
+app.post('/upload', upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: 'auto' },
+        { folder: 'chat_assets', resource_type: 'auto' },
         (error, result) => {
             if (error) return res.status(500).json({ error: error.message });
             res.json({ url: result.secure_url });
         }
     );
-    stream.Readable.from(req.file.buffer).pipe(uploadStream);
+
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(req.file.buffer);
+    bufferStream.pipe(uploadStream);
 });
 
-// --- SOCKET IO LOGIC ---
-io.on('connection', (socket) => {
-    const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'profile.html'));
+});
 
+app.get('/voice', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'voice.html'));
+});
+
+io.on('connection', async (socket) => {
+    socket.emit('system-version-check', { id: SERVER_BUILD_ID, description: SERVER_BUILD_DESC });
+    const clientIp = getClientIp(socket);
+    
     if (bannedIPs.has(clientIp)) {
-        socket.disconnect();
+        socket.emit('chat-message', formatMessage('System', 'You are banned from this server.'));
+        socket.disconnect(true);
         return;
     }
 
-    // 1. Handle Join / Login Request (Socket)
-    socket.on('join-request', async (authData) => {
-        let { username, password } = authData;
+    socket.join('main');
+    socket.emit('history', messageHistory.filter(m => !m.channel || m.channel === 'main'));
+    socket.emit('screen-share-update', Array.from(activeScreenShares));
+    
+    broadcastVCUserList(); 
+    broadcastSidebarRefresh(); 
+    setTimeout(() => { socket.emit('motd', serverMOTD); }, 100);
+
+    socket.on('join-channel', async (channelName) => {
+        socket.rooms.forEach(room => {
+            if(room !== socket.id) socket.leave(room);
+        });
+        socket.join(channelName);
+        const channelHistory = await Message.find({ channel: channelName })
+                                           .sort({ timestamp: -1 })
+                                           .limit(MAX_HISTORY)
+                                           .lean();
+        socket.emit('history', channelHistory.reverse());
+    });
+
+    socket.on('get-history', () => { 
+        socket.emit('history', messageHistory.filter(m => !m.channel || m.channel === 'main')); 
+    });
+
+    socket.on('set-username', async ({ username }) => {
+        if (!username) return;
+        const usernameLower = username.toLowerCase();
         
-        if (!username || !password) {
-            return socket.emit('login-failed', 'Missing credentials.');
+        let isReconnecting = false;
+        if (disconnectTimeouts[usernameLower]) {
+            clearTimeout(disconnectTimeouts[usernameLower]);
+            delete disconnectTimeouts[usernameLower];
+            isReconnecting = true;
         }
 
-        const username_lower = username.trim().toLowerCase();
+        const isAlreadyOnline = Object.keys(users).some(id => 
+            id !== socket.id && users[id].username.toLowerCase() === usernameLower
+        );
+
+        let dbUser = null;
+        try { dbUser = await User.findOne({ username: username }); } catch(e) {}
+
+        const displayName = dbUser ? (dbUser.displayName || username) : username;
+        const avatar = dbUser ? (dbUser.avatar || 'placeholder-avatar.png') : 'placeholder-avatar.png';
+        const description = dbUser ? (dbUser.description || "") : "";
+        const pronouns = dbUser ? (dbUser.pronouns || "") : "";
+        const banner = dbUser ? (dbUser.banner || "") : "";
+        const customBackground = dbUser ? (dbUser.customBackground || "") : "";
+
+        userAvatarCache[username] = avatar;
+        users[socket.id] = { username, displayName, avatar, description, pronouns, id: socket.id };
 
         try {
-            // Check for Ban
-            if (username === 'kl_') { /* Admin logic */ }
+            await User.findOneAndUpdate(
+                { username: username },
+                { lastSeen: Date.now(), lastIp: clientIp, $setOnInsert: { displayName: username, avatar: 'placeholder-avatar.png' } },
+                { upsert: true, new: true }
+            );
+        } catch(e) { console.error(e); }
 
-            let user = await User.findOne({ username_lower });
-
-            if (!user) {
-                return socket.emit('login-failed', 'User not found. Please register.');
-            }
-
-            // Verify Password
-            const match = await bcrypt.compare(password, user.password);
-            if (!match) {
-                return socket.emit('login-failed', 'Incorrect password.');
-            }
-
-            // --- SUCCESS ---
-            // Update User Status
-            user.online = true;
-            user.ip = clientIp;
-            await user.save();
-
-            socket.emit('login-success', { username: user.username });
-
-            users[socket.id] = { username: user.username, displayName: user.displayName };
-            
-            // 2. Load Initial Data
-            const recentMessages = await Message.find({ channel: 'main' }).sort({ timestamp: -1 }).limit(50);
-            const history = recentMessages.reverse();
-
-            const allUsersDB = await User.find({});
-            const userList = allUsersDB.map(u => ({
-                username: u.username,
-                displayName: u.displayName,
-                avatar: u.avatar,
-                online: u.online
-            }));
-
-            socket.emit('init', {
-                username: user.username,
-                avatar: user.avatar,
-                history: history,
-                allUsers: userList
-            });
-
-            const welcomeMsg = formatMessage('System', `${user.displayName} has joined.`);
-            socket.broadcast.emit('chat-message', welcomeMsg);
-            io.emit('user-status-change', { username: user.username, online: true });
-
-            socket.emit('chat-message', formatMessage('System', `Current Build: ${SERVER_BUILD_DESC}`));
-
-        } catch (err) {
-            console.error(err);
-            socket.emit('login-failed', 'Server error during login.');
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].username = username;
+            vcUsers[socket.id].displayName = displayName;
+            vcUsers[socket.id].avatar = avatar;
+            broadcastVCUserList();
         }
-    });
-
-    // --- MESSAGING ---
-    socket.on('chat-message', async (data) => {
-        const user = users[socket.id];
-        if (!user) return;
         
-        // Command Handling
-        if (data.text.startsWith('/')) {
-            const args = data.text.split(' ');
-            const cmd = args[0].toLowerCase();
-            
-            if (cmd === '/ban' && user.username === 'kl_') {
-                const targetName = args[1];
-                if (targetName) {
-                    const targetUser = await User.findOne({ username_lower: targetName.toLowerCase() });
-                    if (targetUser) {
-                        bannedIPs.add(targetUser.ip);
-                        const ban = new Ban({ ip: targetUser.ip });
-                        await ban.save();
-                        // Disconnect active sockets with this IP
-                        const sockets = await io.fetchSockets();
-                        for (const s of sockets) {
-                            const sIp = s.handshake.headers['x-forwarded-for'] || s.handshake.address;
-                            if (sIp === targetUser.ip) s.disconnect();
-                        }
-                    }
-                }
-                return;
-            }
+        if (!isAlreadyOnline && !isReconnecting) {
+            const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
+            io.to('main').emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+            savePublicMessage(joinMsg, 'main'); 
         }
 
-        const dbUser = await User.findOne({ username: user.username });
+        broadcastSidebarRefresh();
         
-        const msgObj = {
-            id: Date.now().toString(),
-            text: data.text,
-            image: data.image,
-            from: user.username,
-            displayName: dbUser.displayName || user.username,
-            avatar: dbUser.avatar,
-            timestamp: new Date(),
-            replyTo: data.replyToId ? await getMessageById(data.replyToId) : null
-        };
-
-        if (data.isDM && data.to) {
-            // DIRECT MESSAGE
-            msgObj.isDM = true;
-            msgObj.to = data.to;
-            await saveDirectMessage(msgObj, user.username, data.to);
-            socket.emit('chat-message', msgObj); // Send to self
-            
-            // Send to recipient(s)
-            const recipientSockets = await findSocketsByUsername(data.to);
-            recipientSockets.forEach(s => s.emit('chat-message', msgObj));
-
-        } else {
-            // CHANNEL MESSAGE
-            msgObj.channel = data.channel || 'main';
-            io.emit('chat-message', msgObj);
-            savePublicMessage(msgObj, msgObj.channel);
-        }
+        socket.emit('profile-info', { 
+            username, displayName, avatar, description, pronouns, banner, customBackground 
+        });
+        
+        io.emit('user-status-change', { username, displayName, online: true, avatar });
+        
+        socket.emit('screen-share-update', Array.from(activeScreenShares));
     });
 
-    // --- CHANNEL SWITCHING ---
-    socket.on('join-channel', async (channel) => {
-        const msgs = await Message.find({ channel }).sort({ timestamp: -1 }).limit(50);
-        socket.emit('history', msgs.reverse());
-    });
-
-    // --- DM HISTORY ---
-    socket.on('get-dm-history', async (targetUser) => {
-        const user = users[socket.id];
-        if(!user) return;
-        
-        // Find DM document between these two
-        const participants = [user.username, targetUser].sort();
-        const dm = await DM.findOne({ participants: { $all: participants } });
-        
-        if (dm) {
-            socket.emit('history', dm.messages);
-        } else {
-            socket.emit('history', []);
-        }
-    });
-
-    // --- PROFILE HANDLING ---
     socket.on('get-user-profile', async (targetUsername) => {
         try {
-            const u = await User.findOne({ username_lower: targetUsername.toLowerCase() });
-            if (u) {
+            const dbUser = await User.findOne({ username: targetUsername }).lean();
+            if (dbUser) {
                 socket.emit('user-profile-data', {
-                    username: u.username,
-                    displayName: u.displayName,
-                    pronouns: u.pronouns,
-                    description: u.description,
-                    avatar: u.avatar,
-                    banner: u.banner,
-                    customBackground: u.customBackground,
-                    lastSeen: u.lastSeen
+                    username: dbUser.username,
+                    displayName: dbUser.displayName || dbUser.username,
+                    avatar: dbUser.avatar || 'placeholder-avatar.png',
+                    description: dbUser.description || "",
+                    pronouns: dbUser.pronouns || "",
+                    banner: dbUser.banner || "",
+                    customBackground: dbUser.customBackground || "",
+                    lastSeen: dbUser.lastSeen
                 });
             } else {
-                socket.emit('user-profile-data', { notFound: true });
+                socket.emit('user-profile-data', {
+                    username: targetUsername,
+                    displayName: targetUsername,
+                    avatar: 'placeholder-avatar.png',
+                    description: "", 
+                    pronouns: "",
+                    banner: "",
+                    customBackground: "",
+                    notFound: true
+                });
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error("Fetch Profile Error", e);
+        }
     });
 
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
+        
+        const { displayName, avatar, description, pronouns, banner, customBackground } = data;
+        
+        if (displayName) user.displayName = displayName;
+        if (avatar) {
+            user.avatar = avatar;
+            userAvatarCache[user.username] = avatar;
+        }
+        if (description !== undefined) user.description = description;
+        if (pronouns !== undefined) user.pronouns = pronouns;
+
+        const updateFields = { 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description, 
+            pronouns: user.pronouns 
+        };
+        
+        if (banner !== undefined) updateFields.banner = banner;
+        if (customBackground !== undefined) updateFields.customBackground = customBackground;
 
         try {
-            const dbUser = await User.findOne({ username: user.username });
-            if (data.displayName) dbUser.displayName = data.displayName.substring(0, 30);
-            if (data.pronouns) dbUser.pronouns = data.pronouns.substring(0, 20);
-            if (data.description) dbUser.description = data.description.substring(0, 150);
-            if (data.avatar) dbUser.avatar = data.avatar;
-            if (data.banner) dbUser.banner = data.banner;
-            if (data.customBackground) dbUser.customBackground = data.customBackground;
+            await User.findOneAndUpdate(
+                { username: user.username },
+                updateFields
+            );
+        } catch(e) { console.error("Profile Update Error", e); }
 
-            await dbUser.save();
-            users[socket.id].displayName = dbUser.displayName; // Update local state
-            
-            // Broadcast update
-            io.emit('init-update-user', { 
-                username: user.username, 
-                displayName: dbUser.displayName, 
-                avatar: dbUser.avatar 
-            });
+        broadcastSidebarRefresh();
+        
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].displayName = user.displayName;
+            vcUsers[socket.id].avatar = user.avatar;
+            broadcastVCUserList();
+        }
 
-        } catch (e) { console.error(e); }
-    });
-
-    // --- VOICE CHAT SIGNALS ---
-    socket.on('join-vc', () => {
-        if (!users[socket.id]) return;
-        vcUsers[socket.id] = users[socket.id].username;
-        broadcastVCUserList();
-    });
-
-    socket.on('signal', data => {
-        io.to(data.target).emit('signal', {
-            signal: data.signal,
-            sender: socket.id
+        socket.emit('chat-message', formatMessage('System', 'Profile updated successfully.'));
+        socket.emit('profile-info', { 
+            username: user.username, 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description,
+            pronouns: user.pronouns,
+            banner: banner || "",
+            customBackground: customBackground || ""
         });
     });
 
-    function broadcastVCUserList() {
-        const list = Object.values(vcUsers);
-        io.emit('vc-update', list);
-    }
+    socket.on('chat-message', async (payload) => {
+        const userData = users[socket.id] || { username: 'Anonymous', displayName: 'Anonymous', avatar: 'placeholder-avatar.png' };
+        const sender = userData.username;
+        const senderDisplayName = userData.displayName || sender;
 
-    // --- DISCONNECT ---
-    const disconnectTimeouts = {};
+        if (mutedUsers.has(sender.toLowerCase())) {
+            socket.emit('chat-message', formatMessage('System', 'You are currently muted.'));
+            return;
+        }
 
-    socket.on('disconnect', async () => {
+        let msgText = '';
+        let msgImage = null;
+        let replyTo = null;
+        let targetUser = null; 
+        let targetChannel = 'main';
+
+        if (typeof payload === 'string') { msgText = payload; } 
+        else if (typeof payload === 'object') {
+            msgText = payload.text || ''; 
+            msgImage = payload.image || null; 
+            replyTo = payload.replyTo || null;
+            targetUser = payload.to || null; 
+            targetChannel = payload.channel || 'main';
+        }
+
+        if (msgText.startsWith('/')) {
+            const parts = msgText.trim().slice(1).split(/\s+/);
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            if (command === 'msg') {
+                const targetUsername = parts[1];
+                const privateText = parts.slice(2).join(' ').trim();
+                if (!targetUsername || !privateText) { socket.emit('chat-message', formatMessage('System', `Usage: /msg <username> <message>`)); return; }
+                const recipientId = findSocketIdByUsername(targetUsername);
+                if (!recipientId) { socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`)); } 
+                else {
+                    const pmObject = { 
+                        id: generateId(), text: privateText, type: 'private', sender: sender, senderDisplayName: senderDisplayName, target: users[recipientId].username, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), avatar: userAvatarCache[sender] || userData.avatar, replyTo: replyTo
+                    };
+                    socket.emit('chat-message', pmObject);
+                    io.to(recipientId).emit('chat-message', pmObject);
+                }
+                return;
+            }
+
+            if (sender === ADMIN_USERNAME) {
+                const targetName = args[0];
+                if (command === 'server' && args.length > 0) {
+                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
+                    io.emit('chat-message', serverMsg); addToHistory(serverMsg); savePublicMessage(serverMsg, targetChannel); return;
+                }
+                if (command === 'mute' && targetName) {
+                    mutedUsers.add(targetName.toLowerCase()); const muteMsg = formatMessage('System', `User ${targetName} has been muted.`); io.emit('chat-message', muteMsg); addToHistory(muteMsg); savePublicMessage(muteMsg, targetChannel); return;
+                }
+                if (command === 'unmute' && targetName) {
+                    mutedUsers.delete(targetName.toLowerCase()); const unmuteMsg = formatMessage('System', `User ${targetName} has been unmuted.`); io.emit('chat-message', unmuteMsg); addToHistory(unmuteMsg); savePublicMessage(unmuteMsg, targetChannel); return;
+                }
+                if (command === 'ban' && targetName) {
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const targetSocket = io.sockets.sockets.get(targetId);
+                        const targetIp = getClientIp(targetSocket);
+                        bannedIPs.set(targetIp, true);
+                        try { await new Ban({ username: targetName, ip: targetIp, bannedBy: sender }).save(); } catch(e) {}
+                        io.to(targetId).emit('chat-message', formatMessage('System', 'You have been banned.'));
+                        targetSocket.disconnect(true);
+                        const banMsg = formatMessage('System', `User ${targetName} has been banned.`);
+                        io.emit('chat-message', banMsg); addToHistory(banMsg); savePublicMessage(banMsg, targetChannel);
+                    }
+                    return;
+                }
+                if (command === 'prune') {
+                    messageHistory.length = 0; await Message.deleteMany({}); io.emit('history', []); io.emit('chat-message', formatMessage('System', 'Chat history has been cleared.')); return;
+                }
+                if (command === 'motd' && args.length > 0) {
+                    serverMOTD = args.join(' ');
+                    try { await Config.findOneAndUpdate({ key: 'motd' }, { value: serverMOTD }, { upsert: true }); } catch(e) {}
+                    io.emit('motd', serverMOTD); io.emit('chat-message', formatMessage('System', `MOTD updated: ${serverMOTD}`)); return;
+                }
+            }
+        }
+
+        if (targetUser) {
+            const recipientId = findSocketIdByUsername(targetUser);
+            const pmObject = formatMessage(sender, msgText, userData.avatar, msgImage, true, replyTo, senderDisplayName);
+            savePrivateMessage(sender, targetUser, pmObject);
+            socket.emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+            if (recipientId) {
+                io.to(recipientId).emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+            }
+            return; 
+        }
+
+        const messageObject = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo, senderDisplayName);
+        messageObject.channel = targetChannel;
+        
+        io.to(targetChannel).emit('chat-message', messageObject);
+        
+        if (targetChannel === 'main') addToHistory(messageObject);
+        savePublicMessage(messageObject, targetChannel);
+    });
+
+    socket.on('join-vc', () => {
+        const user = users[socket.id];
+        if(user) {
+            vcUsers[socket.id] = { id: socket.id, username: user.username, displayName: user.displayName, avatar: user.avatar };
+            broadcastVCUserList(); socket.broadcast.emit('vc-user-joined', socket.id);
+        }
+    });
+    socket.on('leave-vc', () => {
+        if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
+    });
+    socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
+    
+    socket.on('screen-share-start', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.add(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+    socket.on('screen-share-stop', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.delete(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+
+    socket.on('disconnect', () => {
         const user = users[socket.id];
         if (user) {
             const username = user.username.toLowerCase();
@@ -442,19 +611,13 @@ io.on('connection', (socket) => {
 
             if (disconnectTimeouts[username]) clearTimeout(disconnectTimeouts[username]);
 
-            disconnectTimeouts[username] = setTimeout(async () => {
+            disconnectTimeouts[username] = setTimeout(() => {
                 const isStillOnline = Object.values(users).some(u => u.username.toLowerCase() === username);
                 
                 if (!isStillOnline) {
-                    const dbUser = await User.findOne({ username_lower: username });
-                    if(dbUser) {
-                        dbUser.online = false;
-                        dbUser.lastSeen = new Date();
-                        await dbUser.save();
-                    }
-
-                    const leaveMsg = formatMessage('System', `${user.displayName} has left.`);
+                    const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
                     io.to('main').emit('chat-message', leaveMsg); 
+                    addToHistory(leaveMsg); 
                     savePublicMessage(leaveMsg, 'main');
                     io.emit('user-status-change', { username: user.username, online: false });
                 }
@@ -463,64 +626,6 @@ io.on('connection', (socket) => {
         }
     });
 });
-
-// --- HELPER FUNCTIONS ---
-function formatMessage(username, text) {
-    return {
-        id: Date.now().toString(),
-        text,
-        from: username,
-        timestamp: new Date(),
-        channel: 'main'
-    };
-}
-
-async function getMessageById(id) {
-    let msg = await Message.findOne({ id });
-    if (msg) return msg;
-    return null;
-}
-
-async function savePublicMessage(msg, channel) {
-    const m = new Message({
-        id: msg.id,
-        text: msg.text,
-        image: msg.image,
-        from: msg.from,
-        displayName: msg.displayName,
-        avatar: msg.avatar,
-        channel: channel,
-        timestamp: msg.timestamp,
-        replyTo: msg.replyTo
-    });
-    await m.save();
-}
-
-async function saveDirectMessage(msg, user1, user2) {
-    const participants = [user1, user2].sort();
-    let dm = await DM.findOne({ participants: { $all: participants } });
-    if (!dm) {
-        dm = new DM({ participants });
-    }
-    
-    dm.messages.push({
-        id: msg.id,
-        text: msg.text,
-        image: msg.image,
-        from: msg.from,
-        displayName: msg.displayName,
-        avatar: msg.avatar,
-        timestamp: msg.timestamp,
-        replyTo: msg.replyTo
-    });
-    dm.lastUpdated = new Date();
-    await dm.save();
-}
-
-async function findSocketsByUsername(username) {
-    const sockets = await io.fetchSockets();
-    return sockets.filter(s => users[s.id] && users[s.id].username === username);
-}
 
 app.get('/i-like-my-toast-with-butter', async (req, res) => {
     try { await Ban.deleteMany({}); bannedIPs.clear(); res.send("SUCCESS"); } catch (e) { res.send(e.message); }
