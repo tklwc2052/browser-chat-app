@@ -8,14 +8,12 @@ const fs = require('fs');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const stream = require('stream');
-const crypto = require('crypto');
-const session = require('express-session');
 
 const app = express();
 const server = http.createServer(app);
 
 // --- 1. AUTOMATIC UPDATE MESSAGE ---
-let SERVER_BUILD_DESC = "Auth System Added"; 
+let SERVER_BUILD_DESC = "System Update"; 
 const SERVER_BUILD_ID = Date.now(); 
 
 try {
@@ -43,28 +41,6 @@ const upload = multer({
 const io = socketIo(server, { maxHttpBufferSize: 1e7 });
 
 app.set('trust proxy', 1); 
-app.use(express.json());
-
-// --- SESSION CONFIG ---
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'cnc-corp-secret-key-999',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
-}));
-
-// --- PASSWORD UTILS ---
-function hashPassword(password) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-    return `${salt}:${hash}`;
-}
-
-function verifyPassword(password, storedValue) {
-    const [salt, hash] = storedValue.split(':');
-    const checkHash = crypto.scryptSync(password, salt, 64).toString('hex');
-    return hash === checkHash;
-}
 
 // --- MONGODB CONNECTION ---
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/simplechat';
@@ -91,7 +67,6 @@ mongoose.connect(mongoURI)
 // --- SCHEMAS ---
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true },
-    password: { type: String }, // Added Password
     displayName: String, 
     description: { type: String, default: "" }, 
     pronouns: { type: String, default: "" },
@@ -118,7 +93,7 @@ const messageSchema = new mongoose.Schema({
     time: String, 
     replyTo: Object, 
     type: String, 
-    channel: { type: String, default: 'main' },
+    channel: { type: String, default: 'main' }, // NEW: Track which group channel
     isEdited: { type: Boolean, default: false }, 
     timestamp: { type: Date, default: Date.now }
 });
@@ -145,7 +120,10 @@ let serverMOTD = "Welcome to the C&C Corp chat! Play nice.";
 const mutedUsers = new Set(); 
 const bannedIPs = new Map();  
 const ADMIN_USERNAME = 'kl_'; 
+
+// NEW: Track Screen Shares
 const activeScreenShares = new Set(); 
+
 const disconnectTimeouts = {}; 
 
 // --- Utility Functions ---
@@ -227,61 +205,6 @@ async function broadcastSidebarRefresh() {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- AUTH ROUTES (NEW) ---
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-app.get('/auth/me', (req, res) => {
-    if (req.session.username) {
-        return res.json({ username: req.session.username });
-    }
-    res.status(401).send("Not logged in");
-});
-
-app.post('/auth/register', async (req, res) => {
-    const { username, password, displayName } = req.body;
-    if (!username || !password || !displayName) return res.status(400).send("Missing fields");
-
-    try {
-        const existing = await User.findOne({ username: username.toLowerCase() });
-        if (existing) return res.status(400).send("Username taken");
-
-        const newUser = new User({
-            username: username.toLowerCase(),
-            password: hashPassword(password),
-            displayName: displayName,
-            avatar: 'placeholder-avatar.png'
-        });
-        await newUser.save();
-        
-        req.session.username = newUser.username; // Auto login
-        res.send("Registered");
-    } catch (e) {
-        res.status(500).send("Error registering user");
-    }
-});
-
-app.post('/auth/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const user = await User.findOne({ username: username.toLowerCase() });
-        if (user && verifyPassword(password, user.password)) {
-            req.session.username = user.username;
-            res.send("Logged In");
-        } else {
-            res.status(401).send("Invalid credentials");
-        }
-    } catch (e) {
-        res.status(500).send("Server error");
-    }
-});
-
-app.post('/auth/logout', (req, res) => {
-    req.session.destroy();
-    res.send("Logged out");
-});
-
 // --- FILE UPLOAD ROUTE ---
 app.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -303,6 +226,7 @@ app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
+// NEW ROUTE
 app.get('/voice', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'voice.html'));
 });
@@ -317,19 +241,25 @@ io.on('connection', async (socket) => {
         return;
     }
 
+    // Default room join
     socket.join('main');
     socket.emit('history', messageHistory.filter(m => !m.channel || m.channel === 'main'));
+
     socket.emit('screen-share-update', Array.from(activeScreenShares));
     
     broadcastVCUserList(); 
     broadcastSidebarRefresh(); 
     setTimeout(() => { socket.emit('motd', serverMOTD); }, 100);
 
+    // Join Channel Logic
     socket.on('join-channel', async (channelName) => {
+        // Leave existing rooms except private socket ID room
         socket.rooms.forEach(room => {
             if(room !== socket.id) socket.leave(room);
         });
         socket.join(channelName);
+
+        // Fetch history for this specific channel
         const channelHistory = await Message.find({ channel: channelName })
                                            .sort({ timestamp: -1 })
                                            .limit(MAX_HISTORY)
@@ -338,20 +268,26 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('get-history', () => { 
+        // Return global/main history
         socket.emit('history', messageHistory.filter(m => !m.channel || m.channel === 'main')); 
     });
 
+    // --- REGISTER / LOGIN ---
     socket.on('set-username', async ({ username }) => {
         if (!username) return;
         const usernameLower = username.toLowerCase();
         
-        // Disconnect old socket if reconnecting fast
+        let isReconnecting = false;
         if (disconnectTimeouts[usernameLower]) {
             clearTimeout(disconnectTimeouts[usernameLower]);
             delete disconnectTimeouts[usernameLower];
+            isReconnecting = true;
         }
 
-        // Check DB
+        const isAlreadyOnline = Object.keys(users).some(id => 
+            id !== socket.id && users[id].username.toLowerCase() === usernameLower
+        );
+
         let dbUser = null;
         try { dbUser = await User.findOne({ username: username }); } catch(e) {}
 
@@ -380,11 +316,12 @@ io.on('connection', async (socket) => {
             broadcastVCUserList();
         }
         
-        // Announce Join
-        const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
-        io.to('main').emit('chat-message', joinMsg);
-        addToHistory(joinMsg);
-        savePublicMessage(joinMsg, 'main'); 
+        if (!isAlreadyOnline && !isReconnecting) {
+            const joinMsg = formatMessage('System', `${displayName} (${username}) joined the chat.`);
+            io.to('main').emit('chat-message', joinMsg);
+            addToHistory(joinMsg);
+            savePublicMessage(joinMsg, 'main'); 
+        }
 
         broadcastSidebarRefresh();
         
@@ -397,6 +334,7 @@ io.on('connection', async (socket) => {
         socket.emit('screen-share-update', Array.from(activeScreenShares));
     });
 
+    // --- GET OTHER USER PROFILE ---
     socket.on('get-user-profile', async (targetUsername) => {
         try {
             const dbUser = await User.findOne({ username: targetUsername }).lean();
@@ -412,13 +350,23 @@ io.on('connection', async (socket) => {
                     lastSeen: dbUser.lastSeen
                 });
             } else {
-                socket.emit('user-profile-data', { notFound: true, username: targetUsername });
+                socket.emit('user-profile-data', {
+                    username: targetUsername,
+                    displayName: targetUsername,
+                    avatar: 'placeholder-avatar.png',
+                    description: "", 
+                    pronouns: "",
+                    banner: "",
+                    customBackground: "",
+                    notFound: true
+                });
             }
         } catch (e) {
             console.error("Fetch Profile Error", e);
         }
     });
 
+    // --- UPDATE PROFILE ---
     socket.on('update-profile', async (data) => {
         const user = users[socket.id];
         if (!user) return;
@@ -430,3 +378,216 @@ io.on('connection', async (socket) => {
             user.avatar = avatar;
             userAvatarCache[user.username] = avatar;
         }
+        if (description !== undefined) user.description = description;
+        if (pronouns !== undefined) user.pronouns = pronouns;
+
+        const updateFields = { 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description, 
+            pronouns: user.pronouns 
+        };
+        
+        if (banner !== undefined) updateFields.banner = banner;
+        if (customBackground !== undefined) updateFields.customBackground = customBackground;
+
+        try {
+            await User.findOneAndUpdate(
+                { username: user.username },
+                updateFields
+            );
+        } catch(e) { console.error("Profile Update Error", e); }
+
+        broadcastSidebarRefresh();
+        
+        if (vcUsers[socket.id]) {
+            vcUsers[socket.id].displayName = user.displayName;
+            vcUsers[socket.id].avatar = user.avatar;
+            broadcastVCUserList();
+        }
+
+        socket.emit('chat-message', formatMessage('System', 'Profile updated successfully.'));
+        socket.emit('profile-info', { 
+            username: user.username, 
+            displayName: user.displayName, 
+            avatar: user.avatar, 
+            description: user.description,
+            pronouns: user.pronouns,
+            banner: banner || "",
+            customBackground: customBackground || ""
+        });
+    });
+
+    socket.on('chat-message', async (payload) => {
+        const userData = users[socket.id] || { username: 'Anonymous', displayName: 'Anonymous', avatar: 'placeholder-avatar.png' };
+        const sender = userData.username;
+        const senderDisplayName = userData.displayName || sender;
+
+        if (mutedUsers.has(sender.toLowerCase())) {
+            socket.emit('chat-message', formatMessage('System', 'You are currently muted.'));
+            return;
+        }
+
+        let msgText = '';
+        let msgImage = null;
+        let replyTo = null;
+        let targetUser = null; 
+        let targetChannel = 'main';
+
+        if (typeof payload === 'string') { msgText = payload; } 
+        else if (typeof payload === 'object') {
+            msgText = payload.text || ''; 
+            msgImage = payload.image || null; 
+            replyTo = payload.replyTo || null;
+            targetUser = payload.to || null; 
+            targetChannel = payload.channel || 'main';
+        }
+
+        if (msgText.startsWith('/')) {
+            const parts = msgText.trim().slice(1).split(/\s+/);
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            if (command === 'msg') {
+                const targetUsername = parts[1];
+                const privateText = parts.slice(2).join(' ').trim();
+                if (!targetUsername || !privateText) { socket.emit('chat-message', formatMessage('System', `Usage: /msg <username> <message>`)); return; }
+                const recipientId = findSocketIdByUsername(targetUsername);
+                if (!recipientId) { socket.emit('chat-message', formatMessage('System', `User '${targetUsername}' not found.`)); } 
+                else {
+                    const pmObject = { 
+                        id: generateId(), text: privateText, type: 'private', sender: sender, senderDisplayName: senderDisplayName, target: users[recipientId].username, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), avatar: userAvatarCache[sender] || userData.avatar, replyTo: replyTo
+                    };
+                    socket.emit('chat-message', pmObject);
+                    io.to(recipientId).emit('chat-message', pmObject);
+                }
+                return;
+            }
+
+            if (sender === ADMIN_USERNAME) {
+                const targetName = args[0];
+                if (command === 'server' && args.length > 0) {
+                    const serverMsg = formatMessage('Announcement', `: **${args.join(' ')}**`);
+                    io.emit('chat-message', serverMsg); addToHistory(serverMsg); savePublicMessage(serverMsg, targetChannel); return;
+                }
+                if (command === 'mute' && targetName) {
+                    mutedUsers.add(targetName.toLowerCase()); const muteMsg = formatMessage('System', `User ${targetName} has been muted.`); io.emit('chat-message', muteMsg); addToHistory(muteMsg); savePublicMessage(muteMsg, targetChannel); return;
+                }
+                if (command === 'unmute' && targetName) {
+                    mutedUsers.delete(targetName.toLowerCase()); const unmuteMsg = formatMessage('System', `User ${targetName} has been unmuted.`); io.emit('chat-message', unmuteMsg); addToHistory(unmuteMsg); savePublicMessage(unmuteMsg, targetChannel); return;
+                }
+                if (command === 'ban' && targetName) {
+                    const targetId = findSocketIdByUsername(targetName);
+                    if (targetId) {
+                        const targetSocket = io.sockets.sockets.get(targetId);
+                        const targetIp = getClientIp(targetSocket);
+                        bannedIPs.set(targetIp, true);
+                        try { await new Ban({ username: targetName, ip: targetIp, bannedBy: sender }).save(); } catch(e) {}
+                        io.to(targetId).emit('chat-message', formatMessage('System', 'You have been banned.'));
+                        targetSocket.disconnect(true);
+                        const banMsg = formatMessage('System', `User ${targetName} has been banned.`);
+                        io.emit('chat-message', banMsg); addToHistory(banMsg); savePublicMessage(banMsg, targetChannel);
+                    }
+                    return;
+                }
+                if (command === 'prune') {
+                    messageHistory.length = 0; await Message.deleteMany({}); io.emit('history', []); io.emit('chat-message', formatMessage('System', 'Chat history has been cleared.')); return;
+                }
+                if (command === 'motd' && args.length > 0) {
+                    serverMOTD = args.join(' ');
+                    try { await Config.findOneAndUpdate({ key: 'motd' }, { value: serverMOTD }, { upsert: true }); } catch(e) {}
+                    io.emit('motd', serverMOTD); io.emit('chat-message', formatMessage('System', `MOTD updated: ${serverMOTD}`)); return;
+                }
+            }
+        }
+
+        if (targetUser) {
+            const recipientId = findSocketIdByUsername(targetUser);
+            const pmObject = formatMessage(sender, msgText, userData.avatar, msgImage, true, replyTo, senderDisplayName);
+            savePrivateMessage(sender, targetUser, pmObject);
+            socket.emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+            if (recipientId) {
+                io.to(recipientId).emit('dm-received', { from: sender, to: targetUser, message: pmObject });
+            }
+            return; 
+        }
+
+        const messageObject = formatMessage(sender, msgText, userData.avatar, msgImage, false, replyTo, senderDisplayName);
+        messageObject.channel = targetChannel;
+        
+        io.to(targetChannel).emit('chat-message', messageObject);
+        
+        if (targetChannel === 'main') addToHistory(messageObject);
+        savePublicMessage(messageObject, targetChannel);
+    });
+
+    socket.on('join-vc', () => {
+        const user = users[socket.id];
+        if(user) {
+            vcUsers[socket.id] = { id: socket.id, username: user.username, displayName: user.displayName, avatar: user.avatar };
+            broadcastVCUserList(); socket.broadcast.emit('vc-user-joined', socket.id);
+        }
+    });
+    socket.on('leave-vc', () => {
+        if (vcUsers[socket.id]) { delete vcUsers[socket.id]; broadcastVCUserList(); socket.broadcast.emit('vc-user-left', socket.id); }
+    });
+    socket.on('signal', (data) => { io.to(data.target).emit('signal', { sender: socket.id, signal: data.signal }); });
+    
+    // --- NEW: SCREEN SHARE TRACKING ---
+    socket.on('screen-share-start', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.add(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+    socket.on('screen-share-stop', () => {
+        const user = users[socket.id];
+        if(user) {
+            activeScreenShares.delete(user.username);
+            io.emit('screen-share-update', Array.from(activeScreenShares));
+        }
+    });
+
+    socket.on('disconnect', () => {
+        const user = users[socket.id];
+        if (user) {
+            const username = user.username.toLowerCase();
+            delete users[socket.id];
+            
+            // Cleanup Screen Shares
+            if (activeScreenShares.has(user.username)) {
+                activeScreenShares.delete(user.username);
+                io.emit('screen-share-update', Array.from(activeScreenShares));
+            }
+
+            if (vcUsers[socket.id]) { 
+                delete vcUsers[socket.id]; 
+                broadcastVCUserList(); 
+                socket.broadcast.emit('vc-user-left', socket.id); 
+            }
+
+            if (disconnectTimeouts[username]) clearTimeout(disconnectTimeouts[username]);
+
+            disconnectTimeouts[username] = setTimeout(() => {
+                const isStillOnline = Object.values(users).some(u => u.username.toLowerCase() === username);
+                
+                if (!isStillOnline) {
+                    const leaveMsg = formatMessage('System', `${user.displayName} (${user.username}) has left.`);
+                    io.to('main').emit('chat-message', leaveMsg); 
+                    addToHistory(leaveMsg); 
+                    savePublicMessage(leaveMsg, 'main');
+                    io.emit('user-status-change', { username: user.username, online: false });
+                }
+                delete disconnectTimeouts[username];
+            }, 2000); 
+        }
+    });
+});
+
+app.get('/i-like-my-toast-with-butter', async (req, res) => {
+    try { await Ban.deleteMany({}); bannedIPs.clear(); res.send("SUCCESS"); } catch (e) { res.send(e.message); }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
