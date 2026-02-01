@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
 
 <style>
+    /* Inline overrides for specific message behavior */
     .message-content-area {
         display: flex;
         flex-direction: column;
@@ -32,7 +33,7 @@
     .user-message .message-content-area { align-items: flex-end; }
     .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
 
-    /* New Sidebar Styles */
+    /* Dropdown styling for Sidebar */
     .dm-dropdown-header {
         cursor: pointer;
         padding: 10px;
@@ -93,8 +94,8 @@
     <div id="chat-container">
         <div id="username-area">
             <div style="display:flex; align-items:center; gap:10px;">
-                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar">
-                <div>
+                <img id="current-avatar-preview" src="placeholder-avatar.png" alt="Avatar" style="display:none;">
+                <div id="header-text-wrapper">
                    <h3 id="chat-header-label" style="margin:0;">#main</h3>
                    <span id="chat-header-sublabel" style="font-size:0.8em; color:var(--color-muted);">Public Channel</span>
                 </div>
@@ -115,9 +116,11 @@
                 <img id="image-preview" src="" alt="Image Preview">
                 <button id="remove-image-btn">X</button>
             </div>
+            
             <div id="input-row">
                 <textarea id="message-input" placeholder="type type type..." rows="1"></textarea>
                 <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+                
                 <button id="file-upload-btn" title="Upload Image">📁</button>
                 <button id="send-button">Send</button>
             </div>
@@ -169,6 +172,7 @@
 </div>
 
 <script>
+    /* --- JAVASCRIPT LOGIC --- */
     const socket = io();
     const messagesDiv = document.getElementById('messages');
     const scrollDownBtn = document.getElementById('scroll-down-btn');
@@ -406,6 +410,30 @@
         }
         renderSidebar();
     });
+    
+    socket.on('message-updated', (data) => {
+        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
+        if (targetCache) {
+            const msg = targetCache.find(m => m.id === data.id);
+            if (msg) { msg.text = data.text; msg.isEdited = true; }
+        }
+        const msgEl = document.querySelector(`.message[data-id="${data.id}"]`);
+        if (msgEl) {
+            const textSpan = msgEl.querySelector('.message-text');
+            if (textSpan) {
+                textSpan.innerHTML = parseFormatting(data.text) + ' <span class="edited-tag">(edited)</span>';
+            }
+        }
+    });
+    socket.on('message-deleted', (id) => {
+        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
+        if (targetCache) {
+            const idx = targetCache.findIndex(m => m.id === id);
+            if (idx !== -1) targetCache.splice(idx, 1);
+        }
+        const msgEl = document.querySelector(`.message[data-id="${id}"]`);
+        if (msgEl) msgEl.remove();
+    });
 
     socket.on('history', (history) => {
         if (currentChatMode === 'global') {
@@ -446,6 +474,12 @@
         if (currentChatMode === 'global' && isTargetChannel) {
             appendMessageToUI(msg);
         }
+    });
+    socket.on('motd', (motdText) => {
+        const motdDiv = document.createElement('div');
+        motdDiv.className = 'system-message motd-message';
+        motdDiv.innerHTML = `★ MOTD: ${parseFormatting(motdText)} ★`;
+        messagesDiv.appendChild(motdDiv);
     });
 
     function renderMessageBatch(msgs) {
@@ -514,6 +548,7 @@
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
             textSpan.innerHTML = parseFormatting(msg.text);
+            if (msg.isEdited) textSpan.innerHTML += ' <span class="edited-tag">(edited)</span>';
             bubble.appendChild(textSpan);
         }
         const timeSpan = document.createElement('span');
@@ -522,6 +557,13 @@
         bubble.appendChild(timeSpan);
         contentArea.appendChild(bubble);
         msgDiv.appendChild(contentArea);
+        
+        // Context Menu
+        msgDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e.clientX, e.clientY, msg, isOwn);
+        });
+        
         messagesDiv.appendChild(msgDiv);
         if (!userScrolledUp) forceScrollToBottom();
     }
@@ -531,11 +573,12 @@
         return text.replace(/</g, "&lt;").replace(/>/g, "&gt;")
             .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
             .replace(/\*(.*?)\*/g, '<i>$1</i>')
-            .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+            .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:lightblue;">$1</a>');
     }
 
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        else { handleTyping(); }
     });
     sendButton.onclick = sendMessage;
 
@@ -545,12 +588,36 @@
         socket.emit('chat-message', { 
             text: text, 
             image: stagedImage, 
+            replyTo: currentReplyTo,
             channel: (currentChatMode === 'global') ? currentChannel : null,
             to: (currentChatMode === 'dm') ? currentDmTarget : null 
         });
         messageInput.value = '';
         stagedImage = null;
         imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = '';
+        if (currentReplyTo) {
+            currentReplyTo = null;
+            replyBar.style.display = 'none';
+        }
+    }
+    
+    function handleTyping() {
+        if (typingTimeout) clearTimeout(typingTimeout);
+        socket.emit('typing', currentChatMode === 'dm' ? currentDmTarget : null);
+        typingTimeout = setTimeout(() => socket.emit('stop-typing'), 2000);
+    }
+    socket.on('typing', (username) => { typingUsers.add(username); updateTypingDisplay(); });
+    socket.on('stop-typing', (username) => { typingUsers.delete(username); updateTypingDisplay(); });
+
+    function updateTypingDisplay() {
+        if (typingUsers.size > 0) {
+            const names = Array.from(typingUsers).join(', ');
+            typingIndicator.innerText = `${names} is typing...`;
+            typingIndicator.style.opacity = 1;
+        } else {
+            typingIndicator.style.opacity = 0;
+        }
     }
 
     fileUploadBtn.onclick = () => hiddenFileInput.click();
@@ -566,6 +633,100 @@
             reader.readAsDataURL(file);
         }
     };
+    removeImageBtn.onclick = () => {
+        stagedImage = null;
+        imagePreviewArea.style.display = 'none';
+        hiddenFileInput.value = ''; 
+    };
+    cancelReplyBtn.onclick = () => {
+        currentReplyTo = null;
+        replyBar.style.display = 'none';
+    };
+
+    // Context Menu
+    const ctxMenu = document.createElement('div');
+    ctxMenu.id = 'ctx-menu';
+    document.body.appendChild(ctxMenu);
+    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+    
+    function showContextMenu(x, y, msg, isOwn) {
+        ctxMenu.style.display = 'block';
+        ctxMenu.style.left = x + 'px';
+        ctxMenu.style.top = y + 'px';
+        ctxMenu.innerHTML = '';
+        
+        const replyOption = document.createElement('div');
+        replyOption.innerText = 'Reply';
+        replyOption.onclick = () => {
+            currentReplyTo = msg;
+            replyBar.style.display = 'flex';
+            replyTargetName.innerText = msg.senderDisplayName || msg.sender; 
+            messageInput.focus();
+        };
+        ctxMenu.appendChild(replyOption);
+
+        if (isOwn) {
+            const editOption = document.createElement('div');
+            editOption.innerText = 'Edit';
+            editOption.onclick = () => {
+                const newText = prompt("Edit your message:", msg.text);
+                if (newText !== null && newText !== msg.text) {
+                    socket.emit('edit-message', { id: msg.id, newText });
+                }
+            };
+            ctxMenu.appendChild(editOption);
+            
+            const deleteOption = document.createElement('div');
+            deleteOption.innerText = 'Delete';
+            deleteOption.style.color = 'salmon';
+            deleteOption.onclick = () => {
+                if(confirm("Delete this message?")) socket.emit('delete-message', msg.id);
+            };
+            ctxMenu.appendChild(deleteOption);
+        }
+    }
+
+    // Settings & Extras
+    const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.m4a');
+    function playNotificationSound() { if (settingSound.checked) notifSound.play().catch(e=>{}); }
+    
+    notifHeader.onclick = () => { notifContent.classList.toggle('show'); };
+    
+    btnCloakLauncher.onclick = () => {
+        const win = window.open('about:blank', '_blank');
+        if (win) {
+            win.document.body.style.margin = '0';
+            win.document.body.style.height = '100vh';
+            const iframe = win.document.createElement('iframe');
+            iframe.style.border = 'none'; iframe.style.width = '100%'; iframe.style.height = '100%';
+            iframe.src = window.location.href + '?mode=popup';
+            win.document.body.appendChild(iframe);
+        }
+    };
+    launchCustomWindowBtn.onclick = () => { window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600'); };
+    
+    btnBgUpload.onclick = () => bgUploadInput.click();
+    bgUploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.body.style.backgroundImage = `url('${ev.target.result}')`;
+                document.body.classList.add('transparent-mode');
+                localStorage.setItem('custom_bg', ev.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    btnBgReset.onclick = () => {
+        document.body.style.backgroundImage = 'none';
+        document.body.classList.remove('transparent-mode');
+        localStorage.removeItem('custom_bg');
+    };
+    if (localStorage.getItem('custom_bg')) {
+        document.body.style.backgroundImage = `url('${localStorage.getItem('custom_bg')}')`;
+        document.body.classList.add('transparent-mode');
+    }
 
     // VC Logic
     vcBtnJoin.onclick = () => {
@@ -579,10 +740,16 @@
                 socket.emit('join-vc');
             });
     };
-
+    vcBtnMute.onclick = () => {
+        if (!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+        vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
+        vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
+    };
     vcBtnLeave.onclick = () => {
         if (localStream) localStream.getTracks().forEach(track => track.stop());
-        isInVC = false;
+        isInVC = false; isMuted = false;
         vcBtnJoin.style.display = 'block';
         vcBtnLeave.style.display = 'none';
         vcBtnMute.style.display = 'none';
@@ -593,19 +760,24 @@
         vcUserList.innerHTML = '';
         users.forEach(u => {
             const li = document.createElement('li');
-            li.innerText = u.displayName || u.username;
+            const img = document.createElement('img'); img.src=u.avatar||'placeholder-avatar.png';
+            img.style.width='20px';img.style.height='20px';img.style.borderRadius='50%';img.style.marginRight='5px';
+            li.appendChild(img); li.appendChild(document.createTextNode(u.displayName||u.username));
             vcUserList.appendChild(li);
         });
     });
 
     socket.on('vc-user-joined', (id) => { if (isInVC) createPeer(id, socket.id, localStream, true); });
     socket.on('signal', (data) => { if (isInVC) { if(!peers[data.sender]) createPeer(data.sender, socket.id, localStream, false); peers[data.sender].signal(data.signal); }});
+    socket.on('vc-user-left', (id) => { if(peers[id]) peers[id].destroy(); delete peers[id]; document.getElementById(`audio-${id}`)?.remove(); });
 
     function createPeer(targetSocketId, myId, stream, initiator) {
         const peer = new SimplePeer({ initiator, stream, trickle: true });
         peer.on('signal', signal => socket.emit('signal', { target: targetSocketId, signal }));
         peer.on('stream', remoteStream => {
+            if(remoteStream.getVideoTracks().length > 0) return;
             const audio = document.createElement('audio');
+            audio.id=`audio-${targetSocketId}`;
             audio.srcObject = remoteStream;
             audio.autoplay = true;
             audioContainer.appendChild(audio);
