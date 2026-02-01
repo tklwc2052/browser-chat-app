@@ -68,9 +68,34 @@ html, body {
     color: var(--color-text);
 }
 
-#dm-list {
-    flex-grow: 1;
+/* Updated Sidebar Containers */
+#channel-list {
+    flex-grow: 0;
     overflow-y: auto;
+    padding: 10px;
+}
+
+#sidebar-voice-footer {
+    margin-top: auto; /* Pushes everything in this container to the bottom */
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid #222;
+    background-color: rgba(0,0,0,0.3);
+}
+
+#sidebar-voice-controls {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#dm-container {
+    max-height: 250px; /* Optional: adjust as needed */
+    overflow-y: auto;
+}
+
+#dm-list {
     padding: 10px;
 }
 
