@@ -12,7 +12,7 @@
     // NEW: Check authentication before loading the rest of the page
     fetch('/auth/me').then(res => {
         if (!res.ok) {
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         } else {
             return res.json();
         }
@@ -25,7 +25,7 @@
             }
         }
     }).catch(err => {
-        window.location.href = '/login.html';
+        window.location.href = '/login';
     });
 </script>
 
@@ -213,7 +213,7 @@
 
 <script>
     const socket = io();
-    window.socket = socket; // Make it global for the head script
+    window.socket = socket; 
     const messagesContainer = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const fileInput = document.getElementById('file-input');
@@ -255,7 +255,6 @@
         if(element) element.classList.add('active');
 
         messagesContainer.innerHTML = '';
-        // In a real app, you'd emit a request for DM history here
     }
 
     socket.on('profile-info', (data) => {
@@ -290,7 +289,7 @@
     });
 
     socket.on('chat-message', (msg) => {
-        if (msg.type === 'pm') return; // Handled by dm-received
+        if (msg.type === 'pm') return; 
         if (msg.channel && msg.channel !== currentChannel) return;
         displayMessage(msg);
     });
@@ -300,8 +299,6 @@
         const otherPerson = (from === currentUsername) ? to : from;
         if (currentDMTarget === otherPerson) {
             displayMessage(message);
-        } else {
-            // Optional: Show notification dot on sidebar
         }
     });
 
