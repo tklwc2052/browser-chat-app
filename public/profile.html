@@ -14,7 +14,7 @@
     <div class="d-banner" id="p-banner"></div>
 
     <div class="d-avatar-wrapper">
-        <img id="p-avatar" class="d-avatar" src="placeholder-avatar.png">
+        <img id="p-avatar" class="d-avatar" src="https://cdn.discordapp.com/embed/avatars/0.png">
         <div class="d-status-indicator" id="p-status"></div>
     </div>
 
@@ -30,185 +30,81 @@
 
         <div class="d-section">
             <label class="d-label">About Me</label>
-            <textarea id="p-about" class="d-text-area" rows="3" placeholder="No description set." readonly></textarea>
+            <textarea id="p-about" class="d-text-area" rows="3" placeholder="Description" readonly></textarea>
         </div>
 
-        <div id="section-images" style="display:none;">
-            
-            <div class="d-section">
-                <label class="d-label">Avatar</label>
-                <div class="d-input-group">
-                    <input type="text" id="p-avatar-url" class="d-input-line" placeholder="Paste link or upload...">
-                    <button class="d-upload-btn" onclick="triggerUpload('file-avatar')">📁</button>
-                    <input type="file" id="file-avatar" accept="image/*" style="display:none">
-                </div>
-            </div>
-
-            <div class="d-section">
-                <label class="d-label">Banner</label>
-                <div class="d-input-group">
-                    <input type="text" id="p-banner-url" class="d-input-line" placeholder="Paste link or upload...">
-                    <button class="d-upload-btn" onclick="triggerUpload('file-banner')">📁</button>
-                    <input type="file" id="file-banner" accept="image/*" style="display:none">
-                </div>
-            </div>
-
-            <div class="d-section">
-                <label class="d-label">Page Background</label>
-                <div class="d-input-group">
-                    <input type="text" id="p-bg-url" class="d-input-line" placeholder="Paste link or upload...">
-                    <button class="d-upload-btn" onclick="triggerUpload('file-bg')">📁</button>
-                    <input type="file" id="file-bg" accept="image/*" style="display:none">
-                </div>
-            </div>
+        <div class="d-section" id="section-custom-bg" style="display:none; margin-top:10px;">
+            <label class="d-label">Profile Theme (Image URL)</label>
+            <input type="text" id="p-custom-bg" class="d-text-area" style="height:30px;" placeholder="https://example.com/bg.jpg" readonly>
         </div>
 
-        <div class="d-section">
-            <label class="d-label">Last Seen</label>
-            <div id="p-lastseen" class="d-text-static">Now</div>
-        </div>
-
-        <div class="d-edit-controls">
-            <button id="btn-save" class="d-btn d-btn-primary" style="display:none;">Save Profile</button>
-            <button id="btn-close" class="d-btn d-btn-secondary">Close</button>
+        <div class="d-edit-controls" id="edit-controls" style="display: none;">
+            <input type="file" id="p-avatar-upload" style="display: none;" accept="image/*">
+            <button class="d-btn d-btn-secondary" onclick="document.getElementById('p-avatar-upload').click()">Change Avatar</button>
+            <button class="d-btn d-btn-primary" id="btn-save">Save Changes</button>
         </div>
         
     </div>
 </div>
 
+<button id="close-btn" style="position: fixed; top: 20px; right: 20px; background: transparent; color: white; border: 1px solid #555; padding: 10px 20px; cursor: pointer; border-radius: 5px;">Back to Chat</button>
+
 <script>
     const socket = io();
-    const myUsername = localStorage.getItem('simplechat_username');
     
-    // Parse URL params
-    const urlParams = new URLSearchParams(window.location.search);
-    const targetParam = urlParams.get('user');
-    
-    // Determine if we are editing OURSELVES or viewing SOMEONE ELSE
-    const isSelf = !targetParam || (targetParam.toLowerCase() === myUsername.toLowerCase());
-    const targetUser = targetParam || myUsername;
+    // Config
+    const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
-    // DOM Elements
-    const elBanner = document.getElementById('p-banner');
     const elAvatar = document.getElementById('p-avatar');
-    const elStatus = document.getElementById('p-status');
+    const elBanner = document.getElementById('p-banner');
     const elDisplay = document.getElementById('p-displayname');
     const elUser = document.getElementById('p-username');
     const elPronouns = document.getElementById('p-pronouns');
     const elAbout = document.getElementById('p-about');
-    const elLastSeen = document.getElementById('p-lastseen');
-    
-    // Image Inputs
-    const sectionImages = document.getElementById('section-images');
-    const elAvatarUrl = document.getElementById('p-avatar-url');
-    const elBannerUrl = document.getElementById('p-banner-url');
-    const elBgUrl = document.getElementById('p-bg-url');
-    
+    const elStatus = document.getElementById('p-status');
+    const editControls = document.getElementById('edit-controls');
     const btnSave = document.getElementById('btn-save');
-    const btnClose = document.getElementById('btn-close');
+    const uploadInput = document.getElementById('p-avatar-upload');
+    const btnClose = document.getElementById('close-btn');
+    const sectionCustomBg = document.getElementById('section-custom-bg');
+    const elCustomBg = document.getElementById('p-custom-bg');
 
-    // --- SETUP COLORS ---
-    const bannerColors = ['#5865F2', '#ED4245', '#3BA55C', '#FAA61A', '#EB459E', '#00ACE6'];
-    function setBannerColor(name) {
-        const index = name.length % bannerColors.length;
-        elBanner.style.backgroundColor = bannerColors[index];
+    const params = new URLSearchParams(window.location.search);
+    let targetUser = params.get('user');
+    const viewMode = params.get('mode') || 'edit'; 
+
+    let stagedAvatar = null;
+    let currentUserData = {};
+
+    socket.on('connect', () => {
+        const myUser = localStorage.getItem('simplechat_username');
+        if (!targetUser) targetUser = myUser; 
+        
+        socket.emit('set-username', { username: myUser });
+
+        if (targetUser === myUser && viewMode !== 'view') {
+            enableEditing();
+            loadProfile(myUser);
+        } else {
+            loadProfile(targetUser);
+        }
+    });
+
+    function enableEditing() {
+        editControls.style.display = 'flex';
+        elDisplay.removeAttribute('readonly');
+        elPronouns.removeAttribute('readonly');
+        elAbout.removeAttribute('readonly');
+        elCustomBg.removeAttribute('readonly');
+        sectionCustomBg.style.display = 'block';
+        
+        elDisplay.classList.add('editable');
+        elPronouns.classList.add('editable');
+        elAbout.classList.add('editable');
     }
 
-    // --- INITIALIZE UI ---
-    if (isSelf) {
-        // EDIT MODE
-        btnSave.style.display = 'block';
-        sectionImages.style.display = 'block'; // Show extra inputs
-        
-        // Make inputs editable
-        elDisplay.readOnly = false;
-        elPronouns.readOnly = false;
-        elAbout.readOnly = false;
-        elDisplay.style.cursor = 'text';
-        
-        // Load MY data
-        socket.emit('set-username', { username: myUsername });
-        socket.on('profile-info', (data) => {
-            populateData(data);
-            // Pre-fill inputs
-            elAvatarUrl.value = (data.avatar && data.avatar !== 'placeholder-avatar.png') ? data.avatar : '';
-            elBannerUrl.value = data.banner || '';
-            elBgUrl.value = data.customBackground || '';
-        });
-
-        // Live previews
-        elAvatarUrl.addEventListener('input', () => { elAvatar.src = elAvatarUrl.value || 'placeholder-avatar.png'; });
-        elBannerUrl.addEventListener('input', () => { elBanner.style.backgroundImage = elBannerUrl.value ? `url('${elBannerUrl.value}')` : 'none'; });
-        elBgUrl.addEventListener('input', () => { document.body.style.backgroundImage = elBgUrl.value ? `url('${elBgUrl.value}')` : 'none'; });
-
-        // SAVE Handler
-        btnSave.onclick = () => {
-            const updates = {
-                displayName: elDisplay.value,
-                description: elAbout.value,
-                pronouns: elPronouns.value,
-                avatar: elAvatarUrl.value || 'placeholder-avatar.png',
-                banner: elBannerUrl.value,
-                customBackground: elBgUrl.value
-            };
-            socket.emit('update-profile', updates);
-            btnSave.innerText = "Saved!";
-            setTimeout(() => btnSave.innerText = "Save Profile", 2000);
-        };
-
-        // --- UPLOAD LOGIC ---
-        function triggerUpload(inputId) {
-            document.getElementById(inputId).click();
-        }
-
-        // Attach listeners to file inputs
-        ['file-avatar', 'file-banner', 'file-bg'].forEach(id => {
-            document.getElementById(id).addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                // Determine target text input
-                let targetInput;
-                if (id === 'file-avatar') targetInput = elAvatarUrl;
-                if (id === 'file-banner') targetInput = elBannerUrl;
-                if (id === 'file-bg') targetInput = elBgUrl;
-
-                // Show loading state
-                const oldText = targetInput.value;
-                targetInput.value = "Uploading...";
-                targetInput.disabled = true;
-
-                const formData = new FormData();
-                formData.append('file', file);
-
-                try {
-                    const res = await fetch('/upload', { method: 'POST', body: formData });
-                    const data = await res.json();
-                    
-                    if (data.url) {
-                        targetInput.value = data.url;
-                        targetInput.dispatchEvent(new Event('input')); // Trigger preview
-                    } else {
-                        alert("Upload failed");
-                        targetInput.value = oldText;
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert("Error uploading file");
-                    targetInput.value = oldText;
-                } finally {
-                    targetInput.disabled = false;
-                }
-            });
-        });
-
-    } else {
-        // VIEW MODE (Read Only)
-        btnSave.style.display = 'none';
-        sectionImages.style.display = 'none';
-        
-        // Fetch target data
-        socket.emit('get-user-profile', targetUser);
+    function loadProfile(username) {
+        socket.emit('get-user-profile', username);
         socket.on('user-profile-data', (data) => {
             if (data.notFound) {
                 elDisplay.value = "User not found";
@@ -220,35 +116,66 @@
     }
 
     function populateData(data) {
+        currentUserData = data;
         elDisplay.value = data.displayName || data.username;
         elUser.innerText = "@" + data.username;
         elPronouns.value = data.pronouns || "";
         elAbout.value = data.description || "";
-        elAvatar.src = data.avatar || 'placeholder-avatar.png';
+        elCustomBg.value = data.customBackground || "";
         
-        // Handle Banner
-        if (data.banner) {
-            elBanner.style.backgroundImage = `url('${data.banner}')`;
+        elAvatar.src = data.avatar || DEFAULT_AVATAR;
+        
+        setBannerColor(data.username);
+
+        if (data.online) {
+            elStatus.style.backgroundColor = "#23a559"; 
         } else {
-            elBanner.style.backgroundImage = 'none';
-            setBannerColor(data.username);
+            elStatus.style.backgroundColor = "#747f8d"; 
         }
 
-        // Handle Page Background
         if (data.customBackground) {
             document.body.style.backgroundImage = `url('${data.customBackground}')`;
-        } else {
-            document.body.style.backgroundImage = 'none';
-            document.body.style.backgroundColor = '#000';
-        }
-
-        // Handle Last Seen
-        if (data.lastSeen) {
-            elLastSeen.innerText = new Date(data.lastSeen).toLocaleString();
-        } else {
-            elLastSeen.innerText = "Unknown";
+            document.body.style.backgroundSize = "cover";
+            document.body.style.backgroundPosition = "center";
         }
     }
+
+    function setBannerColor(username) {
+        let hash = 0;
+        for (let i = 0; i < username.length; i++) {
+            hash = username.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+        const hex = "00000".substring(0, 6 - c.length) + c;
+        elBanner.style.backgroundColor = "#" + hex;
+    }
+
+    uploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                stagedAvatar = ev.target.result;
+                elAvatar.src = stagedAvatar;
+            }
+            reader.readAsDataURL(file);
+        }
+    };
+
+    btnSave.onclick = () => {
+        const updateData = {
+            displayName: elDisplay.value,
+            pronouns: elPronouns.value,
+            description: elAbout.value,
+            customBackground: elCustomBg.value
+        };
+        if (stagedAvatar) {
+            updateData.avatar = stagedAvatar;
+        }
+
+        socket.emit('update-profile', updateData);
+        alert("Profile Updated!");
+    };
 
     btnClose.onclick = () => {
         window.location.href = '/';
