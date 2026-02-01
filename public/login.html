@@ -6,58 +6,33 @@
     <title>Login - C&C Corp</title>
     <style>
         body {
-            background-color: #1e1e1e;
-            color: #f0f0f0;
+            background-color: #1e1e1e; color: #f0f0f0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
         }
         .card {
-            background-color: #2b2d31;
-            padding: 30px;
-            border-radius: 8px;
-            width: 100%;
-            max-width: 350px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            background-color: #2b2d31; padding: 30px; border-radius: 8px;
+            width: 100%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
         h2 { text-align: center; margin-bottom: 20px; color: #fff; }
         .input-group { margin-bottom: 15px; }
         label { display: block; font-size: 12px; font-weight: bold; color: #b9bbbe; margin-bottom: 5px; text-transform: uppercase; }
         input {
-            width: 100%;
-            padding: 10px;
-            background-color: #1e1e1e;
-            border: 1px solid #1e1e1e;
-            border-radius: 3px;
-            color: white;
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.2s;
+            width: 100%; padding: 10px; background-color: #1e1e1e;
+            border: 1px solid #1e1e1e; border-radius: 3px; color: white;
+            box-sizing: border-box; outline: none; transition: border-color 0.2s;
         }
         input:focus { border-color: #00ACE6; }
         button {
-            width: 100%;
-            padding: 12px;
-            background-color: #00ACE6;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-            font-size: 14px;
+            width: 100%; padding: 12px; background-color: #00ACE6;
+            color: white; border: none; border-radius: 3px; font-weight: bold;
+            cursor: pointer; margin-top: 10px; font-size: 14px;
         }
         button:hover { background-color: #0087b3; }
         .link {
-            display: block;
-            text-align: center;
-            margin-top: 15px;
-            font-size: 13px;
-            color: #00ACE6;
-            cursor: pointer;
+            display: block; text-align: center; margin-top: 15px;
+            font-size: 13px; color: #00ACE6; cursor: pointer;
         }
         .link:hover { text-decoration: underline; }
         .error { color: #dc3545; font-size: 13px; text-align: center; margin-bottom: 10px; display: none; }
@@ -68,14 +43,8 @@
     <div class="card" id="login-card">
         <h2>Welcome Back</h2>
         <div class="error" id="login-error"></div>
-        <div class="input-group">
-            <label>Username</label>
-            <input type="text" id="l-user">
-        </div>
-        <div class="input-group">
-            <label>Password</label>
-            <input type="password" id="l-pass">
-        </div>
+        <div class="input-group"><label>Username</label><input type="text" id="l-user"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="l-pass"></div>
         <button onclick="doLogin()">Log In</button>
         <div class="link" onclick="showRegister()">Need an account? Register</div>
     </div>
@@ -83,22 +52,10 @@
     <div class="card" id="register-card" style="display: none;">
         <h2>Create an Account</h2>
         <div class="error" id="reg-error"></div>
-        <div class="input-group">
-            <label>User ID (Username)</label>
-            <input type="text" id="r-user">
-        </div>
-        <div class="input-group">
-            <label>Display Name</label>
-            <input type="text" id="r-display">
-        </div>
-        <div class="input-group">
-            <label>Password</label>
-            <input type="password" id="r-pass1">
-        </div>
-        <div class="input-group">
-            <label>Password Again</label>
-            <input type="password" id="r-pass2">
-        </div>
+        <div class="input-group"><label>User ID (Username)</label><input type="text" id="r-user"></div>
+        <div class="input-group"><label>Display Name</label><input type="text" id="r-display"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="r-pass1"></div>
+        <div class="input-group"><label>Password Again</label><input type="password" id="r-pass2"></div>
         <button onclick="doRegister()">Register</button>
         <div class="link" onclick="showLogin()">Already have an account? Log In</div>
     </div>
@@ -109,34 +66,18 @@
         const loginError = document.getElementById('login-error');
         const regError = document.getElementById('reg-error');
 
-        function showRegister() {
-            loginCard.style.display = 'none';
-            regCard.style.display = 'block';
-            loginError.style.display = 'none';
-        }
-
-        function showLogin() {
-            regCard.style.display = 'none';
-            loginCard.style.display = 'block';
-            regError.style.display = 'none';
-        }
+        function showRegister() { loginCard.style.display = 'none'; regCard.style.display = 'block'; loginError.style.display = 'none'; }
+        function showLogin() { regCard.style.display = 'none'; loginCard.style.display = 'block'; regError.style.display = 'none'; }
 
         async function doLogin() {
             const username = document.getElementById('l-user').value;
             const password = document.getElementById('l-pass').value;
-
             const res = await fetch('/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
-
-            if (res.ok) {
-                window.location.href = '/';
-            } else {
-                loginError.style.display = 'block';
-                loginError.innerText = await res.text();
-            }
+            if (res.ok) window.location.href = '/';
+            else { loginError.style.display = 'block'; loginError.innerText = await res.text(); }
         }
 
         async function doRegister() {
@@ -145,25 +86,9 @@
             const pass1 = document.getElementById('r-pass1').value;
             const pass2 = document.getElementById('r-pass2').value;
 
-            if (pass1 !== pass2) {
-                regError.style.display = 'block';
-                regError.innerText = "Passwords do not match!";
-                return;
-            }
-
+            if (pass1 !== pass2) { regError.style.display = 'block'; regError.innerText = "Passwords do not match!"; return; }
             const res = await fetch('/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password: pass1, displayName })
             });
-
-            if (res.ok) {
-                window.location.href = '/';
-            } else {
-                regError.style.display = 'block';
-                regError.innerText = await res.text();
-            }
-        }
-    </script>
-</body>
-</html>
+            if (res.ok) window.location.
