@@ -67,28 +67,26 @@
             </div>
         </div>
 
-        <div id="sidebar-voice-footer">
-            <div id="sidebar-voice-controls">
-                <button id="open-voice-page-btn" class="panel-btn" style="background-color: var(--color-accent-green); color: white; border:none; font-weight: bold;">Open Voice Room</button>
-                <div id="vc-controls">
-                    <button id="vc-btn-join" class="panel-btn" style="background-color: var(--color-accent-blue); color: white; border:none; font-weight: bold;">Join Call</button>
-                    <div style="display: flex; gap: 5px;">
-                        <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
-                        <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
-                    </div>
-                </div>
-                <ul id="vc-user-list"></ul>
-                <div id="audio-container"></div>
-            </div>
+        <div class="dm-dropdown-header" onclick="toggleDMs()">
+            <span>Direct Messages</span>
+            <span id="dm-arrow">▼</span>
+        </div>
+        
+        <div id="dm-container">
+            <div id="dm-list"></div>
+        </div>
 
-            <div class="dm-dropdown-header" onclick="toggleDMs()">
-                <span>Direct Messages</span>
-                <span id="dm-arrow">▼</span>
+        <div id="sidebar-voice-footer">
+            <button id="open-voice-page-btn" class="panel-btn voice-main-btn">Open Voice Room</button>
+            <div id="vc-controls">
+                <button id="vc-btn-join" class="panel-btn join-btn">Join Call</button>
+                <div style="display: flex; gap: 5px;">
+                    <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
+                    <button id="vc-btn-leave" class="panel-btn leave-btn" style="display: none; flex: 1;">Leave</button>
+                </div>
             </div>
-            
-            <div id="dm-container">
-                <div id="dm-list"></div>
-            </div>
+            <ul id="vc-user-list"></ul>
+            <div id="audio-container"></div>
         </div>
     </div>
 
@@ -171,12 +169,6 @@
 </div>
 
 <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('mode') === 'popup') {
-        document.getElementById('right-panel').style.display = 'none';
-        document.getElementById('main-wrapper').style.maxWidth = '100%';
-    }
-
     const socket = io();
     const messagesDiv = document.getElementById('messages');
     const scrollDownBtn = document.getElementById('scroll-down-btn');
@@ -239,8 +231,6 @@
     let peers = {}; 
     let isInVC = false;
     let isMuted = false;
-    
-    // NEW: Active Screen Shares
     let activeShares = new Set();
 
     openProfileBtn.onclick = () => { window.location.href = '/profile'; };
@@ -263,7 +253,6 @@
         currentUsername = data.username;
         currentDisplayName = data.displayName;
         currentAvatar = data.avatar;
-        // Only update header if we are in main chat
         if (currentChatMode === 'global' && currentChannel === 'main') {
             chatHeaderLabel.innerText = '#main';
             chatHeaderSublabel.innerText = 'Public Channel';
@@ -284,8 +273,6 @@
 
     function renderSidebar() {
         dmList.innerHTML = '';
-        
-        // Update active states for channels
         document.querySelectorAll('#channel-list .dm-user-card').forEach(el => el.classList.remove('active'));
         if (currentChatMode === 'global') {
             const activeChan = document.getElementById(`chan-${currentChannel}`);
@@ -322,11 +309,9 @@
             nameArea.style.display = 'flex';
             nameArea.style.alignItems = 'center';
             nameArea.style.gap = '5px';
-
             const name = document.createElement('div');
             name.className = 'dm-username';
             name.innerText = u.displayName || u.username; 
-            
             nameArea.appendChild(name);
 
             if (activeShares.has(u.username)) {
@@ -351,11 +336,9 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
-
         chatHeaderLabel.innerText = '#' + chan;
         chatHeaderSublabel.innerText = 'Public Channel';
         currentAvatarPreview.style.display = 'none';
-
         messagesDiv.innerHTML = '';
         lastMessageSender = null; 
         socket.emit('join-channel', chan);
@@ -368,15 +351,12 @@
         typingUsers.clear();
         updateTypingDisplay();
         renderSidebar();
-
         const userObj = allUsersCache.find(u => u.username === targetUser);
         const display = userObj ? (userObj.displayName || targetUser) : targetUser;
         chatHeaderLabel.innerText = display;
         chatHeaderSublabel.innerText = '@' + targetUser;
-        
         currentAvatarPreview.style.display = 'block';
         currentAvatarPreview.src = userObj ? userObj.avatar : 'placeholder-avatar.png';
-
         messagesDiv.innerHTML = '';
         lastMessageSender = null; 
         if (dmMessagesCache[targetUser]) {
@@ -426,38 +406,7 @@
         }
         renderSidebar();
     });
-    
-    socket.on('message-updated', (data) => {
-        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
-        if (targetCache) {
-            const msg = targetCache.find(m => m.id === data.id);
-            if (msg) { msg.text = data.text; msg.isEdited = true; }
-        }
-        const msgEl = document.querySelector(`.message[data-id="${data.id}"]`);
-        if (msgEl) {
-            const textSpan = msgEl.querySelector('.message-text');
-            if (textSpan) {
-                textSpan.innerHTML = parseFormatting(data.text) + ' <span class="edited-tag">(edited)</span>';
-            }
-        }
-    });
-    socket.on('message-deleted', (id) => {
-        let targetCache = (currentChatMode === 'global') ? globalMessagesCache : dmMessagesCache[currentDmTarget];
-        if (targetCache) {
-            const idx = targetCache.findIndex(m => m.id === id);
-            if (idx !== -1) targetCache.splice(idx, 1);
-        }
-        const msgEl = document.querySelector(`.message[data-id="${id}"]`);
-        if (msgEl) msgEl.remove();
-    });
-    socket.on('dm-history', (data) => {
-        dmMessagesCache[data.target] = data.messages;
-        if (currentChatMode === 'dm' && currentDmTarget === data.target) {
-            messagesDiv.innerHTML = '';
-            lastMessageSender = null; 
-            renderMessageBatch(data.messages);
-        }
-    });
+
     socket.on('history', (history) => {
         if (currentChatMode === 'global') {
             globalMessagesCache = history;
@@ -466,37 +415,37 @@
             renderMessageBatch(history);
         }
     });
+
+    socket.on('dm-history', (data) => {
+        dmMessagesCache[data.target] = data.messages;
+        if (currentChatMode === 'dm' && currentDmTarget === data.target) {
+            messagesDiv.innerHTML = '';
+            lastMessageSender = null; 
+            renderMessageBatch(data.messages);
+        }
+    });
+
     socket.on('dm-received', (data) => {
         const partner = (data.from === currentUsername) ? data.to : data.from;
         if (!dmMessagesCache[partner]) dmMessagesCache[partner] = [];
         dmMessagesCache[partner].push(data.message);
-
         if (currentChatMode === 'dm' && (data.from === currentDmTarget || data.to === currentDmTarget)) {
             appendMessageToUI(data.message);
-            if (document.hidden && settingPM.checked) triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image');
         } else if (data.from !== currentUsername) {
             if (!unreadCounts[data.from]) unreadCounts[data.from] = 0;
             unreadCounts[data.from]++;
             renderSidebar();
             if (settingPM.checked) {
                 playNotificationSound();
-                if (document.hidden) triggerNotification(`DM from ${data.from}`, data.message.text || 'Sent an image', true);
             }
         }
     });
+
     socket.on('chat-message', (msg) => {
-        // If message is for current channel or current channel is 'main' and message has no channel set
         const isTargetChannel = (msg.channel === currentChannel) || (!msg.channel && currentChannel === 'main');
-        
         if (currentChatMode === 'global' && isTargetChannel) {
             appendMessageToUI(msg);
         }
-    });
-    socket.on('motd', (motdText) => {
-        const motdDiv = document.createElement('div');
-        motdDiv.className = 'system-message motd-message';
-        motdDiv.innerHTML = `★ MOTD: ${parseFormatting(motdText)} ★`;
-        messagesDiv.appendChild(motdDiv);
     });
 
     function renderMessageBatch(msgs) {
@@ -527,7 +476,6 @@
             const avatarImg = document.createElement('img');
             avatarImg.className = 'message-avatar';
             avatarImg.src = msg.avatar || 'placeholder-avatar.png';
-            avatarImg.style.cursor = 'pointer';
             avatarImg.onclick = () => window.location.href = `/profile?user=${encodeURIComponent(msg.sender)}&mode=view`;
             msgDiv.appendChild(avatarImg);
         } else if (!isOwn && isContinuous) {
@@ -549,14 +497,12 @@
 
         const bubble = document.createElement('div');
         bubble.className = 'bubble-content';
-        
         if (msg.replyTo) {
             const replyPreview = document.createElement('div');
             replyPreview.className = 'reply-preview';
-            replyPreview.innerHTML = `<small>Replying to <b>${msg.replyTo.sender}</b>:</small><br><span style="color:#ccc;">${msg.replyTo.text.substring(0,30)}${msg.replyTo.text.length>30?'...':''}</span>`;
+            replyPreview.innerHTML = `<small>Replying to <b>${msg.replyTo.sender}</b>:</small><br><span>${msg.replyTo.text.substring(0,30)}</span>`;
             bubble.appendChild(replyPreview);
         }
-
         if (msg.image) {
             const imgEl = document.createElement('img');
             imgEl.src = msg.image;
@@ -564,46 +510,47 @@
             imgEl.onclick = () => window.open(msg.image, '_blank');
             bubble.appendChild(imgEl);
         }
-
         if (msg.text) {
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
             textSpan.innerHTML = parseFormatting(msg.text);
-            if (msg.isEdited) textSpan.innerHTML += ' <span class="edited-tag">(edited)</span>';
             bubble.appendChild(textSpan);
         }
-
         const timeSpan = document.createElement('span');
         timeSpan.className = 'timestamp';
         timeSpan.innerText = msg.time;
         bubble.appendChild(timeSpan);
-
         contentArea.appendChild(bubble);
         msgDiv.appendChild(contentArea);
-        
-        msgDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showContextMenu(e.clientX, e.clientY, msg, isOwn);
-        });
-
         messagesDiv.appendChild(msgDiv);
         if (!userScrolledUp) forceScrollToBottom();
-
-        if (!isOwn && document.hidden && settingMain.checked) {
-             playNotificationSound();
-             triggerNotification(msg.senderDisplayName || msg.sender, msg.text || 'Sent an image');
-        }
     }
     
     function parseFormatting(text) {
         if(!text) return '';
-        let sanitized = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        sanitized = sanitized.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); 
-        sanitized = sanitized.replace(/\*(.*?)\*/g, '<i>$1</i>');    
-        sanitized = sanitized.replace(/__(.*?)__/g, '<u>$1</u>');     
-        sanitized = sanitized.replace(/~~(.*?)~~/g, '<strike>$1</strike>');
-        sanitized = sanitized.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:lightblue;text-decoration:underline;">$1</a>');
-        return sanitized;
+        return text.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+            .replace(/\*(.*?)\*/g, '<i>$1</i>')
+            .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+    }
+
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    sendButton.onclick = sendMessage;
+
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text && !stagedImage) return;
+        socket.emit('chat-message', { 
+            text: text, 
+            image: stagedImage, 
+            channel: (currentChatMode === 'global') ? currentChannel : null,
+            to: (currentChatMode === 'dm') ? currentDmTarget : null 
+        });
+        messageInput.value = '';
+        stagedImage = null;
+        imagePreviewArea.style.display = 'none';
     }
 
     fileUploadBtn.onclick = () => hiddenFileInput.click();
@@ -619,230 +566,26 @@
             reader.readAsDataURL(file);
         }
     };
-    removeImageBtn.onclick = () => {
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = ''; 
-    };
 
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-        else { handleTyping(); }
-    });
-    sendButton.onclick = sendMessage;
-
-    function sendMessage() {
-        const text = messageInput.value.trim();
-        if (!text && !stagedImage) return;
-
-        const payload = { 
-            text: text, 
-            image: stagedImage, 
-            replyTo: currentReplyTo,
-            channel: (currentChatMode === 'global') ? currentChannel : null,
-            to: (currentChatMode === 'dm') ? currentDmTarget : null 
-        };
-
-        socket.emit('chat-message', payload);
-        
-        messageInput.value = '';
-        stagedImage = null;
-        imagePreviewArea.style.display = 'none';
-        hiddenFileInput.value = '';
-        
-        if (currentReplyTo) {
-            currentReplyTo = null;
-            replyBar.style.display = 'none';
-        }
-    }
-
-    function handleTyping() {
-        if (typingTimeout) clearTimeout(typingTimeout);
-        socket.emit('typing', currentChatMode === 'dm' ? currentDmTarget : null);
-        typingTimeout = setTimeout(() => socket.emit('stop-typing'), 2000);
-    }
-
-    socket.on('typing', (username) => {
-        typingUsers.add(username);
-        updateTypingDisplay();
-    });
-    socket.on('stop-typing', (username) => {
-        typingUsers.delete(username);
-        updateTypingDisplay();
-    });
-
-    function updateTypingDisplay() {
-        if (typingUsers.size > 0) {
-            const names = Array.from(typingUsers).join(', ');
-            typingIndicator.innerText = `${names} is typing...`;
-            typingIndicator.style.opacity = 1;
-        } else {
-            typingIndicator.style.opacity = 0;
-        }
-    }
-    
-    // --- CONTEXT MENU ---
-    const ctxMenu = document.createElement('div');
-    ctxMenu.id = 'ctx-menu';
-    document.body.appendChild(ctxMenu);
-    
-    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
-    
-    function showContextMenu(x, y, msg, isOwn) {
-        ctxMenu.style.display = 'block';
-        ctxMenu.style.left = x + 'px';
-        ctxMenu.style.top = y + 'px';
-        ctxMenu.innerHTML = '';
-        
-        const replyOption = document.createElement('div');
-        replyOption.innerText = 'Reply';
-        replyOption.onclick = () => {
-            currentReplyTo = msg;
-            replyBar.style.display = 'flex';
-            replyTargetName.innerText = msg.senderDisplayName || msg.sender; 
-            messageInput.focus();
-        };
-        ctxMenu.appendChild(replyOption);
-
-        if (isOwn) {
-            const editOption = document.createElement('div');
-            editOption.innerText = 'Edit';
-            editOption.onclick = () => {
-                const newText = prompt("Edit your message:", msg.text);
-                if (newText !== null && newText !== msg.text) {
-                    socket.emit('edit-message', { id: msg.id, newText });
-                }
-            };
-            ctxMenu.appendChild(editOption);
-            
-            const deleteOption = document.createElement('div');
-            deleteOption.innerText = 'Delete';
-            deleteOption.style.color = 'salmon';
-            deleteOption.onclick = () => {
-                if(confirm("Delete this message?")) socket.emit('delete-message', msg.id);
-            };
-            ctxMenu.appendChild(deleteOption);
-        }
-    }
-    
-    cancelReplyBtn.onclick = () => {
-        currentReplyTo = null;
-        replyBar.style.display = 'none';
-    };
-
-    const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.m4a');
-    function playNotificationSound() {
-        if (settingSound.checked) notifSound.play().catch(e=>{});
-    }
-    function triggerNotification(title, body, focus = false) {
-        if (Notification.permission === 'granted') {
-            const n = new Notification(title, { body, icon: 'placeholder-avatar.png' });
-            if (focus) n.onclick = () => window.focus();
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission();
-        }
-    }
-    
-    notifHeader.onclick = () => {
-        notifContent.classList.toggle('show');
-    };
-    
-    btnCloakLauncher.onclick = () => {
-        const win = window.open('about:blank', '_blank');
-        if (win) {
-            win.document.body.style.margin = '0';
-            win.document.body.style.height = '100vh';
-            const iframe = win.document.createElement('iframe');
-            iframe.style.border = 'none';
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.margin = '0';
-            iframe.src = window.location.href + '?mode=popup';
-            win.document.body.appendChild(iframe);
-        }
-    };
-    
-    launchCustomWindowBtn.onclick = () => {
-        window.open(window.location.href + '?mode=popup', 'ChatWindow', 'width=400,height=600');
-    };
-    
-    btnBgUpload.onclick = () => bgUploadInput.click();
-    bgUploadInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.body.style.backgroundImage = `url('${ev.target.result}')`;
-                document.body.classList.add('transparent-mode'); // UPDATED: Enable transparency
-                localStorage.setItem('custom_bg', ev.target.result);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-    btnBgReset.onclick = () => {
-        document.body.style.backgroundImage = 'none';
-        document.body.classList.remove('transparent-mode'); // UPDATED: Disable transparency
-        localStorage.removeItem('custom_bg');
-    };
-    const savedBg = localStorage.getItem('custom_bg');
-    if (savedBg) {
-        document.body.style.backgroundImage = `url('${savedBg}')`;
-        document.body.classList.add('transparent-mode'); // UPDATED: Enable transparency on load
-    }
-
-    // --- UPDATED: WEBRTC VOICE CHAT LOGIC (SAFE + FAST) ---
-
+    // VC Logic
     vcBtnJoin.onclick = () => {
-        const audioConstraints = {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: { ideal: 1 }, 
-            latency: { ideal: 0 }      
-        };
-
-        navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints })
+        navigator.mediaDevices.getUserMedia({ video: false, audio: true })
             .then(stream => {
                 localStream = stream;
                 isInVC = true;
-                isMuted = false;
-                vcBtnMute.innerText = "Mute";
-                vcBtnMute.style.backgroundColor = "#4f545c";
                 vcBtnJoin.style.display = 'none';
                 vcBtnLeave.style.display = 'block';
                 vcBtnMute.style.display = 'block';
                 socket.emit('join-vc');
-            })
-            .catch(err => {
-                alert("Could not access microphone: " + err.name + " - " + err.message);
-                console.error(err);
             });
     };
 
-    vcBtnMute.onclick = () => {
-        if (!localStream) return;
-        isMuted = !isMuted;
-        const tracks = localStream.getAudioTracks();
-        tracks.forEach(track => { track.enabled = !isMuted; });
-        vcBtnMute.innerText = isMuted ? "Unmute" : "Mute";
-        vcBtnMute.style.backgroundColor = isMuted ? "var(--color-vc-red)" : "#4f545c";
-    };
-
     vcBtnLeave.onclick = () => {
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
         isInVC = false;
-        isMuted = false;
         vcBtnJoin.style.display = 'block';
         vcBtnLeave.style.display = 'none';
         vcBtnMute.style.display = 'none';
-        vcBtnMute.innerText = "Mute";
-        vcBtnMute.style.backgroundColor = "#4f545c";
-        Object.values(peers).forEach(peer => peer.destroy());
-        peers = {};
-        audioContainer.innerHTML = '';
         socket.emit('leave-vc');
     };
 
@@ -850,72 +593,24 @@
         vcUserList.innerHTML = '';
         users.forEach(u => {
             const li = document.createElement('li');
-            li.style.display = 'flex';
-            li.style.alignItems = 'center';
-            li.style.marginBottom = '5px';
-            const img = document.createElement('img');
-            img.src = u.avatar || 'placeholder-avatar.png';
-            img.style.width = '24px'; img.style.height='24px'; img.style.borderRadius='50%'; img.style.marginRight='8px';
-            const span = document.createElement('span');
-            span.innerText = u.displayName || u.username;
-            li.appendChild(img);
-            li.appendChild(span);
+            li.innerText = u.displayName || u.username;
             vcUserList.appendChild(li);
         });
     });
 
-    socket.on('vc-user-joined', (id) => {
-        if (isInVC && localStream) {
-            createPeer(id, socket.id, localStream, true); 
-        }
-    });
-
-    socket.on('vc-user-left', (id) => {
-        if (peers[id]) {
-            peers[id].destroy();
-            delete peers[id];
-        }
-        const audioEl = document.getElementById(`audio-${id}`);
-        if (audioEl) audioEl.remove();
-    });
-
-    socket.on('signal', (data) => {
-        if (!isInVC || !localStream) return;
-        const peerId = data.sender;
-        if (!peers[peerId]) {
-            createPeer(peerId, socket.id, localStream, false);
-        }
-        peers[peerId].signal(data.signal);
-    });
+    socket.on('vc-user-joined', (id) => { if (isInVC) createPeer(id, socket.id, localStream, true); });
+    socket.on('signal', (data) => { if (isInVC) { if(!peers[data.sender]) createPeer(data.sender, socket.id, localStream, false); peers[data.sender].signal(data.signal); }});
 
     function createPeer(targetSocketId, myId, stream, initiator) {
-        const peer = new SimplePeer({
-            initiator: initiator,
-            stream: stream,
-            trickle: true, 
-            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+        const peer = new SimplePeer({ initiator, stream, trickle: true });
+        peer.on('signal', signal => socket.emit('signal', { target: targetSocketId, signal }));
+        peer.on('stream', remoteStream => {
+            const audio = document.createElement('audio');
+            audio.srcObject = remoteStream;
+            audio.autoplay = true;
+            audioContainer.appendChild(audio);
         });
-
-        peer.on('signal', (signal) => {
-            socket.emit('signal', { target: targetSocketId, signal: signal });
-        });
-
-        peer.on('stream', (remoteStream) => {
-            const isVideo = remoteStream.getVideoTracks().length > 0;
-            if (isVideo) return;
-            if (!document.getElementById(`audio-${targetSocketId}`)) {
-                const audio = document.createElement('audio');
-                audio.id = `audio-${targetSocketId}`;
-                audio.srcObject = remoteStream;
-                audio.autoplay = true;
-                audio.playsInline = true; 
-                audioContainer.appendChild(audio);
-            }
-        });
-
-        peer.on('error', (err) => console.error('Peer error:', err));
         peers[targetSocketId] = peer;
-        return peer;
     }
 </script>
 </body>
