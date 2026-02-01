@@ -1,4 +1,4 @@
-/* --- Dark Mode Variables --- */
+/* --- Midnight Dark Mode Variables --- */
 :root {
     --bg-primary: #000000;
     --bg-secondary: #0b0b0b;
@@ -263,44 +263,45 @@ html, body {
 .settings-list { list-style: none; padding: 10px; margin: 0; width: 100%; box-sizing: border-box; }
 .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid #222; }
 
-/* --- ENHANCED TRANSPARENT MODE --- */
+/* --- ULTRALIGHT TRANSPARENT MODE --- */
+/* This is triggered when the body has the .transparent-mode class */
 body.transparent-mode #main-wrapper {
-    background-color: rgba(0, 0, 0, 0.4); 
-    backdrop-filter: blur(20px) saturate(180%); 
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    box-shadow: 0 0 40px rgba(0,0,0,0.6);
-    border: 1px solid rgba(255,255,255,0.1);
+    background-color: rgba(0, 0, 0, 0.2); /* 80% transparent background */
+    backdrop-filter: blur(25px) saturate(180%); /* Heavy frosted glass effect */
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    box-shadow: none; /* Removed shadow to blend better */
+    border: 1px solid rgba(255,255,255,0.05);
 }
 
 body.transparent-mode #dm-sidebar, 
 body.transparent-mode #right-panel {
-    background-color: rgba(0, 0, 0, 0.2); 
+    background-color: rgba(0, 0, 0, 0.1); /* Extremely thin tint */
     backdrop-filter: none;
     border-color: rgba(255,255,255,0.05);
 }
 
 body.transparent-mode #username-area,
 body.transparent-mode #message-input-area {
-    background-color: rgba(0, 0, 0, 0.2); 
-    border-color: rgba(255,255,255,0.1);
+    background-color: rgba(0, 0, 0, 0.1);
+    border-color: rgba(255,255,255,0.05);
 }
 
+body.transparent-mode .dm-user-card:hover { background-color: rgba(255,255,255,0.05); }
+body.transparent-mode #message-input { background-color: rgba(255,255,255,0.05); }
+
+/* Message Bubbles in Transparent Mode */
 body.transparent-mode .bubble-content {
-    background-color: rgba(30, 31, 34, 0.7); 
-    backdrop-filter: blur(4px);
+    background-color: rgba(30, 31, 34, 0.4); /* Glassy bubbles */
+    backdrop-filter: blur(5px);
     border: 1px solid rgba(255,255,255,0.05);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
 }
 
 body.transparent-mode .user-message .bubble-content {
-    background-color: rgba(0, 95, 163, 0.8); 
+    background-color: rgba(0, 95, 163, 0.5); /* Blue tint glass */
 }
 
-body.transparent-mode .dm-username, 
-body.transparent-mode .message-text {
-    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-}
-
-/* --- NEW PROFILE PAGE STYLES --- */
+/* Profile Specifics */
 .profile-page-body {
     background-color: #000000; 
     display: flex; justify-content: center; align-items: center;
@@ -371,7 +372,6 @@ body.transparent-mode .message-text {
     line-height: 1.1;
     background: transparent; border: none; outline: none;
 }
-.d-displayname:focus { border-bottom: 1px solid var(--color-accent-blue); }
 
 .d-username {
     font-size: 16px;
