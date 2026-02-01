@@ -173,8 +173,9 @@
 
 <script>
     /* --- CONFIG --- */
-    // This is the default image used if a user hasn't set one
-    const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+    // This is a blue square with a white person silhouette (Base64 encoded SVG).
+    // It works offline and cannot be blocked.
+    const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjNTg2NUYyIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyIDEyYzIuMjEgMCDoLTMS43OSA0LTdzLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNHptMCAyYy0yLjY3IDAtOCAxLjM0LTggNHYyaDE2di0yYzAtMi42Ni01LjMzLTQtOC00eiIvPjwvc3ZnPg==";
 
     /* --- JAVASCRIPT LOGIC --- */
     const socket = io();
