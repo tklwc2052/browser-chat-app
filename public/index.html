@@ -773,6 +773,7 @@
             const reader = new FileReader();
             reader.onload = (ev) => {
                 document.body.style.backgroundImage = `url('${ev.target.result}')`;
+                document.body.classList.add('transparent-mode'); // UPDATED: Enable transparency
                 localStorage.setItem('custom_bg', ev.target.result);
             };
             reader.readAsDataURL(file);
@@ -780,10 +781,14 @@
     };
     btnBgReset.onclick = () => {
         document.body.style.backgroundImage = 'none';
+        document.body.classList.remove('transparent-mode'); // UPDATED: Disable transparency
         localStorage.removeItem('custom_bg');
     };
     const savedBg = localStorage.getItem('custom_bg');
-    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+    if (savedBg) {
+        document.body.style.backgroundImage = `url('${savedBg}')`;
+        document.body.classList.add('transparent-mode'); // UPDATED: Enable transparency on load
+    }
 
     // --- UPDATED: WEBRTC VOICE CHAT LOGIC (SAFE + FAST) ---
 
