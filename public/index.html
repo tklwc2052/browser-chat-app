@@ -1,420 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The C&C Corp chat</title>
-<link rel="stylesheet" href="styles.css">
-<script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-
-<script>
-    fetch('/auth/me').then(res => {
-        if (!res.ok) {
-            window.location.href = '/login.html';
-        } else {
-            return res.json();
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - C&C Corp</title>
+    <style>
+        body {
+            background-color: #1e1e1e; color: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
         }
-    }).then(data => {
-        if (data && data.username) {
-            window.authenticatedUser = data.username;
-            // If socket is already ready, sync the username
-            if (window.socket) {
-                window.socket.emit('set-username', { username: window.authenticatedUser });
-            }
+        .card {
+            background-color: #2b2d31; padding: 30px; border-radius: 8px;
+            width: 100%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
-    }).catch(err => {
-        window.location.href = '/login.html';
-    });
-</script>
-
-<style>
-    /* Inline styles for specific message formatting */
-    .message-content-area {
-        display: flex;
-        flex-direction: column;
-        max-width: 70%;
-        position: relative;
-    }
-    .message-sender-name {
-        font-size: 0.75rem; 
-        color: #888;
-        margin-bottom: 2px;
-        margin-left: 4px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        cursor: pointer;
-        transition: color 0.2s;
-    }
-    .message-sender-name:hover {
-        color: #00ACE6;
-        text-decoration: underline;
-    }
-    .user-message .message-content-area { align-items: flex-end; }
-    .user-message .message-sender-name { margin-right: 4px; margin-left: 0; color: #00ACE6; }
-
-    /* Sidebar Dropdown Styles */
-    .dm-dropdown-header {
-        cursor: pointer;
-        padding: 10px 15px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        color: var(--color-muted);
-        font-size: 12px;
-        font-weight: bold;
-        text-transform: uppercase;
-        transition: color 0.2s;
-    }
-    .dm-dropdown-header:hover { color: #fff; }
-    
-    .sidebar-user-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-    .sidebar-user-item {
-        display: flex;
-        align-items: center;
-        padding: 8px 15px;
-        margin: 2px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: background 0.2s;
-        position: relative;
-    }
-    .sidebar-user-item:hover { background-color: rgba(79, 84, 92, 0.4); }
-    .sidebar-user-item.active { background-color: rgba(79, 84, 92, 0.6); color: #fff; }
-
-    .sidebar-avatar-wrapper {
-        position: relative;
-        margin-right: 12px;
-        width: 32px;
-        height: 32px;
-    }
-    .sidebar-avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        object-fit: cover;
-    }
-    .sidebar-status {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        position: absolute;
-        bottom: 0;
-        right: 0;
-        border: 2px solid #2f3136;
-    }
-    .status-online { background-color: #23a559; }
-    .status-offline { background-color: #80848e; }
-
-    .sidebar-user-info {
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-    .sidebar-displayname {
-        font-size: 14px;
-        font-weight: 500;
-        color: #96989d;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .sidebar-user-item.active .sidebar-displayname,
-    .sidebar-user-item:hover .sidebar-displayname { color: #fff; }
-    
-    .channel-header {
-        padding: 10px 15px;
-        color: var(--color-muted);
-        font-size: 12px;
-        font-weight: bold;
-        text-transform: uppercase;
-    }
-    .channel-item {
-        display: flex;
-        align-items: center;
-        padding: 8px 15px;
-        margin: 2px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        color: #96989d;
-        transition: 0.2s;
-    }
-    .channel-item:before { content: "#"; margin-right: 8px; font-size: 18px; color: #6a6d71; }
-    .channel-item:hover { background-color: rgba(79, 84, 92, 0.4); color: #dbdee1; }
-    .channel-item.active { background-color: rgba(79, 84, 92, 0.6); color: #fff; }
-</style>
+        h2 { text-align: center; margin-bottom: 20px; color: #fff; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; font-weight: bold; color: #b9bbbe; margin-bottom: 5px; text-transform: uppercase; }
+        input {
+            width: 100%; padding: 10px; background-color: #1e1e1e;
+            border: 1px solid #1e1e1e; border-radius: 3px; color: white;
+            box-sizing: border-box; outline: none; transition: border-color 0.2s;
+        }
+        input:focus { border-color: #00ACE6; }
+        button {
+            width: 100%; padding: 12px; background-color: #00ACE6;
+            color: white; border: none; border-radius: 3px; font-weight: bold;
+            cursor: pointer; margin-top: 10px; font-size: 14px;
+        }
+        button:hover { background-color: #0087b3; }
+        .link {
+            display: block; text-align: center; margin-top: 15px;
+            font-size: 13px; color: #00ACE6; cursor: pointer;
+        }
+        .link:hover { text-decoration: underline; }
+        .error { color: #dc3545; font-size: 13px; text-align: center; margin-bottom: 10px; display: none; }
+    </style>
 </head>
 <body>
 
-<div id="app-container">
-    <div id="sidebar">
-        <div id="server-header">C&C Corp</div>
-        
-        <div class="channel-header">Text Channels</div>
-        <div id="channels-list">
-            <div class="channel-item active" onclick="switchChannel('main', this)">main</div>
-            <div class="channel-item" onclick="switchChannel('school', this)">school</div>
-            <div class="channel-item" onclick="switchChannel('random', this)">random</div>
-        </div>
-
-        <div style="margin-top: 20px;"></div>
-        
-        <div class="dm-dropdown-header">
-            Direct Messages <span>+</span>
-        </div>
-        <div id="user-list" class="sidebar-user-list">
-            </div>
-
-        <div id="user-controls">
-            <div id="current-user-info" onclick="window.location.href='/profile.html'">
-                <img id="my-avatar" src="placeholder-avatar.png" alt="Avatar">
-                <div class="user-details">
-                    <span id="my-name">Loading...</span>
-                    <span id="my-status">Online</span>
-                </div>
-            </div>
-            <div class="control-icons">
-                <button title="Voice Room" onclick="window.location.href='/voice.html'">📞</button>
-            </div>
-        </div>
+    <div class="card" id="login-card">
+        <h2>Welcome Back</h2>
+        <div class="error" id="login-error"></div>
+        <div class="input-group"><label>Username</label><input type="text" id="l-user"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="l-pass"></div>
+        <button onclick="doLogin()">Log In</button>
+        <div class="link" onclick="showRegister()">Need an account? Register</div>
     </div>
 
-    <div id="chat-area">
-        <div id="chat-header">
-            <span id="channel-name-display"># main</span>
-            <div id="header-tools">
-                <div id="screen-share-status" style="display:none; font-size: 12px; color: var(--color-accent-green); margin-right: 15px;">
-                     📺 Someone is screen sharing
-                </div>
-                </div>
-        </div>
-
-        <div id="messages"></div>
-
-        <div id="input-area">
-            <div id="reply-preview" style="display: none;">
-                <span id="reply-text"></span>
-                <button onclick="cancelReply()">×</button>
-            </div>
-            <div class="input-wrapper">
-                <label for="file-input" class="attach-btn">+</label>
-                <input type="file" id="file-input" accept="image/*" style="display: none;">
-                <input type="text" id="message-input" placeholder="Message #main">
-            </div>
-        </div>
+    <div class="card" id="register-card" style="display: none;">
+        <h2>Create an Account</h2>
+        <div class="error" id="reg-error"></div>
+        <div class="input-group"><label>User ID (Username)</label><input type="text" id="r-user"></div>
+        <div class="input-group"><label>Display Name</label><input type="text" id="r-display"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="r-pass1"></div>
+        <div class="input-group"><label>Password Again</label><input type="password" id="r-pass2"></div>
+        <button onclick="doRegister()">Register</button>
+        <div class="link" onclick="showLogin()">Already have an account? Log In</div>
     </div>
-</div>
 
-<div id="audio-container" style="display:none;"></div>
+    <script>
+        const loginCard = document.getElementById('login-card');
+        const regCard = document.getElementById('register-card');
+        const loginError = document.getElementById('login-error');
+        const regError = document.getElementById('reg-error');
 
-<script>
-    const socket = io();
-    window.socket = socket; // Expose to global for auth script
-    
-    const messagesContainer = document.getElementById('messages');
-    const messageInput = document.getElementById('message-input');
-    const fileInput = document.getElementById('file-input');
-    const myNameDisplay = document.getElementById('my-name');
-    const myAvatarDisplay = document.getElementById('my-avatar');
-    const userList = document.getElementById('user-list');
-    const channelNameDisplay = document.getElementById('channel-name-display');
-    const audioContainer = document.getElementById('audio-container');
+        function showRegister() { loginCard.style.display = 'none'; regCard.style.display = 'block'; loginError.style.display = 'none'; }
+        function showLogin() { regCard.style.display = 'none'; loginCard.style.display = 'block'; regError.style.display = 'none'; }
 
-    let currentUsername = "";
-    let currentChannel = 'main';
-    let currentDMTarget = null;
-    let replyingTo = null;
-    
-    // WebRTC Variables
-    const peers = {};
-    let localStream = null;
-    let isInVC = false; 
-    // Note: SimplePeer logic here is mostly passive to receive signals if needed, 
-    // or specific logic for the main page if you want voice here too.
-    // Based on your upload, this file has signal listeners.
-
-    // Sync username if auth script finished first
-    if (window.authenticatedUser) {
-        socket.emit('set-username', { username: window.authenticatedUser });
-    }
-
-    function switchChannel(name, element) {
-        currentDMTarget = null;
-        currentChannel = name;
-        channelNameDisplay.innerText = `# ${name}`;
-        messageInput.placeholder = `Message #${name}`;
-        
-        document.querySelectorAll('.channel-item, .sidebar-user-item').forEach(el => el.classList.remove('active'));
-        if(element) element.classList.add('active');
-
-        messagesContainer.innerHTML = '';
-        socket.emit('join-channel', name);
-    }
-
-    function openDM(targetUsername, element) {
-        currentChannel = null;
-        currentDMTarget = targetUsername;
-        channelNameDisplay.innerText = `@ ${targetUsername}`;
-        messageInput.placeholder = `Message @${targetUsername}`;
-
-        document.querySelectorAll('.channel-item, .sidebar-user-item').forEach(el => el.classList.remove('active'));
-        if(element) element.classList.add('active');
-
-        messagesContainer.innerHTML = '';
-        // In a real app, you would emit 'join-dm' here to get history
-    }
-
-    socket.on('profile-info', (data) => {
-        currentUsername = data.username;
-        myNameDisplay.innerText = data.displayName || data.username;
-        myAvatarDisplay.src = data.avatar || 'placeholder-avatar.png';
-        if (data.customBackground) {
-            document.body.style.backgroundImage = `url('${data.customBackground}')`;
-            document.body.style.backgroundSize = 'cover';
-        }
-    });
-
-    socket.on('sidebar-user-list', (users) => {
-        userList.innerHTML = '';
-        users.forEach(u => {
-            if (u.username === currentUsername) return;
-            const li = document.createElement('div');
-            li.className = `sidebar-user-item ${currentDMTarget === u.username ? 'active' : ''}`;
-            li.onclick = () => openDM(u.username, li);
-
-            li.innerHTML = `
-                <div class="sidebar-avatar-wrapper">
-                    <img class="sidebar-avatar" src="${u.avatar || 'placeholder-avatar.png'}">
-                    <div class="sidebar-status ${u.online ? 'status-online' : 'status-offline'}"></div>
-                </div>
-                <div class="sidebar-user-info">
-                    <span class="sidebar-displayname">${u.displayName || u.username}</span>
-                </div>
-            `;
-            userList.appendChild(li);
-        });
-    });
-
-    socket.on('chat-message', (msg) => {
-        if (msg.type === 'pm') return; 
-        if (msg.channel && msg.channel !== currentChannel) return;
-        displayMessage(msg);
-    });
-
-    socket.on('dm-received', (data) => {
-        const { from, to, message } = data;
-        const otherPerson = (from === currentUsername) ? to : from;
-        if (currentDMTarget === otherPerson) {
-            displayMessage(message);
-        }
-    });
-
-    socket.on('history', (history) => {
-        messagesContainer.innerHTML = '';
-        history.forEach(displayMessage);
-    });
-
-    socket.on('motd', (motd) => {
-        displayMessage({ sender: 'System', text: motd, type: 'system', time: '' });
-    });
-
-    socket.on('screen-share-update', (sharers) => {
-        const statusEl = document.getElementById('screen-share-status');
-        if (sharers.length > 0) {
-            statusEl.style.display = 'block';
-            statusEl.innerText = `📺 ${sharers[0]} is sharing screen`;
-        } else {
-            statusEl.style.display = 'none';
-        }
-    });
-
-    function displayMessage(msg) {
-        const div = document.createElement('div');
-        div.className = 'message ' + (msg.sender === currentUsername ? 'user-message' : '');
-        if (msg.type === 'system') div.className = 'system-message';
-
-        let replyHtml = '';
-        if (msg.replyTo) {
-            replyHtml = `<div class="reply-blob">Replying to <strong>${msg.replyTo.sender}</strong>: ${msg.replyTo.text.substring(0, 30)}...</div>`;
+        async function doLogin() {
+            const username = document.getElementById('l-user').value;
+            const password = document.getElementById('l-pass').value;
+            const res = await fetch('/auth/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (res.ok) window.location.href = '/';
+            else { loginError.style.display = 'block'; loginError.innerText = await res.text(); }
         }
 
-        const avatarImg = msg.avatar ? `<img src="${msg.avatar}" class="avatar" onclick="viewUserProfile('${msg.sender}')">` : '';
-        const displayName = msg.senderDisplayName || msg.sender;
+        async function doRegister() {
+            const username = document.getElementById('r-user').value;
+            const displayName = document.getElementById('r-display').value;
+            const pass1 = document.getElementById('r-pass1').value;
+            const pass2 = document.getElementById('r-pass2').value;
 
-        div.innerHTML = `
-            ${avatarImg}
-            <div class="message-content-area">
-                ${msg.type !== 'system' ? `<span class="message-sender-name" onclick="viewUserProfile('${msg.sender}')">${displayName}</span>` : ''}
-                ${replyHtml}
-                <div class="message-bubble">
-                    ${msg.image ? `<img src="${msg.image}" class="chat-image" onclick="window.open('${msg.image}')">` : ''}
-                    ${msg.text ? `<div class="text-content">${msg.text}</div>` : ''}
-                    <div class="message-info">
-                        ${msg.time}
-                        <span class="reply-link" onclick="setupReply('${msg.sender}', '${msg.text || '[Image]'}')">Reply</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        messagesContainer.appendChild(div);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    function setupReply(sender, text) {
-        replyingTo = { sender, text };
-        document.getElementById('reply-preview').style.display = 'flex';
-        document.getElementById('reply-text').innerText = `Replying to ${sender}`;
-        messageInput.focus();
-    }
-
-    function cancelReply() {
-        replyingTo = null;
-        document.getElementById('reply-preview').style.display = 'none';
-    }
-
-    function viewUserProfile(username) {
-        window.location.href = `/profile.html?u=${username}`;
-    }
-
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && (messageInput.value.trim() !== '' || fileInput.files.length > 0)) {
-            const text = messageInput.value;
-            const payload = { text, channel: currentChannel, to: currentDMTarget, replyTo: replyingTo };
-
-            if (fileInput.files.length > 0) {
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                fetch('/upload', { method: 'POST', body: formData })
-                    .then(r => r.json())
-                    .then(data => {
-                        payload.image = data.url;
-                        socket.emit('chat-message', payload);
-                    });
-            } else {
-                socket.emit('chat-message', payload);
-            }
-
-            messageInput.value = '';
-            fileInput.value = '';
-            cancelReply();
+            if (pass1 !== pass2) { regError.style.display = 'block'; regError.innerText = "Passwords do not match!"; return; }
+            const res = await fetch('/auth/register', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password: pass1, displayName })
+            });
+            if (res.ok) window.location.href = '/';
+            else { regError.style.display = 'block'; regError.innerText = await res.text(); }
         }
-    });
-
-    socket.on('system-version-check', (data) => {
-        console.log("Server Build:", data.description);
-    });
-
-    // --- Voice Logic (Preserved from your previous version) ---
-    // If you are using voice.html for the main voice room, this logic handles
-    // background signals if necessary, or simply exists for future features.
-    socket.on('signal', (data) => {
-        // Voice logic placeholder to match your provided file structure
-        // This ensures SimplePeer doesn't crash if signals are sent here
-    });
-</script>
+    </script>
 </body>
 </html>
