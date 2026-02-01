@@ -67,15 +67,28 @@
             </div>
         </div>
 
-        <div style="height: 10px;"></div>
+        <div id="sidebar-voice-footer">
+            <div id="sidebar-voice-controls">
+                <button id="open-voice-page-btn" class="panel-btn" style="background-color: var(--color-accent-green); color: white; border:none; font-weight: bold;">Open Voice Room</button>
+                <div id="vc-controls">
+                    <button id="vc-btn-join" class="panel-btn" style="background-color: var(--color-accent-blue); color: white; border:none; font-weight: bold;">Join Call</button>
+                    <div style="display: flex; gap: 5px;">
+                        <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
+                        <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
+                    </div>
+                </div>
+                <ul id="vc-user-list"></ul>
+                <div id="audio-container"></div>
+            </div>
 
-        <div class="dm-dropdown-header" onclick="toggleDMs()">
-            <span>Direct Messages</span>
-            <span id="dm-arrow">▼</span>
-        </div>
-        
-        <div id="dm-container">
-            <div id="dm-list"></div>
+            <div class="dm-dropdown-header" onclick="toggleDMs()">
+                <span>Direct Messages</span>
+                <span id="dm-arrow">▼</span>
+            </div>
+            
+            <div id="dm-container">
+                <div id="dm-list"></div>
+            </div>
         </div>
     </div>
 
@@ -118,19 +131,6 @@
             <div>
                 <h4 class="panel-title">other stuff</h4>
                 <button id="launch-custom-window-btn" class="panel-btn">resizable window</button>
-                <button id="open-voice-page-btn" class="panel-btn" style="margin-top:5px; background-color: var(--color-accent-green);">Open Voice/Screen Room</button>
-            </div>
-            <div>
-                <h4 class="panel-title">voice chat</h4>
-                <div id="vc-controls">
-                    <button id="vc-btn-join" class="panel-btn">Join Call</button>
-                    <div style="display: flex; gap: 5px;">
-                        <button id="vc-btn-mute" class="panel-btn" style="display: none; flex: 1;">Mute</button>
-                        <button id="vc-btn-leave" class="panel-btn" style="display: none; flex: 1; background-color: var(--color-vc-red); border-color: #a00;">Leave</button>
-                    </div>
-                </div>
-                <ul id="vc-user-list"></ul>
-                <div id="audio-container"></div>
             </div>
         </div>
         <div class="panel-bottom-group">
