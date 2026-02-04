@@ -1,20 +1,27 @@
-async function launch() {
-    // We wrap your Catbox link in a CORS proxy
-    const gameUrl = 'https://files.catbox.moe/4uswxp.html';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
-    
-    try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Proxy could not reach Catbox");
+<script>
+    async function launch() {
+        // 1. Your Catbox Link
+        const gameUrl = 'https://files.catbox.moe/4uswxp.html';
         
-        const html = await response.text();
+        // 2. Wrap it in a CORS Proxy to fix "Failed to Fetch"
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
         
-        document.open();
-        document.write(html);
-        document.close();
-    } catch (e) {
-        document.getElementById('status').innerText = "Error: " + e.message;
-        console.error(e);
+        try {
+            document.getElementById('status').innerText = "Downloading Game Engine (this may take a minute)...";
+            
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("Proxy could not reach Catbox");
+            
+            const html = await response.text();
+            
+            // 3. Inject the game into the page
+            document.open();
+            document.write(html);
+            document.close();
+        } catch (e) {
+            document.getElementById('status').innerText = "Error: " + e.message + ". Check console (F12) for details.";
+            console.error(e);
+        }
     }
-}
-launch();
+    launch();
+</script>
