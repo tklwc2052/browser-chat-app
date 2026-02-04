@@ -1,35 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>T*ff UT12</title>
-    <style>
-        body { margin: 0; padding: 0; background: #000; color: #fff; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: sans-serif; overflow: hidden; }
-        .loading-box { text-align: center; }
-        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-    <div class="loading-box">
-        <div class="spinner"></div>
-        <div id="status">honestly man what the hell.</div>
-    </div>
-    <script>
-        async function launch() {
-            // Your specific Catbox link
-            const gameUrl = 'https://files.catbox.moe/4uswxp.html';
-            try {
-                const response = await fetch(gameUrl);
-                if (!response.ok) throw new Error("Failed to download from Catbox");
-                const html = await response.text();
-                document.open();
-                document.write(html);
-                document.close();
-            } catch (e) {
-                document.getElementById('status').innerText = "Error: " + e.message;
-            }
-        }
-        launch();
-    </script>
-</body>
-</html>
+async function launch() {
+    // We wrap your Catbox link in a CORS proxy
+    const gameUrl = 'https://files.catbox.moe/4uswxp.html';
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
+    
+    try {
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error("Proxy could not reach Catbox");
+        
+        const html = await response.text();
+        
+        document.open();
+        document.write(html);
+        document.close();
+    } catch (e) {
+        document.getElementById('status').innerText = "Error: " + e.message;
+        console.error(e);
+    }
+}
+launch();
