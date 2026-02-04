@@ -20,44 +20,50 @@
     </div>
 
     <script>
-        let gameContent = "";
+            let gameContent = "";
 
-        async function downloadGame() {
-            const gameUrl = 'https://files.catbox.moe/4uswxp.html';
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
-            
+    async function downloadGame() {
+        const gameUrl = 'https://files.catbox.moe/4uswxp.html';
+        
+        // List of different proxies to try if one is blocked
+        const proxies = [
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`,
+            `https://corsproxy.io/?${encodeURIComponent(gameUrl)}`,
+            `https://thingproxy.freeboard.io/fetch/${gameUrl}`
+        ];
+
+        for (let url of proxies) {
             try {
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("Connection failed");
+                document.getElementById('status').innerText = "Attempting to fetch game data...";
+                const response = await fetch(url);
                 
-                gameContent = await response.text();
-                
-                // Once downloaded, hide spinner and show the Launch button
-                document.getElementById('loader').style.display = 'none';
-                document.getElementById('status').innerText = "Game Ready!";
-                document.getElementById('launchBtn').style.display = 'inline-block';
+                if (response.ok) {
+                    gameContent = await response.text();
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('status').innerText = "Game Ready!";
+                    document.getElementById('launchBtn').style.display = 'inline-block';
+                    return; // Stop once we succeed
+                }
             } catch (e) {
-                document.getElementById('status').innerText = "Error: " + e.message;
-                console.error(e);
+                console.log("Proxy failed, trying next...");
             }
         }
 
-        function openGame() {
-            // 1. Create the new window just like your HTML runner
-            const win = window.open('about:blank', '_blank');
-            
-            if (!win) {
-                alert("Pop-up blocked! Please allow pop-ups for this site.");
-                return;
-            }
+        document.getElementById('status').innerText = "All download methods failed. Your school may be blocking the file hosts.";
+    }
 
-            // 2. Write the game data into the local 'about:blank' memory
-            win.document.open();
-            win.document.write(gameContent);
-            win.document.close();
+    function openGame() {
+        const win = window.open('about:blank', '_blank');
+        if (!win) {
+            alert("Pop-up blocked! Please allow pop-ups.");
+            return;
         }
+        win.document.open();
+        win.document.write(gameContent);
+        win.document.close();
+    }
 
-        downloadGame();
-    </script>
+    downloadGame();
+</script>
 </body>
 </html>
