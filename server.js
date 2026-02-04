@@ -12,6 +12,16 @@ const stream = require('stream');
 const app = express();
 const server = http.createServer(app);
 
+
+// 1. ADD THIS MIDDLEWARE (Mandatory for Eaglercraft 1.12 WASM)
+app.use((req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    next();
+});
+
+
+
 // --- 1. AUTOMATIC UPDATE MESSAGE ---
 let SERVER_BUILD_DESC = "System Update"; 
 const SERVER_BUILD_ID = Date.now(); 
