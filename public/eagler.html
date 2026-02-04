@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T*ff client ut12</title>
+    <style>
+        /* This forces the page to occupy every pixel of the browser window */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Removes browser scrollbars */
+            background-color: black;
+        }
+
+        /* This makes the frame take up 100% of the screen width and height */
+        #game-frame {
+            border: none;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <iframe 
+        id="game-frame" 
+        src="https://drive.google.com/uc?export=download&id=1s8XCoJDfcNqgTumO4s-i0g2iQwdtj0N4"
+        allow="autoplay; fullscreen; keyboard" 
+        sandbox="allow-scripts allow-same-origin allow-forms">
+    </iframe>
+
+</body>
+</html>
