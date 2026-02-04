@@ -18,7 +18,8 @@
     <script>
         async function loadGame() {
             const fileId = '1s8XCoJDfcNqgTumO4s-i0g2iQwdtj0N4';
-            const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+// This uses the AllOrigins proxy to bypass Google's block
+            const url = `https://api.allorigins.win/raw?url=${encodeURIComponent('https://drive.google.com/uc?export=download&id=' + fileId)}`;
             
             try {
                 const response = await fetch(url);
