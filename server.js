@@ -589,5 +589,10 @@ app.get('/i-like-my-toast-with-butter', async (req, res) => {
     try { await Ban.deleteMany({}); bannedIPs.clear(); res.send("SUCCESS"); } catch (e) { res.send(e.message); }
 });
 
+// This tells your server to show eagler.html when someone visits /eagler
+app.get('/eagler', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/eagler.html'));
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
