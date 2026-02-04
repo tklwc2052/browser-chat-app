@@ -1,27 +1,63 @@
-<script>
-    async function launch() {
-        // 1. Your Catbox Link
-        const gameUrl = 'https://files.catbox.moe/4uswxp.html';
-        
-        // 2. Wrap it in a CORS Proxy to fix "Failed to Fetch"
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
-        
-        try {
-            document.getElementById('status').innerText = "Downloading Game Engine (this may take a minute)...";
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eaglercraft 1.12 Launcher</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: sans-serif; }
+        .box { text-align: center; border: 1px solid #333; padding: 40px; border-radius: 12px; background: #0a0a0a; }
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: #fff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        button { background: #fff; color: #000; border: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; display: none; }
+        button:hover { background: #ccc; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <div id="loader" class="spinner"></div>
+        <div id="status">Connecting to Catbox...</div>
+        <button id="launchBtn" onclick="openGame()">Launch Game</button>
+    </div>
+
+    <script>
+        let gameContent = "";
+
+        async function downloadGame() {
+            const gameUrl = 'https://files.catbox.moe/4uswxp.html';
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gameUrl)}`;
             
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("Proxy could not reach Catbox");
-            
-            const html = await response.text();
-            
-            // 3. Inject the game into the page
-            document.open();
-            document.write(html);
-            document.close();
-        } catch (e) {
-            document.getElementById('status').innerText = "Error: " + e.message + ". Check console (F12) for details.";
-            console.error(e);
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Connection failed");
+                
+                gameContent = await response.text();
+                
+                // Once downloaded, hide spinner and show the Launch button
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('status').innerText = "Game Ready!";
+                document.getElementById('launchBtn').style.display = 'inline-block';
+            } catch (e) {
+                document.getElementById('status').innerText = "Error: " + e.message;
+                console.error(e);
+            }
         }
-    }
-    launch();
-</script>
+
+        function openGame() {
+            // 1. Create the new window just like your HTML runner
+            const win = window.open('about:blank', '_blank');
+            
+            if (!win) {
+                alert("Pop-up blocked! Please allow pop-ups for this site.");
+                return;
+            }
+
+            // 2. Write the game data into the local 'about:blank' memory
+            win.document.open();
+            win.document.write(gameContent);
+            win.document.close();
+        }
+
+        downloadGame();
+    </script>
+</body>
+</html>
