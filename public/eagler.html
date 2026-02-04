@@ -1,37 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>T*ff client ut12</title>
+    <title>Loading Eaglercraft...</title>
     <style>
-        /* This forces the page to occupy every pixel of the browser window */
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            width: 100%;
-            overflow: hidden; /* Removes browser scrollbars */
-            background-color: black;
-        }
-
-        /* This makes the frame take up 100% of the screen width and height */
-        #game-frame {
-            border: none;
-            width: 100vw;
-            height: 100vh;
-            display: block;
-        }
+        body { background: #000; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        #status { text-align: center; }
+        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid #fff; borderRadius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+    <div id="status">
+        <div class="spinner"></div>
+        <div id="msg">Downloading game data from Drive...</div>
+    </div>
 
-    <iframe 
-        id="game-frame" 
-        src="https://drive.google.com/uc?export=download&id=1s8XCoJDfcNqgTumO4s-i0g2iQwdtj0N4"
-        allow="autoplay; fullscreen; keyboard" 
-        sandbox="allow-scripts allow-same-origin allow-forms">
-    </iframe>
-
+    <script>
+        async function loadGame() {
+            const fileId = '1s8XCoJDfcNqgTumO4s-i0g2iQwdtj0N4';
+            const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const html = await response.text();
+                
+                // This replaces the current empty page with the full game code
+                document.open();
+                document.write(html);
+                document.close();
+            } catch (err) {
+                document.getElementById('msg').innerHTML = "Error loading game. Make sure the Drive file is public!";
+                console.error(err);
+            }
+        }
+        loadGame();
+    </script>
 </body>
 </html>
